@@ -3443,6 +3443,26 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 			float t = percent.Clamp(0f, 1f);
 			//Any right-to-left book turns from the left, whichever way its spreads are arranged.
 			bool mirrored = base.RightToLeftReading;
+			if (hr is IGeometryClipRenderer clipper)
+			{
+				//Same paper as a mouse drag, with the page taken by an invisible hand: the corner
+				//is carried across to the far side along a slight arc, so the sheet bends and
+				//lifts instead of pivoting like card.
+				bool peelRight = (currentPage >= oldPage) != mirrored;
+				GetPeelGeometry(oldOut, peelRight, out bool _, out RectangleF sheet, out RectangleF _, out float spine);
+				if (sheet.Width > 8f && sheet.Height > 8f)
+				{
+					PointF corner = new PointF(peelRight ? sheet.Right : sheet.Left, sheet.Top + sheet.Height * 0.72f);
+					PointF landed = new PointF(2f * spine - corner.X, corner.Y);
+					float eased = t * t * (3f - 2f * t);
+					//A hand lifts the page a little as it carries it over.
+					float arc = 0f - sheet.Height * 0.12f * (float)Math.Sin(Math.PI * eased);
+					PointF hand = new PointF(corner.X + (landed.X - corner.X) * eased, corner.Y + (landed.Y - corner.Y) * eased + arc);
+					hand = ConstrainPeel(hand, corner, sheet, spine);
+					RenderCornerPeel(hr, clipper, oldOut, oldPage, display, currentPage, peelRight, corner, hand);
+					return;
+				}
+			}
 			if (currentPage >= oldPage)
 			{
 				//Forward: the old page is the sheet that turns away and uncovers the new one.
@@ -3899,7 +3919,7 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 		private void SetPeelMouse(PointF mouse, bool trackVelocity)
 		{
 			GetPeelGeometry(dragOldOut, dragPeelRight, out bool _, out RectangleF sheet, out RectangleF _, out float spine);
-			dragMouse = ConstrainPeel(mouse, sheet, spine);
+			dragMouse = ConstrainPeel(mouse, dragCorner, sheet, spine);
 			//Progress: 0 with the page lying flat, 1 once the grabbed point has reached its mirror
 			//image on the other side of the spine.
 			float inward = Math.Sign(spine - dragCorner.X);
@@ -4065,7 +4085,7 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 					{
 						if (dragCornerMode && bitmapRenderer is IGeometryClipRenderer clipper)
 						{
-							RenderCornerPeel(bitmapRenderer, clipper);
+							RenderCornerPeel(bitmapRenderer, clipper, dragOldOut, dragOldPage, dragNewOut, dragNewPage, dragPeelRight, dragCorner, dragMouse);
 						}
 						else
 						{
@@ -4157,7 +4177,7 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 			}
 		}
 
-		private PointF ConstrainPeel(PointF mouse, RectangleF sheet, float spine)
+		private static PointF ConstrainPeel(PointF mouse, PointF dragCorner, RectangleF sheet, float spine)
 		{
 			PointF top = new PointF(spine, sheet.Top);
 			PointF bottom = new PointF(spine, sheet.Bottom);
@@ -4324,9 +4344,13 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 			return new System.Drawing.Drawing2D.Matrix(a00, a01, a01, a11, d * nx, d * ny);
 		}
 
-		private void RenderCornerPeel(IBitmapRenderer hr, IGeometryClipRenderer clipper)
+		/// <summary>
+		/// Draws one frame of a page being peeled off: used both while dragging with the mouse and
+		/// by the Realistic Page Curl transition, which simply moves the grabbed point itself.
+		/// </summary>
+		private void RenderCornerPeel(IBitmapRenderer hr, IGeometryClipRenderer clipper, DisplayOutput oldOut, int oldPageIndex, DisplayOutput newOut, int newPageIndex, bool peelRight, PointF corner, PointF mouse)
 		{
-			GetPeelGeometry(dragOldOut, dragPeelRight, out bool spread, out RectangleF sheet, out RectangleF visible, out float spine);
+			GetPeelGeometry(oldOut, peelRight, out bool spread, out RectangleF sheet, out RectangleF visible, out float spine);
 			Rectangle client = base.ClientRectangle;
 			System.Drawing.Drawing2D.Matrix baseTransform = hr.Transform;
 			float opacity = hr.Opacity;
@@ -4334,30 +4358,28 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 			{
 				//1. What is underneath: the new page on the side being peeled, and in a spread the
 				//   old facing page on the other side, where the flap will come to rest.
-				RenderImageBackground(hr, dragNewOut, dragNewPage);
+				RenderImageBackground(hr, newOut, newPageIndex);
 				if (spread)
 				{
-					RectangleF peelSide = dragPeelRight ? RectangleF.FromLTRB(spine, client.Top, client.Right, client.Bottom) : RectangleF.FromLTRB(client.Left, client.Top, spine, client.Bottom);
-					RectangleF otherSide = dragPeelRight ? RectangleF.FromLTRB(client.Left, client.Top, spine, client.Bottom) : RectangleF.FromLTRB(spine, client.Top, client.Right, client.Bottom);
+					RectangleF peelSide = peelRight ? RectangleF.FromLTRB(spine, client.Top, client.Right, client.Bottom) : RectangleF.FromLTRB(client.Left, client.Top, spine, client.Bottom);
+					RectangleF otherSide = peelRight ? RectangleF.FromLTRB(client.Left, client.Top, spine, client.Bottom) : RectangleF.FromLTRB(spine, client.Top, client.Right, client.Bottom);
 					SetCurlClip(hr, baseTransform, peelSide);
-					RenderImageSafe(hr, dragNewOut, dragNewPage, RenderType.WithoutBackground);
+					RenderImageSafe(hr, newOut, newPageIndex, RenderType.WithoutBackground);
 					SetCurlClip(hr, baseTransform, otherSide);
-					RenderImageSafe(hr, dragOldOut, dragOldPage, RenderType.WithoutBackground);
+					RenderImageSafe(hr, oldOut, oldPageIndex, RenderType.WithoutBackground);
 				}
 				else
 				{
 					SetCurlClip(hr, baseTransform, RectangleF.Empty);
-					RenderImageSafe(hr, dragNewOut, dragNewPage, RenderType.WithoutBackground);
+					RenderImageSafe(hr, newOut, newPageIndex, RenderType.WithoutBackground);
 				}
 				SetCurlClip(hr, baseTransform, RectangleF.Empty);
-				PointF corner = dragCorner;
-				PointF mouse = dragMouse;
 				float lift = Distance(corner, mouse);
 				PointF[] sheetPolygon = RectPolygon(sheet);
 				if (lift < 0.5f)
 				{
 					clipper.PushPolygonClip(sheetPolygon);
-					RenderImageSafe(hr, dragOldOut, dragOldPage, RenderType.WithoutBackground);
+					RenderImageSafe(hr, oldOut, oldPageIndex, RenderType.WithoutBackground);
 					clipper.PopPolygonClip();
 					return;
 				}
@@ -4385,7 +4407,7 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 				if (flat.Length >= 3)
 				{
 					clipper.PushPolygonClip(flat);
-					RenderImageSafe(hr, dragOldOut, dragOldPage, RenderType.WithoutBackground);
+					RenderImageSafe(hr, oldOut, oldPageIndex, RenderType.WithoutBackground);
 					clipper.PopPolygonClip();
 				}
 				//3. Shadow the lifted flap throws on the uncovered page, darkest at the crease.
@@ -4459,7 +4481,7 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 							}
 							hr.Transform = m;
 							hr.Opacity = 1f;
-							RenderImageSafe(hr, dragNewOut, dragNewPage, RenderType.WithoutBackground);
+							RenderImageSafe(hr, newOut, newPageIndex, RenderType.WithoutBackground);
 						}
 						else
 						{
@@ -4469,7 +4491,7 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 							m.Multiply(fold);
 							hr.Transform = m;
 							hr.Opacity = 0.12f;
-							RenderImageSafe(hr, dragOldOut, dragOldPage, RenderType.WithoutBackground);
+							RenderImageSafe(hr, oldOut, oldPageIndex, RenderType.WithoutBackground);
 						}
 						hr.Transform = baseTransform;
 						hr.Opacity = opacity;
