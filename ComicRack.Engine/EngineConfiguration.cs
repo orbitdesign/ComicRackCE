@@ -91,6 +91,17 @@ namespace cYo.Projects.ComicRack.Engine
 			set;
 		}
 
+		/// <summary>
+		/// Length of the realistic page curl transition in milliseconds. It is longer than the other
+		/// transitions because a page that turns too quickly stops reading as paper.
+		/// </summary>
+		[DefaultValue(600)]
+		public int PageCurlDuration
+		{
+			get;
+			set;
+		}
+
 		[DefaultValue(1000)]
 		public int SoftwareFilterDelay
 		{
@@ -622,6 +633,7 @@ namespace cYo.Projects.ComicRack.Engine
 			PageScrollingDuration = 1000;
 			AnimationDuration = 250;
 			BlendDuration = 400;
+			PageCurlDuration = 600;
 			SoftwareFilterDelay = 1000;
 			ListCoverSize = new Size(512, 512);
 			ListCoverAlpha = 0.3f;

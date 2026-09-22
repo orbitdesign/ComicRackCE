@@ -3025,6 +3025,10 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 					Blender = PageBackward;
 				}
 				break;
+			case PageTransitionEffect.PageCurl:
+				//Works out direction and reading order itself.
+				Blender = PageCurlBlending;
+				break;
 			}
 			ShouldPagingBlend = !base.InvokeRequired && (BlendWhilePaging || Machine.Ticks - lastBlend > 100);
 			OnPageChange(e);
@@ -3216,7 +3220,7 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 					{
 						renderer.EndScene();
 					}
-					ThreadUtility.Animate(EngineConfiguration.Default.BlendDuration, delegate(float x)
+					ThreadUtility.Animate(GetBlendDuration(blender), delegate(float x)
 					{
 						IBitmapRenderer bitmapRenderer = renderer;
 						try
@@ -3411,6 +3415,213 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 			}
 			hr.Clip = Rectangle.Empty;
 		}
+
+		#region Realistic page curl
+
+		//The turning sheet is modelled as a strip of paper hinged at the spine. It is cut into thin
+		//vertical slices; every slice gets its own 3D angle (so the sheet can bend), a perspective
+		//size, and a shade from its angle to the viewer. Each slice is then drawn as the matching
+		//column of the page with an ordinary scale transform and a clip, which is all the renderer
+		//interface offers, so this works on the Direct2D and the OpenGL renderer alike.
+
+		private const float PageCurlBend = 0.9f;
+
+		private static readonly Color PageCurlPaperColor = Color.FromArgb(246, 243, 236);
+
+		public void PageCurlBlending(IBitmapRenderer hr, int oldPage, DisplayOutput oldOut, DisplayOutput display, float percent)
+		{
+			if (oldOut == null || display == null)
+			{
+				FadeInBlending(hr, oldPage, oldOut, display, percent);
+				return;
+			}
+			float t = percent.Clamp(0f, 1f);
+			bool mirrored = IsFlipped;
+			if (currentPage >= oldPage)
+			{
+				//Forward: the old page is the sheet that turns away and uncovers the new one.
+				RenderPageCurl(hr, oldOut, oldPage, display, currentPage, t, mirrored);
+			}
+			else
+			{
+				//Backward: the same motion played in reverse, so the previous page swings back
+				//over the current one, just like turning back in a real book.
+				RenderPageCurl(hr, display, currentPage, oldOut, oldPage, 1f - t, mirrored);
+			}
+		}
+
+		private void RenderPageCurl(IBitmapRenderer hr, DisplayOutput sheetOut, int sheetPage, DisplayOutput underOut, int underPage, float t, bool mirrored)
+		{
+			Rectangle client = base.ClientRectangle;
+			Rectangle page = sheetOut.OutputBoundsScreen;
+			//A spread (two pages side by side) turns around its middle, a single page around its
+			//edge. Adaptive layouts can show a lone portrait page in two page mode, which the
+			//aspect ratio check catches.
+			bool spread = TwoPageDisplay && page.Width >= page.Height * 0.9f;
+			int sgn = mirrored ? -1 : 1;
+			float spine = spread ? (page.Left + page.Width / 2f) : (mirrored ? page.Right : page.Left);
+			float width = spread ? (page.Width / 2f) : page.Width;
+			float opacity = hr.Opacity;
+			Matrix baseTransform = hr.Transform;
+			try
+			{
+				if (width < 8f || page.Height < 8)
+				{
+					RenderImageSafe(hr, underOut, underPage, RenderType.Default);
+					return;
+				}
+				float eased = t * t * (3f - 2f * t);
+				float theta = (float)Math.PI * eased;
+				float sinTheta = (float)Math.Sin(theta);
+				RectangleF allowed = RectangleF.FromLTRB(page.Left, client.Top, page.Right, client.Bottom);
+
+				//1. What lies underneath: the new page where the sheet came from, and in a spread
+				//   the facing page of the old spread that the sheet will land on.
+				RenderImageBackground(hr, underOut, underPage);
+				if (spread)
+				{
+					RectangleF uncovered = (sgn > 0) ? RectangleF.FromLTRB(spine, client.Top, client.Right, client.Bottom) : RectangleF.FromLTRB(client.Left, client.Top, spine, client.Bottom);
+					RectangleF facing = (sgn > 0) ? RectangleF.FromLTRB(client.Left, client.Top, spine, client.Bottom) : RectangleF.FromLTRB(spine, client.Top, client.Right, client.Bottom);
+					SetCurlClip(hr, baseTransform, uncovered);
+					RenderImageSafe(hr, underOut, underPage, RenderType.WithoutBackground);
+					SetCurlClip(hr, baseTransform, facing);
+					RenderImageSafe(hr, sheetOut, sheetPage, RenderType.WithoutBackground);
+				}
+				else
+				{
+					SetCurlClip(hr, baseTransform, RectangleF.Empty);
+					RenderImageSafe(hr, underOut, underPage, RenderType.WithoutBackground);
+				}
+
+				//2. Shape of the sheet. Arc length u runs from the spine to the free edge. The free
+				//   edge leads, like a page lifted by its edge, and the bend straightens out again
+				//   as the sheet lands.
+				int slices = Math.Max(20, Math.Min(48, (int)(width / 14f)));
+				float step = width / slices;
+				float[] along = new float[slices + 1];
+				float[] height = new float[slices + 1];
+				float[] angle = new float[slices];
+				for (int i = 0; i < slices; i++)
+				{
+					float u = (i + 0.5f) / slices;
+					float phi = Math.Min((float)Math.PI, theta + PageCurlBend * sinTheta * u * u);
+					angle[i] = phi;
+					along[i + 1] = along[i] + (float)Math.Cos(phi) * step;
+					height[i + 1] = height[i] + (float)Math.Sin(phi) * step;
+				}
+				float centerX = client.Left + client.Width / 2f;
+				float centerY = page.Top + page.Height / 2f;
+				float eye = 4f * Math.Max(width, page.Height);
+				float[] screenX = new float[slices + 1];
+				float[] scale = new float[slices + 1];
+				for (int i = 0; i <= slices; i++)
+				{
+					scale[i] = eye / Math.Max(eye * 0.25f, eye - height[i]);
+					screenX[i] = centerX + (spine + sgn * along[i] - centerX) * scale[i];
+				}
+
+				//3. Soft shadow the lifted sheet throws next to its free edge.
+				if (sinTheta > 0.02f)
+				{
+					float edge = screenX[slices];
+					int side = Math.Sign(edge - spine);
+					if (side == 0)
+					{
+						side = sgn;
+					}
+					float shadowWidth = width * 0.18f * sinTheta;
+					float strength = 0.45f * sinTheta;
+					SetCurlClip(hr, baseTransform, allowed);
+					const int bands = 10;
+					for (int k = 0; k < bands; k++)
+					{
+						float a = edge + side * shadowWidth * k / bands;
+						float b = edge + side * shadowWidth * (k + 1) / bands;
+						float fade = 1f - (float)k / bands;
+						hr.Opacity = strength * fade * fade;
+						hr.FillRectangle(RectangleF.FromLTRB(Math.Min(a, b), page.Top, Math.Max(a, b), page.Bottom), Color.Black);
+					}
+				}
+
+				//4. The sheet itself, slice by slice, furthest from the viewer first.
+				int[] order = Enumerable.Range(0, slices).OrderBy((int i) => height[i] + height[i + 1]).ToArray();
+				foreach (int i in order)
+				{
+					float x0 = screenX[i];
+					float x1 = screenX[i + 1];
+					if (Math.Abs(x1 - x0) < 0.25f)
+					{
+						continue;
+					}
+					float s = (scale[i] + scale[i + 1]) / 2f;
+					bool front = (x1 - x0) * sgn > 0f;
+					RectangleF target = RectangleF.FromLTRB(Math.Min(x0, x1) - 0.35f, centerY + (page.Top - centerY) * s, Math.Max(x0, x1) + 0.35f, centerY + (page.Bottom - centerY) * s);
+					target.Intersect(allowed);
+					if (target.Width <= 0f || target.Height <= 0f)
+					{
+						continue;
+					}
+					float u0 = step * i;
+					float u1 = step * (i + 1);
+					//The back of a sheet in a spread is the first page of the next spread, which
+					//sits on the other side of the spine once the sheet has landed.
+					bool useBack = !front && spread;
+					float src0 = useBack ? (spine - sgn * u0) : (spine + sgn * u0);
+					float src1 = useBack ? (spine - sgn * u1) : (spine + sgn * u1);
+					float scaleX = (x1 - x0) / (src1 - src0);
+					SetCurlClip(hr, baseTransform, target);
+					if (!front && !spread)
+					{
+						//A single page has no next page on its back: show paper with the print
+						//faintly showing through.
+						hr.Opacity = 1f;
+						hr.FillRectangle(target, PageCurlPaperColor);
+					}
+					using (Matrix slice = new Matrix(scaleX, 0f, 0f, s, x0 - scaleX * src0, centerY - s * centerY))
+					{
+						Matrix m = baseTransform.Clone();
+						m.Multiply(slice);
+						hr.Transform = m;
+						hr.Opacity = (front || spread) ? 1f : 0.12f;
+						RenderImageSafe(hr, useBack ? underOut : sheetOut, useBack ? underPage : sheetPage, RenderType.WithoutBackground);
+						hr.Transform = baseTransform;
+						m.Dispose();
+					}
+					//Light: facing the viewer is fully lit, edge on is darkest.
+					float shade = (1f - Math.Abs((float)Math.Cos(angle[i]))) * 0.6f;
+					if (shade > 0.02f)
+					{
+						hr.Opacity = shade;
+						hr.FillRectangle(target, Color.Black);
+					}
+				}
+			}
+			finally
+			{
+				hr.Transform = baseTransform;
+				hr.Clip = RectangleF.Empty;
+				hr.Opacity = opacity;
+			}
+		}
+
+		private static void SetCurlClip(IBitmapRenderer hr, Matrix baseTransform, RectangleF rect)
+		{
+			//Clips are set in screen space, before any slice transform is applied. Setting them
+			//under a mirrored transform confuses the OpenGL renderer's scissor math.
+			hr.Transform = baseTransform;
+			hr.Clip = rect;
+		}
+
+		private int GetBlendDuration(BlendAnimationHandler blender)
+		{
+			if (blender != null && blender.Target == this && blender.Method.Name == nameof(PageCurlBlending))
+			{
+				return EngineConfiguration.Default.PageCurlDuration;
+			}
+			return EngineConfiguration.Default.BlendDuration;
+		}
+
+		#endregion
 
 		public void ScrollToLeftBlending(IBitmapRenderer hr, int oldPage, DisplayOutput oldOut, DisplayOutput display, float percent)
 		{
