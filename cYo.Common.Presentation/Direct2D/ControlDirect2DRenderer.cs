@@ -39,7 +39,7 @@ namespace cYo.Common.Presentation.Direct2D
 	/// - Large images are split into tiles only when they exceed the device limit, so a typical
 	///   page is a single GPU bitmap instead of dozens of 512x512 textures.
 	/// </summary>
-	public class ControlDirect2DRenderer : DisposableObject, IControlRenderer, IHardwareRenderer
+	public class ControlDirect2DRenderer : DisposableObject, IControlRenderer, IHardwareRenderer, IGeometryClipRenderer
 	{
 		private struct PendingMultiply
 		{
@@ -121,6 +121,14 @@ namespace cYo.Common.Presentation.Direct2D
 		private int consecutiveFailures;
 
 		private readonly List<IDisposable> frameTemporaries = new List<IDisposable>();
+
+		private readonly List<D2D.Layer> layerPool = new List<D2D.Layer>();
+
+		//One entry per PushPolygonClip: true when a Direct2D layer was really pushed, false for a
+		//no-op push, so every PopPolygonClip undoes exactly its own push.
+		private readonly Stack<bool> clipLayers = new Stack<bool>();
+
+		private int layerDepth;
 
 		public Control Control
 		{
@@ -537,11 +545,138 @@ namespace cYo.Common.Presentation.Direct2D
 		{
 		}
 
+		#region Polygon clipping and fills
+
+		public void PushPolygonClip(PointF[] polygon)
+		{
+			if (!drawing || polygon == null || polygon.Length < 3)
+			{
+				clipLayers.Push(false);
+				return;
+			}
+			FlushMultiply();
+			D2D.PathGeometry geometry = CreatePolygon(polygon);
+			frameTemporaries.Add(geometry);
+			while (layerPool.Count <= layerDepth)
+			{
+				layerPool.Add(new D2D.Layer(target));
+			}
+			D2D.LayerParameters parameters = new D2D.LayerParameters
+			{
+				ContentBounds = new RawRectangleF(float.MinValue, float.MinValue, float.MaxValue, float.MaxValue),
+				GeometricMask = geometry,
+				MaskAntialiasMode = D2D.AntialiasMode.PerPrimitive,
+				MaskTransform = Identity,
+				Opacity = 1f
+			};
+			//The mask is transformed by the world transform, so push it in screen space.
+			target.Transform = Identity;
+			target.PushLayer(ref parameters, layerPool[layerDepth]);
+			target.Transform = ToRaw(transform.Elements, 0f, 0f);
+			layerDepth++;
+			clipLayers.Push(true);
+		}
+
+		public void PopPolygonClip()
+		{
+			if (clipLayers.Count == 0)
+			{
+				return;
+			}
+			if (!clipLayers.Pop() || layerDepth == 0)
+			{
+				return;
+			}
+			if (drawing)
+			{
+				FlushMultiply();
+				target.PopLayer();
+			}
+			layerDepth--;
+		}
+
+		public void FillPolygon(PointF[] polygon, Color color)
+		{
+			if (!drawing || polygon == null || polygon.Length < 3 || color.A == 0)
+			{
+				return;
+			}
+			FlushMultiply();
+			D2D.PathGeometry geometry = CreatePolygon(polygon);
+			frameTemporaries.Add(geometry);
+			brush.Color = ToColor4(color);
+			target.Transform = Identity;
+			target.FillGeometry(geometry, brush);
+			target.Transform = ToRaw(transform.Elements, 0f, 0f);
+		}
+
+		public void FillPolygonGradient(PointF[] polygon, PointF start, Color startColor, PointF end, Color endColor)
+		{
+			if (!drawing || polygon == null || polygon.Length < 3)
+			{
+				return;
+			}
+			FlushMultiply();
+			D2D.PathGeometry geometry = CreatePolygon(polygon);
+			frameTemporaries.Add(geometry);
+			D2D.GradientStop[] stops = new D2D.GradientStop[2]
+			{
+				new D2D.GradientStop
+				{
+					Position = 0f,
+					Color = ToColor4(startColor)
+				},
+				new D2D.GradientStop
+				{
+					Position = 1f,
+					Color = ToColor4(endColor)
+				}
+			};
+			D2D.GradientStopCollection collection = new D2D.GradientStopCollection(target, stops);
+			frameTemporaries.Add(collection);
+			D2D.LinearGradientBrush gradient = new D2D.LinearGradientBrush(target, new D2D.LinearGradientBrushProperties
+			{
+				StartPoint = new RawVector2(start.X, start.Y),
+				EndPoint = new RawVector2(end.X, end.Y)
+			}, collection);
+			frameTemporaries.Add(gradient);
+			target.Transform = Identity;
+			target.FillGeometry(geometry, gradient);
+			target.Transform = ToRaw(transform.Elements, 0f, 0f);
+		}
+
+		private D2D.PathGeometry CreatePolygon(PointF[] polygon)
+		{
+			D2D.PathGeometry geometry = new D2D.PathGeometry(factory);
+			using (D2D.GeometrySink sink = geometry.Open())
+			{
+				sink.BeginFigure(new RawVector2(polygon[0].X, polygon[0].Y), D2D.FigureBegin.Filled);
+				RawVector2[] rest = new RawVector2[polygon.Length - 1];
+				for (int i = 1; i < polygon.Length; i++)
+				{
+					rest[i - 1] = new RawVector2(polygon[i].X, polygon[i].Y);
+				}
+				sink.AddLines(rest);
+				sink.EndFigure(D2D.FigureEnd.Closed);
+				sink.Close();
+			}
+			return geometry;
+		}
+
+		#endregion
+
 		private void FinishFrame()
 		{
 			try
 			{
 				FlushMultiply();
+				//Layers left open by a caller would make EndDraw fail, so close them first.
+				while (layerDepth > 0)
+				{
+					target.PopLayer();
+					layerDepth--;
+				}
+				clipLayers.Clear();
 				PopClip();
 				try
 				{
@@ -670,6 +805,13 @@ namespace cYo.Common.Presentation.Direct2D
 			pendingMultiplyBounds = RectangleF.Empty;
 			cache.Clear();
 			ReleaseMultiplyResources();
+			foreach (D2D.Layer layer in layerPool)
+			{
+				SafeDispose(layer);
+			}
+			layerPool.Clear();
+			layerDepth = 0;
+			clipLayers.Clear();
 			SafeDispose(multiplyEffect);
 			multiplyEffect = null;
 			SafeDispose(brush);
@@ -771,6 +913,14 @@ namespace cYo.Common.Presentation.Direct2D
 		{
 			if (pendingMultiply.Count == 0)
 			{
+				return;
+			}
+			if (layerDepth > 0)
+			{
+				//CopyFromRenderTarget refuses to run inside a layer. Skip the texture for this part
+				//of the frame (only happens while a page is being folded) but keep it enabled.
+				pendingMultiply.Clear();
+				pendingMultiplyBounds = RectangleF.Empty;
 				return;
 			}
 			try

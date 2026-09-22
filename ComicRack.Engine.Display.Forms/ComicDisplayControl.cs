@@ -3810,6 +3810,21 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 				DisplayOutput newOut = DisplayOutput.Create(newConfig, base.CurrentAnamorphicTolerance);
 				DisplayOutput oldOut = DisplayOutput.Create(oldConfig, base.CurrentAnamorphicTolerance);
 				dragTurnOriginalPage = oldPage;
+				dragOldOut = oldOut;
+				dragNewOut = newOut;
+				dragOldPage = oldPage;
+				dragNewPage = currentPage;
+				dragCornerMode = renderer is IGeometryClipRenderer;
+				if (dragCornerMode)
+				{
+					//The grabbed edge is the one being peeled, whichever way the book is read.
+					dragPeelRight = dragTurnForward != base.RightToLeftReading;
+					GetPeelGeometry(oldOut, dragPeelRight, out bool _, out RectangleF sheet, out RectangleF _, out float _);
+					dragCorner = new PointF(dragPeelRight ? sheet.Right : sheet.Left, ((float)dragTurnStart.Y).Clamp(sheet.Top, sheet.Bottom));
+					dragGrabOffset = new PointF(dragCorner.X - dragTurnStart.X, dragCorner.Y - dragTurnStart.Y);
+					dragMouse = dragCorner;
+					dragProgress = 0f;
+				}
 				if (dragTurnForward)
 				{
 					dragSheetOut = oldOut;
@@ -3850,6 +3865,12 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 
 		private void UpdateDragTurn(Point pt)
 		{
+			if (dragCornerMode)
+			{
+				SetPeelMouse(new PointF(pt.X + dragGrabOffset.X, pt.Y + dragGrabOffset.Y), trackVelocity: true);
+				RenderDragTurnFrame();
+				return;
+			}
 			float t = PointToDragTurn(pt);
 			long now = Machine.Ticks;
 			long elapsed = now - dragTurnLastTicks;
@@ -3864,8 +3885,63 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 			RenderDragTurnFrame();
 		}
 
+		private void SetPeelMouse(PointF mouse, bool trackVelocity)
+		{
+			GetPeelGeometry(dragOldOut, dragPeelRight, out bool _, out RectangleF sheet, out RectangleF _, out float spine);
+			dragMouse = ConstrainPeel(mouse, sheet, spine);
+			//Progress: 0 with the page lying flat, 1 once the grabbed point has reached its mirror
+			//image on the other side of the spine.
+			float inward = Math.Sign(spine - dragCorner.X);
+			float travel = Math.Max(1f, 2f * Math.Abs(spine - dragCorner.X));
+			float progress = ((dragMouse.X - dragCorner.X) * inward / travel).Clamp(0f, 1f);
+			if (trackVelocity)
+			{
+				long now = Machine.Ticks;
+				long elapsed = now - dragTurnLastTicks;
+				if (elapsed > 0)
+				{
+					float velocity = (progress - dragProgress) * 1000f / elapsed;
+					dragTurnVelocity = dragTurnVelocity * 0.6f + velocity * 0.4f;
+				}
+				dragTurnLastTicks = now;
+			}
+			dragProgress = progress;
+		}
+
+		private bool EndCornerDragTurn()
+		{
+			bool complete = dragTurnVelocity > 1f || (dragTurnVelocity > -1f && dragProgress > 0.35f);
+			GetPeelGeometry(dragOldOut, dragPeelRight, out bool _, out RectangleF _, out RectangleF _, out float spine);
+			PointF from = dragMouse;
+			PointF to = complete ? new PointF(2f * spine - dragCorner.X, dragCorner.Y) : dragCorner;
+			int duration = Math.Max(80, (int)(EngineConfiguration.Default.PageCurlDuration * Math.Abs(complete ? (1f - dragProgress) : dragProgress)));
+			try
+			{
+				dragTurnState = DragTurnState.Active;
+				ThreadUtility.Animate(duration, delegate(float p)
+				{
+					float eased = 1f - (1f - p) * (1f - p);
+					SetPeelMouse(new PointF(from.X + (to.X - from.X) * eased, from.Y + (to.Y - from.Y) * eased), trackVelocity: false);
+					RenderDragTurnFrame();
+				});
+			}
+			catch
+			{
+			}
+			finally
+			{
+				dragTurnState = DragTurnState.None;
+			}
+			return complete;
+		}
+
 		private void EndDragTurn()
 		{
+			if (dragCornerMode)
+			{
+				FinishDragTurn(EndCornerDragTurn());
+				return;
+			}
 			bool complete;
 			if (dragTurnForward)
 			{
@@ -3895,6 +3971,11 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 			{
 				dragTurnState = DragTurnState.None;
 			}
+			FinishDragTurn(complete);
+		}
+
+		private void FinishDragTurn(bool complete)
+		{
 			if (!complete)
 			{
 				dragTurnSuppressPaint = true;
@@ -3912,10 +3993,14 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 					dragTurnSuppressPaint = false;
 				}
 			}
-			dragSheetOut?.Dispose();
-			dragUnderOut?.Dispose();
+			//Sheet/under and old/new are the same two outputs in a different order.
+			dragOldOut?.Dispose();
+			dragNewOut?.Dispose();
+			dragOldOut = null;
+			dragNewOut = null;
 			dragSheetOut = null;
 			dragUnderOut = null;
+			dragCornerMode = false;
 			Invalidate();
 		}
 
@@ -3967,9 +4052,16 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 				{
 					using (bitmapRenderer.SaveState())
 					{
-						RenderPageCurl(bitmapRenderer, dragSheetOut, dragSheetPage, dragUnderOut, dragUnderPage, dragTurnT, base.RightToLeftReading, ease: false);
+						if (dragCornerMode && bitmapRenderer is IGeometryClipRenderer clipper)
+						{
+							RenderCornerPeel(bitmapRenderer, clipper);
+						}
+						else
+						{
+							RenderPageCurl(bitmapRenderer, dragSheetOut, dragSheetPage, dragUnderOut, dragUnderPage, dragTurnT, base.RightToLeftReading, ease: false);
+						}
 					}
-					RenderImageOverlay(bitmapRenderer, dragTurnForward ? dragUnderOut : dragSheetOut);
+					RenderImageOverlay(bitmapRenderer, dragNewOut ?? dragUnderOut);
 				}
 			}
 			catch (Exception e)
@@ -4001,6 +4093,282 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 				return;
 			}
 			base.OnPaint(e);
+		}
+
+		#endregion
+
+		#region Corner fold (drag in any direction)
+
+		//When the renderer can clip to polygons (Direct2D), a dragged page folds like paper: the
+		//grabbed point follows the mouse, and the fold line is where the paper would crease, halfway
+		//between the grabbed point's resting place and the mouse, at right angles to the line
+		//joining them. The page splits along that line into the part still lying flat and a flap
+		//folded back over it, with the page underneath showing through where the flap lifted off.
+		//
+		//The paper can not stretch, so the grabbed point can never be further from the two spine
+		//corners than it started. That keeps the page attached to the book.
+
+		private bool dragCornerMode;
+
+		private bool dragPeelRight;
+
+		private PointF dragCorner;
+
+		private PointF dragGrabOffset;
+
+		private PointF dragMouse;
+
+		private float dragProgress;
+
+		private DisplayOutput dragOldOut;
+
+		private DisplayOutput dragNewOut;
+
+		private int dragOldPage;
+
+		private int dragNewPage;
+
+		private void GetPeelGeometry(DisplayOutput output, bool peelRight, out bool spread, out RectangleF sheet, out RectangleF visible, out float spine)
+		{
+			Rectangle page = output.OutputBoundsScreen;
+			spread = TwoPageDisplay && page.Width >= page.Height * 0.9f;
+			visible = page;
+			if (spread)
+			{
+				spine = page.Left + page.Width / 2f;
+				sheet = peelRight ? RectangleF.FromLTRB(spine, page.Top, page.Right, page.Bottom) : RectangleF.FromLTRB(page.Left, page.Top, spine, page.Bottom);
+			}
+			else
+			{
+				//A single page pivots on its far edge and never leaves its own rectangle.
+				spine = peelRight ? page.Left : page.Right;
+				sheet = page;
+			}
+		}
+
+		private PointF ConstrainPeel(PointF mouse, RectangleF sheet, float spine)
+		{
+			PointF top = new PointF(spine, sheet.Top);
+			PointF bottom = new PointF(spine, sheet.Bottom);
+			float rTop = Distance(dragCorner, top);
+			float rBottom = Distance(dragCorner, bottom);
+			for (int i = 0; i < 3; i++)
+			{
+				mouse = KeepWithin(mouse, top, rTop);
+				mouse = KeepWithin(mouse, bottom, rBottom);
+			}
+			return mouse;
+		}
+
+		private static PointF KeepWithin(PointF p, PointF center, float radius)
+		{
+			float d = Distance(p, center);
+			if (d <= radius || d < 0.001f)
+			{
+				return p;
+			}
+			float f = radius / d;
+			return new PointF(center.X + (p.X - center.X) * f, center.Y + (p.Y - center.Y) * f);
+		}
+
+		private static float Distance(PointF a, PointF b)
+		{
+			float dx = a.X - b.X;
+			float dy = a.Y - b.Y;
+			return (float)Math.Sqrt(dx * dx + dy * dy);
+		}
+
+		private static PointF[] RectPolygon(RectangleF r)
+		{
+			return new PointF[4]
+			{
+				new PointF(r.Left, r.Top),
+				new PointF(r.Right, r.Top),
+				new PointF(r.Right, r.Bottom),
+				new PointF(r.Left, r.Bottom)
+			};
+		}
+
+		/// <summary>
+		/// Sutherland-Hodgman: keeps the part of a convex polygon where (p - origin) . normal is
+		/// negative (keepNegative) or positive.
+		/// </summary>
+		private static PointF[] ClipHalfPlane(PointF[] polygon, PointF origin, PointF normal, bool keepNegative)
+		{
+			List<PointF> result = new List<PointF>();
+			int n = polygon.Length;
+			for (int i = 0; i < n; i++)
+			{
+				PointF a = polygon[i];
+				PointF b = polygon[(i + 1) % n];
+				float da = (a.X - origin.X) * normal.X + (a.Y - origin.Y) * normal.Y;
+				float db = (b.X - origin.X) * normal.X + (b.Y - origin.Y) * normal.Y;
+				if (!keepNegative)
+				{
+					da = -da;
+					db = -db;
+				}
+				bool ina = da <= 0f;
+				bool inb = db <= 0f;
+				if (ina)
+				{
+					result.Add(a);
+				}
+				if (ina != inb)
+				{
+					float t = da / (da - db);
+					result.Add(new PointF(a.X + (b.X - a.X) * t, a.Y + (b.Y - a.Y) * t));
+				}
+			}
+			return result.ToArray();
+		}
+
+		private static PointF[] ClipToRect(PointF[] polygon, RectangleF r)
+		{
+			polygon = ClipHalfPlane(polygon, new PointF(r.Left, 0f), new PointF(-1f, 0f), keepNegative: true);
+			polygon = ClipHalfPlane(polygon, new PointF(r.Right, 0f), new PointF(1f, 0f), keepNegative: true);
+			polygon = ClipHalfPlane(polygon, new PointF(0f, r.Top), new PointF(0f, -1f), keepNegative: true);
+			return ClipHalfPlane(polygon, new PointF(0f, r.Bottom), new PointF(0f, 1f), keepNegative: true);
+		}
+
+		private static PointF Reflect(PointF p, PointF origin, PointF normal)
+		{
+			float d = (p.X - origin.X) * normal.X + (p.Y - origin.Y) * normal.Y;
+			return new PointF(p.X - 2f * d * normal.X, p.Y - 2f * d * normal.Y);
+		}
+
+		private static PointF[] OffsetPolygon(PointF[] polygon, float dx, float dy)
+		{
+			return polygon.Select((PointF p) => new PointF(p.X + dx, p.Y + dy)).ToArray();
+		}
+
+		/// <summary>
+		/// Reflection across the fold line, as a System.Drawing matrix.
+		/// </summary>
+		private static Matrix ReflectionMatrix(PointF origin, PointF normal)
+		{
+			float nx = normal.X;
+			float ny = normal.Y;
+			float a00 = 1f - 2f * nx * nx;
+			float a01 = -2f * nx * ny;
+			float a11 = 1f - 2f * ny * ny;
+			float d = 2f * (origin.X * nx + origin.Y * ny);
+			//System.Drawing maps (x, y) to (x*m11 + y*m21 + dx, x*m12 + y*m22 + dy).
+			return new Matrix(a00, a01, a01, a11, d * nx, d * ny);
+		}
+
+		private void RenderCornerPeel(IBitmapRenderer hr, IGeometryClipRenderer clipper)
+		{
+			GetPeelGeometry(dragOldOut, dragPeelRight, out bool spread, out RectangleF sheet, out RectangleF visible, out float spine);
+			Rectangle client = base.ClientRectangle;
+			Matrix baseTransform = hr.Transform;
+			float opacity = hr.Opacity;
+			try
+			{
+				//1. What is underneath: the new page on the side being peeled, and in a spread the
+				//   old facing page on the other side, where the flap will come to rest.
+				RenderImageBackground(hr, dragNewOut, dragNewPage);
+				if (spread)
+				{
+					RectangleF peelSide = dragPeelRight ? RectangleF.FromLTRB(spine, client.Top, client.Right, client.Bottom) : RectangleF.FromLTRB(client.Left, client.Top, spine, client.Bottom);
+					RectangleF otherSide = dragPeelRight ? RectangleF.FromLTRB(client.Left, client.Top, spine, client.Bottom) : RectangleF.FromLTRB(spine, client.Top, client.Right, client.Bottom);
+					SetCurlClip(hr, baseTransform, peelSide);
+					RenderImageSafe(hr, dragNewOut, dragNewPage, RenderType.WithoutBackground);
+					SetCurlClip(hr, baseTransform, otherSide);
+					RenderImageSafe(hr, dragOldOut, dragOldPage, RenderType.WithoutBackground);
+				}
+				else
+				{
+					SetCurlClip(hr, baseTransform, RectangleF.Empty);
+					RenderImageSafe(hr, dragNewOut, dragNewPage, RenderType.WithoutBackground);
+				}
+				SetCurlClip(hr, baseTransform, RectangleF.Empty);
+				PointF corner = dragCorner;
+				PointF mouse = dragMouse;
+				float lift = Distance(corner, mouse);
+				PointF[] sheetPolygon = RectPolygon(sheet);
+				if (lift < 0.5f)
+				{
+					clipper.PushPolygonClip(sheetPolygon);
+					RenderImageSafe(hr, dragOldOut, dragOldPage, RenderType.WithoutBackground);
+					clipper.PopPolygonClip();
+					return;
+				}
+				//Fold line: through the midpoint, normal pointing from the mouse to the corner.
+				PointF normal = new PointF((corner.X - mouse.X) / lift, (corner.Y - mouse.Y) / lift);
+				PointF mid = new PointF((corner.X + mouse.X) / 2f, (corner.Y + mouse.Y) / 2f);
+				PointF[] flat = ClipHalfPlane(sheetPolygon, mid, normal, keepNegative: true);
+				PointF[] lifted = ClipHalfPlane(sheetPolygon, mid, normal, keepNegative: false);
+				PointF[] flap = ClipToRect(lifted.Select((PointF p) => Reflect(p, mid, normal)).ToArray(), visible);
+				float width = sheet.Width;
+				float shadowLength = Math.Min(width * 0.25f, lift * 0.5f) + 4f;
+				float strength = Math.Min(1f, lift / (width * 0.3f));
+
+				//2. The part of the old page still lying flat.
+				if (flat.Length >= 3)
+				{
+					clipper.PushPolygonClip(flat);
+					RenderImageSafe(hr, dragOldOut, dragOldPage, RenderType.WithoutBackground);
+					clipper.PopPolygonClip();
+				}
+				//3. Shadow the lifted flap throws on the uncovered page, darkest at the crease.
+				if (lifted.Length >= 3)
+				{
+					clipper.FillPolygonGradient(lifted, mid, Color.FromArgb((int)(115 * strength), Color.Black), new PointF(mid.X + normal.X * shadowLength, mid.Y + normal.Y * shadowLength), Color.FromArgb(0, Color.Black));
+				}
+				if (flap.Length >= 3)
+				{
+					//4. Soft drop shadow of the flap onto the flat part of the page.
+					PointF[] drop = ClipToRect(OffsetPolygon(flap, -normal.X * 5f, -normal.Y * 5f + 2f), visible);
+					if (drop.Length >= 3)
+					{
+						clipper.FillPolygon(drop, Color.FromArgb((int)(60 * strength), Color.Black));
+					}
+					//5. The flap: the back of the sheet.
+					clipper.PushPolygonClip(flap);
+					using (Matrix fold = ReflectionMatrix(mid, normal))
+					{
+						Matrix m = baseTransform.Clone();
+						if (spread)
+						{
+							//The back of this sheet is the facing page of the new spread, found on
+							//the other side of the spine: mirror across the spine, then fold.
+							using (Matrix mirror = new Matrix(-1f, 0f, 0f, 1f, 2f * spine, 0f))
+							{
+								Matrix combined = fold.Clone();
+								combined.Multiply(mirror);
+								m.Multiply(combined);
+								combined.Dispose();
+							}
+							hr.Transform = m;
+							hr.Opacity = 1f;
+							RenderImageSafe(hr, dragNewOut, dragNewPage, RenderType.WithoutBackground);
+						}
+						else
+						{
+							//A single page has plain paper on its back, with the print faintly
+							//showing through.
+							clipper.FillPolygon(flap, PageCurlPaperColor);
+							m.Multiply(fold);
+							hr.Transform = m;
+							hr.Opacity = 0.12f;
+							RenderImageSafe(hr, dragOldOut, dragOldPage, RenderType.WithoutBackground);
+						}
+						hr.Transform = baseTransform;
+						hr.Opacity = opacity;
+						m.Dispose();
+					}
+					//6. Shading on the flap: darker along the crease where the paper curves away.
+					clipper.FillPolygonGradient(flap, mid, Color.FromArgb((int)(90 * strength), Color.Black), new PointF(mid.X - normal.X * shadowLength * 1.2f, mid.Y - normal.Y * shadowLength * 1.2f), Color.FromArgb(0, Color.Black));
+					clipper.PopPolygonClip();
+				}
+			}
+			finally
+			{
+				hr.Transform = baseTransform;
+				hr.Clip = RectangleF.Empty;
+				hr.Opacity = opacity;
+			}
 		}
 
 		#endregion
