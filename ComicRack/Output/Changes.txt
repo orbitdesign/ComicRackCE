@@ -1,3 +1,10 @@
+orbitdesign Build 1.3 (based on Community Edition 0.9.184):
+
+* 1.1 FIX: Hardware acceleration stability. Fixed OpenGL extension detection, replaced the deprecated automatic mip map generation that crashed some drivers, checked texture uploads for errors, and added a startup guard that switches hardware acceleration off for one session if ComicRack failed to start last time.
+* 1.2 NEW: Direct2D renderer for the reader. Used by default when hardware acceleration is on, with OpenGL and then software rendering as fallbacks. Handles graphics device resets, uses high quality cubic sampling for "Enable Hardware Filters", and supports paper textures. Start with -hwgl to use the old OpenGL renderer.
+* 1.3 NEW: "Use dark theme" option in Preferences > Advanced > Appearance, so dark mode no longer needs ComicRack.ini. The ini value and the -dark / -theme switches still take precedence.
+
+
 Community Edition Build 0.9.184:
 
 * NEW: Support for JpegXL image format. Supports Lossy & Lossless compression. Note: Lossless aren't reconstructible to Jpeg.

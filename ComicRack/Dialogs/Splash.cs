@@ -232,8 +232,18 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
             Assembly entryAssembly = Assembly.GetEntryAssembly();
             AssemblyCopyrightAttribute assemblyCopyrightAttribute = Attribute.GetCustomAttribute(entryAssembly, typeof(AssemblyCopyrightAttribute)) as AssemblyCopyrightAttribute;
             string str = assemblyCopyrightAttribute.Copyright + "\n";
-            str = $"{str}V {Application.ProductVersion}{GitVersion.GetCurrentVersionInfo()}";
-            str += $" {Marshal.SizeOf(typeof(IntPtr)) * 8} bit";
+            string buildInfo = GitVersion.GetBuildInfo();
+            if (!string.IsNullOrEmpty(buildInfo))
+            {
+                //Our build first, then the Community Edition release it is based on.
+                str = $"{str}{buildInfo}{GitVersion.GetCurrentVersionInfo()} {Marshal.SizeOf(typeof(IntPtr)) * 8} bit\n";
+                str += $"based on Community Edition V {Application.ProductVersion}";
+            }
+            else
+            {
+                str = $"{str}V {Application.ProductVersion}{GitVersion.GetCurrentVersionInfo()}";
+                str += $" {Marshal.SizeOf(typeof(IntPtr)) * 8} bit";
+            }
             Size size = e.Graphics.MeasureString(str, Font).ToSize();
             using (StringFormat stringFormat = new StringFormat
             {
