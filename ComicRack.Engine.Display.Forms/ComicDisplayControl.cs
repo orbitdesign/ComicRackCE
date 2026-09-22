@@ -3704,12 +3704,21 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 			{
 				return 0;
 			}
-			float zone = Math.Max(40f, page.Width * (TwoPageDisplay ? 0.12f : 0.2f));
+			//Roughly the outer 60% of each page can be grabbed. In a spread that is 30% of the
+			//whole width, measured from each outer edge, so the inner thirds near the gutter are
+			//left alone.
+			float zone = Math.Max(40f, page.Width * (TwoPageDisplay ? 0.3f : 0.6f));
 			bool right = pt.X >= page.Right - zone;
 			bool left = pt.X <= page.Left + zone;
 			if (!right && !left)
 			{
 				return 0;
+			}
+			if (right && left)
+			{
+				//Wide zones overlap in the middle: grab whichever edge is nearer.
+				right = page.Right - pt.X <= pt.X - page.Left;
+				left = !right;
 			}
 			bool forward = right != base.RightToLeftReading;
 			if (!Book.CanNavigate(forward ? 1 : -1))
