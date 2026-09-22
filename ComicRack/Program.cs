@@ -905,6 +905,7 @@ namespace cYo.Projects.ComicRack.Viewer
 				else
 				{
 					ImageDisplayControl.HardwareAcceleration = ((!ExtendedSettings.ForceHardware) ? ImageDisplayControl.HardwareAccelerationType.Enabled : ImageDisplayControl.HardwareAccelerationType.Forced);
+					ImageDisplayControl.HardwareBackend = ExtendedSettings.UseOpenGL ? ImageDisplayControl.HardwareBackendType.OpenGL : ImageDisplayControl.HardwareBackendType.Direct2D;
 					SetHardwareGuard(set: true);
 				}
 				if (ExtendedSettings.DisableMipMapping)
