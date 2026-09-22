@@ -2061,18 +2061,20 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 						if (imageInfo.IsSingleImage && !imageInfo.IsForcedDoublePage)
 						{
 							DrawPage(gr, itemLock, destination, source);
-							if (RealisticPages)
+							//Always work out where the page ended up on screen. DrawPageOrnaments only
+							//draws bows, borders and shadows when Realistic Pages is on, but it also
+							//returns the page bounds, which the paper texture needs either way. Leaving
+							//this out kept the bounds from the previously shown page, so the texture
+							//covered the wrong area until the layout was changed.
+							if (imageInfo.IsDoublePage)
 							{
-								if (imageInfo.IsDoublePage)
-								{
-									RectangleF rectangleF = new RectangleF(0f, 0f, (float)itemLock.Item.Width / 2f, itemLock.Item.Height);
-									displayedPageBounds = DrawPageOrnaments(gr, destination, source, rectangleF, rectangleF, leftOk: true, rightOk: true, fillLeft: false, fillRight: false);
-								}
-								else
-								{
-									RectangleF rectangleF2 = new RectangleF(0f, 0f, itemLock.Item.Width, itemLock.Item.Height);
-									displayedPageBounds = DrawPageOrnaments(gr, destination, source, rectangleF2, rectangleF2, leftOk: true, rightOk: false, fillLeft: false, fillRight: false);
-								}
+								RectangleF rectangleF = new RectangleF(0f, 0f, (float)itemLock.Item.Width / 2f, itemLock.Item.Height);
+								displayedPageBounds = DrawPageOrnaments(gr, destination, source, rectangleF, rectangleF, leftOk: true, rightOk: true, fillLeft: false, fillRight: false);
+							}
+							else
+							{
+								RectangleF rectangleF2 = new RectangleF(0f, 0f, itemLock.Item.Width, itemLock.Item.Height);
+								displayedPageBounds = DrawPageOrnaments(gr, destination, source, rectangleF2, rectangleF2, leftOk: true, rightOk: false, fillLeft: false, fillRight: false);
 							}
 							displayHash = itemLock.Item.GetHashCode();
 							array = new int[1]

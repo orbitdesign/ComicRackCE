@@ -1,4 +1,4 @@
-orbitdesign Build 1.8 (based on Community Edition 0.9.184):
+orbitdesign Build 1.9 (based on Community Edition 0.9.184):
 
 * 1.1 FIX: Hardware acceleration stability. Fixed OpenGL extension detection, replaced the deprecated automatic mip map generation that crashed some drivers, checked texture uploads for errors, and added a startup guard that switches hardware acceleration off for one session if ComicRack failed to start last time.
 * 1.2 NEW: Direct2D renderer for the reader. Used by default when hardware acceleration is on, with OpenGL and then software rendering as fallbacks. Handles graphics device resets, uses high quality cubic sampling for "Enable Hardware Filters", and supports paper textures. Start with -hwgl to use the old OpenGL renderer.
@@ -8,6 +8,7 @@ orbitdesign Build 1.8 (based on Community Edition 0.9.184):
 * 1.6 NEW: Turn pages by dragging. Grab a page near its outer edge and drag it towards the spine; the page curls under the mouse and completes the turn when released past about a third of the way or flicked, otherwise it falls back. Works in single and two page layouts and right-to-left books, needs hardware acceleration and the whole page width visible. Can be switched off in Preferences > Reader > Mouse & Scrolling.
 * 1.7 NEW: Dragged pages fold like paper. The grabbed point follows the mouse in any direction and the fold tilts accordingly, showing the back of the page as a flap, with shadows on the page underneath. The page stays attached at the spine. Uses the Direct2D renderer; with OpenGL the fold stays upright as in 1.6.
 * 1.8 CHANGE: The area where a page can be grabbed for dragging is now about the outer 60% of each page, instead of the outer 20%.
+* 1.9 FIX: Paper texture covered only part of the page until the page layout was switched. The page bounds the texture is drawn into were only worked out when Realistic Pages was enabled, so single page views kept the bounds of whatever was shown before.
 
 
 Community Edition Build 0.9.184:
