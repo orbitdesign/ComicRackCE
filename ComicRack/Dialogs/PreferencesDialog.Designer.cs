@@ -141,6 +141,7 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
             this.txCoverFilter = new System.Windows.Forms.TextBox();
             this.grpLanguages = new cYo.Common.Windows.Forms.CollapsibleGroupBox();
             this.grpAppearance = new cYo.Common.Windows.Forms.CollapsibleGroupBox();
+            this.chkDragPageTurning = new System.Windows.Forms.CheckBox();
             this.chkDarkMode = new System.Windows.Forms.CheckBox();
             this.labelDarkMode = new System.Windows.Forms.Label();
             this.btTranslate = new System.Windows.Forms.Button();
@@ -409,6 +410,7 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
             // 
             // grpMouse
             // 
+            this.grpMouse.Controls.Add(this.chkDragPageTurning);
             this.grpMouse.Controls.Add(this.chkSmoothAutoScrolling);
             this.grpMouse.Controls.Add(this.lblFast);
             this.grpMouse.Controls.Add(this.lblMouseWheel);
@@ -418,7 +420,7 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
             this.grpMouse.Dock = System.Windows.Forms.DockStyle.Top;
             this.grpMouse.Location = new System.Drawing.Point(0, 1046);
             this.grpMouse.Name = "grpMouse";
-            this.grpMouse.Size = new System.Drawing.Size(498, 134);
+            this.grpMouse.Size = new System.Drawing.Size(498, 157);
             this.grpMouse.TabIndex = 5;
             this.grpMouse.Text = "Mouse & Scrolling";
             // 
@@ -435,7 +437,7 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
             // lblFast
             // 
             this.lblFast.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Right)));
-            this.lblFast.Location = new System.Drawing.Point(426, 96);
+            this.lblFast.Location = new System.Drawing.Point(426, 119);
             this.lblFast.Name = "lblFast";
             this.lblFast.Size = new System.Drawing.Size(56, 19);
             this.lblFast.TabIndex = 4;
@@ -444,7 +446,7 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
             // lblMouseWheel
             // 
             this.lblMouseWheel.AutoSize = true;
-            this.lblMouseWheel.Location = new System.Drawing.Point(9, 97);
+            this.lblMouseWheel.Location = new System.Drawing.Point(9, 120);
             this.lblMouseWheel.Name = "lblMouseWheel";
             this.lblMouseWheel.Size = new System.Drawing.Size(117, 13);
             this.lblMouseWheel.TabIndex = 0;
@@ -462,7 +464,7 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
             // 
             // lblSlow
             // 
-            this.lblSlow.Location = new System.Drawing.Point(186, 97);
+            this.lblSlow.Location = new System.Drawing.Point(186, 120);
             this.lblSlow.Name = "lblSlow";
             this.lblSlow.Size = new System.Drawing.Size(55, 19);
             this.lblSlow.TabIndex = 2;
@@ -473,7 +475,7 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
             // 
             this.tbMouseWheel.Anchor = ((System.Windows.Forms.AnchorStyles)(((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Left) 
             | System.Windows.Forms.AnchorStyles.Right)));
-            this.tbMouseWheel.Location = new System.Drawing.Point(247, 97);
+            this.tbMouseWheel.Location = new System.Drawing.Point(247, 120);
             this.tbMouseWheel.Maximum = 50;
             this.tbMouseWheel.Minimum = 5;
             this.tbMouseWheel.Name = "tbMouseWheel";
@@ -1705,6 +1707,16 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
             this.txCoverFilter.Size = new System.Drawing.Size(482, 54);
             this.txCoverFilter.TabIndex = 3;
             // 
+            // chkDragPageTurning
+            // 
+            this.chkDragPageTurning.AutoSize = true;
+            this.chkDragPageTurning.Location = new System.Drawing.Point(9, 85);
+            this.chkDragPageTurning.Name = "chkDragPageTurning";
+            this.chkDragPageTurning.Size = new System.Drawing.Size(300, 17);
+            this.chkDragPageTurning.TabIndex = 3;
+            this.chkDragPageTurning.Text = "Turn pages by dragging the page edge";
+            this.chkDragPageTurning.UseVisualStyleBackColor = true;
+            // 
             // grpAppearance
             // 
             this.grpAppearance.Controls.Add(this.labelDarkMode);
@@ -2867,6 +2879,8 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 		private CollapsibleGroupBox grpAppearance;
 
 		private CheckBox chkDarkMode;
+
+		private CheckBox chkDragPageTurning;
 
 		private Label labelDarkMode;
 		private CollapsibleGroupBox groupMessagesAndSocial;

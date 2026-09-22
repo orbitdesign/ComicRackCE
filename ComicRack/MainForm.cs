@@ -831,6 +831,7 @@ namespace cYo.Projects.ComicRack.Viewer
 			ComicDisplay.LeftRightMovementReversed = Program.Settings.LeftRightMovementReversed;
 			ComicDisplay.DisplayChangeAnimation = Program.Settings.DisplayChangeAnimation;
 			ComicDisplay.FlowingMouseScrolling = Program.Settings.FlowingMouseScrolling;
+			ComicDisplay.DragPageTurning = Program.Settings.DragPageTurning;
 			ComicDisplay.SoftwareFiltering = Program.Settings.SoftwareFiltering;
 			ComicDisplay.HardwareFiltering = Program.Settings.HardwareFiltering;
 			ComicDisplay.SetRenderer(Program.Settings.HardwareAcceleration);

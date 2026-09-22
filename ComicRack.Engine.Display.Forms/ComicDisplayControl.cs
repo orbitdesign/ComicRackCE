@@ -2232,6 +2232,7 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 		protected override void OnMouseDown(MouseEventArgs e)
 		{
 			base.OnMouseDown(e);
+			DragTurnMouseDown(e);
 			if (e.Button == MouseButtons.Left && IsMouseOk(e.Location))
 			{
 				if (!MagnifierVisible)
@@ -2263,11 +2264,13 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 				base.DisableScrolling = false;
 			}
 			base.OnMouseUp(e);
+			DragTurnMouseUp();
 		}
 
 		protected override void OnMouseMove(MouseEventArgs e)
 		{
 			base.OnMouseMove(e);
+			DragTurnMouseMove(e);
 			if (!mouseDown.IsEmpty && (Math.Abs(mouseDown.X - e.X) > 5 || Math.Abs(mouseDown.Y - e.Y) > 5))
 			{
 				longClickTimer.Stop();
@@ -3030,7 +3033,7 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 				Blender = PageCurlBlending;
 				break;
 			}
-			ShouldPagingBlend = !base.InvokeRequired && (BlendWhilePaging || Machine.Ticks - lastBlend > 100);
+			ShouldPagingBlend = !suppressNavigationBlend && !base.InvokeRequired && (BlendWhilePaging || Machine.Ticks - lastBlend > 100);
 			OnPageChange(e);
 			int oldPage = CurrentPage;
 			DisplayOutputConfig displayConfig = base.DisplayConfig;
@@ -3436,7 +3439,8 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 				return;
 			}
 			float t = percent.Clamp(0f, 1f);
-			bool mirrored = IsFlipped;
+			//Any right-to-left book turns from the left, whichever way its spreads are arranged.
+			bool mirrored = base.RightToLeftReading;
 			if (currentPage >= oldPage)
 			{
 				//Forward: the old page is the sheet that turns away and uncovers the new one.
@@ -3450,17 +3454,23 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 			}
 		}
 
-		private void RenderPageCurl(IBitmapRenderer hr, DisplayOutput sheetOut, int sheetPage, DisplayOutput underOut, int underPage, float t, bool mirrored)
+		private void GetCurlGeometry(DisplayOutput sheetOut, bool mirrored, out bool spread, out int sgn, out float spine, out float width)
 		{
-			Rectangle client = base.ClientRectangle;
 			Rectangle page = sheetOut.OutputBoundsScreen;
 			//A spread (two pages side by side) turns around its middle, a single page around its
 			//edge. Adaptive layouts can show a lone portrait page in two page mode, which the
 			//aspect ratio check catches.
-			bool spread = TwoPageDisplay && page.Width >= page.Height * 0.9f;
-			int sgn = mirrored ? -1 : 1;
-			float spine = spread ? (page.Left + page.Width / 2f) : (mirrored ? page.Right : page.Left);
-			float width = spread ? (page.Width / 2f) : page.Width;
+			spread = TwoPageDisplay && page.Width >= page.Height * 0.9f;
+			sgn = mirrored ? -1 : 1;
+			spine = spread ? (page.Left + page.Width / 2f) : (mirrored ? page.Right : page.Left);
+			width = spread ? (page.Width / 2f) : page.Width;
+		}
+
+		private void RenderPageCurl(IBitmapRenderer hr, DisplayOutput sheetOut, int sheetPage, DisplayOutput underOut, int underPage, float t, bool mirrored, bool ease = true)
+		{
+			Rectangle client = base.ClientRectangle;
+			Rectangle page = sheetOut.OutputBoundsScreen;
+			GetCurlGeometry(sheetOut, mirrored, out bool spread, out int sgn, out float spine, out float width);
 			float opacity = hr.Opacity;
 			Matrix baseTransform = hr.Transform;
 			try
@@ -3470,7 +3480,8 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 					RenderImageSafe(hr, underOut, underPage, RenderType.Default);
 					return;
 				}
-				float eased = t * t * (3f - 2f * t);
+				//Animations ease in and out; a page held by the mouse follows the mouse exactly.
+				float eased = ease ? (t * t * (3f - 2f * t)) : t.Clamp(0f, 1f);
 				float theta = (float)Math.PI * eased;
 				float sinTheta = (float)Math.Sin(theta);
 				RectangleF allowed = RectangleF.FromLTRB(page.Left, client.Top, page.Right, client.Bottom);
@@ -3619,6 +3630,377 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 				return EngineConfiguration.Default.PageCurlDuration;
 			}
 			return EngineConfiguration.Default.BlendDuration;
+		}
+
+		#endregion
+
+		#region Turning pages by dragging
+
+		//Grab a page near its outer edge and drag it towards the spine: the page follows the mouse
+		//with the same curl as the Realistic Page Curl transition. Let go past about a third of the
+		//way (or flick) and the turn completes; otherwise the page falls back.
+		//
+		//The book is actually moved to the new page as soon as the drag starts, with the usual
+		//transition switched off, so both sides of the sheet are known. A cancelled drag moves it
+		//back the same way.
+
+		private enum DragTurnState
+		{
+			None,
+			Pending,
+			Active
+		}
+
+		private const int DragTurnStartDistance = 8;
+
+		private DragTurnState dragTurnState;
+
+		private Point dragTurnStart;
+
+		private bool dragTurnForward;
+
+		private int dragTurnOriginalPage;
+
+		private DisplayOutput dragSheetOut;
+
+		private DisplayOutput dragUnderOut;
+
+		private int dragSheetPage;
+
+		private int dragUnderPage;
+
+		private float dragTurnT;
+
+		private float dragTurnOffset;
+
+		private float dragTurnVelocity;
+
+		private long dragTurnLastTicks;
+
+		private bool dragTurnSuppressPaint;
+
+		private bool suppressNavigationBlend;
+
+		[DefaultValue(true)]
+		public bool DragPageTurning
+		{
+			get;
+			set;
+		} = true;
+
+		private bool CanDragTurn()
+		{
+			return DragPageTurning && renderer != null && renderer.IsHardware && Book != null && PageLayout != PageLayoutMode.Continuous && !MagnifierVisible && !inBlendAnmation && base.Display != null && base.Display.IsAllVisible;
+		}
+
+		/// <summary>
+		/// +1 when the point is on the edge that turns to the next page, -1 on the edge that turns
+		/// back, 0 elsewhere.
+		/// </summary>
+		private int HitDragTurnZone(Point pt)
+		{
+			Rectangle page = base.Display.OutputBoundsScreen;
+			if (page.Width < 40 || !page.Contains(pt))
+			{
+				return 0;
+			}
+			float zone = Math.Max(40f, page.Width * (TwoPageDisplay ? 0.12f : 0.2f));
+			bool right = pt.X >= page.Right - zone;
+			bool left = pt.X <= page.Left + zone;
+			if (!right && !left)
+			{
+				return 0;
+			}
+			bool forward = right != base.RightToLeftReading;
+			if (!Book.CanNavigate(forward ? 1 : -1))
+			{
+				return 0;
+			}
+			return forward ? 1 : -1;
+		}
+
+		private void DragTurnMouseDown(MouseEventArgs e)
+		{
+			dragTurnState = DragTurnState.None;
+			if (e.Button != MouseButtons.Left || !CanDragTurn())
+			{
+				return;
+			}
+			int zone = HitDragTurnZone(e.Location);
+			if (zone != 0)
+			{
+				dragTurnState = DragTurnState.Pending;
+				dragTurnStart = e.Location;
+				dragTurnForward = zone > 0;
+			}
+		}
+
+		private void DragTurnMouseMove(MouseEventArgs e)
+		{
+			if (dragTurnState == DragTurnState.Pending)
+			{
+				int dx = e.X - dragTurnStart.X;
+				int dy = e.Y - dragTurnStart.Y;
+				//Inward means away from the grabbed edge, towards the spine.
+				bool grabbedRight = dragTurnForward != base.RightToLeftReading;
+				int inward = grabbedRight ? -dx : dx;
+				if (Math.Abs(dy) > DragTurnStartDistance && Math.Abs(dy) > Math.Abs(dx))
+				{
+					//A vertical drag is not a page turn.
+					dragTurnState = DragTurnState.None;
+				}
+				else if (inward > DragTurnStartDistance)
+				{
+					BeginDragTurn(e.Location);
+				}
+			}
+			else if (dragTurnState == DragTurnState.Active)
+			{
+				UpdateDragTurn(e.Location);
+			}
+		}
+
+		private bool DragTurnMouseUp()
+		{
+			DragTurnState state = dragTurnState;
+			dragTurnState = DragTurnState.None;
+			if (state != DragTurnState.Active)
+			{
+				return false;
+			}
+			EndDragTurn();
+			return true;
+		}
+
+		private void BeginDragTurn(Point location)
+		{
+			DisplayOutputConfig oldConfig = base.DisplayConfig;
+			int oldPage = currentPage;
+			bool moved = false;
+			dragTurnSuppressPaint = true;
+			suppressNavigationBlend = true;
+			try
+			{
+				moved = NavigateForDragTurn(dragTurnForward) && currentPage != oldPage;
+			}
+			catch
+			{
+				moved = false;
+			}
+			finally
+			{
+				suppressNavigationBlend = false;
+			}
+			if (!moved)
+			{
+				dragTurnSuppressPaint = false;
+				dragTurnState = DragTurnState.None;
+				Invalidate();
+				return;
+			}
+			try
+			{
+				int wait = 20;
+				while ((!IsPageInCache(oldPage) || !IsPageInCache(oldPage, 1) || !IsPageInCache(currentPage) || !IsPageInCache(currentPage, 1)) && --wait > 0)
+				{
+					Thread.Sleep(25);
+				}
+				DisplayOutputConfig newConfig = base.DisplayConfig;
+				newConfig.Rotation = oldConfig.Rotation;
+				DisplayOutput newOut = DisplayOutput.Create(newConfig, base.CurrentAnamorphicTolerance);
+				DisplayOutput oldOut = DisplayOutput.Create(oldConfig, base.CurrentAnamorphicTolerance);
+				dragTurnOriginalPage = oldPage;
+				if (dragTurnForward)
+				{
+					dragSheetOut = oldOut;
+					dragSheetPage = oldPage;
+					dragUnderOut = newOut;
+					dragUnderPage = currentPage;
+				}
+				else
+				{
+					dragSheetOut = newOut;
+					dragSheetPage = currentPage;
+					dragUnderOut = oldOut;
+					dragUnderPage = oldPage;
+				}
+				//Start exactly where the page lies, whatever point inside the edge zone was grabbed.
+				dragTurnOffset = 0f;
+				dragTurnOffset = (dragTurnForward ? 0f : 1f) - PointToDragTurn(dragTurnStart);
+				dragTurnT = dragTurnForward ? 0f : 1f;
+				dragTurnVelocity = 0f;
+				dragTurnLastTicks = Machine.Ticks;
+				dragTurnState = DragTurnState.Active;
+				base.MouseActionHappened = true;
+			}
+			finally
+			{
+				dragTurnSuppressPaint = false;
+			}
+			UpdateDragTurn(location);
+		}
+
+		private float PointToDragTurn(Point pt)
+		{
+			GetCurlGeometry(dragSheetOut, base.RightToLeftReading, out bool spread, out int sgn, out float spine, out float width);
+			float rel = (pt.X - spine) * sgn / Math.Max(1f, width);
+			float t = spread ? (float)(Math.Acos(rel.Clamp(-1f, 1f)) / Math.PI) : (1f - rel);
+			return (t + dragTurnOffset).Clamp(0f, 1f);
+		}
+
+		private void UpdateDragTurn(Point pt)
+		{
+			float t = PointToDragTurn(pt);
+			long now = Machine.Ticks;
+			long elapsed = now - dragTurnLastTicks;
+			if (elapsed > 0)
+			{
+				float velocity = (t - dragTurnT) * 1000f / elapsed;
+				//Smooth it so one jittery mouse event does not decide the outcome.
+				dragTurnVelocity = dragTurnVelocity * 0.6f + velocity * 0.4f;
+			}
+			dragTurnLastTicks = now;
+			dragTurnT = t;
+			RenderDragTurnFrame();
+		}
+
+		private void EndDragTurn()
+		{
+			bool complete;
+			if (dragTurnForward)
+			{
+				complete = dragTurnVelocity > 1f || (dragTurnVelocity > -1f && dragTurnT > 0.35f);
+			}
+			else
+			{
+				complete = dragTurnVelocity < -1f || (dragTurnVelocity < 1f && dragTurnT < 0.65f);
+			}
+			float target = (dragTurnForward == complete) ? 1f : 0f;
+			float from = dragTurnT;
+			int duration = Math.Max(60, (int)(EngineConfiguration.Default.PageCurlDuration * Math.Abs(target - from)));
+			try
+			{
+				dragTurnState = DragTurnState.Active;
+				ThreadUtility.Animate(duration, delegate(float p)
+				{
+					float eased = 1f - (1f - p) * (1f - p);
+					dragTurnT = from + (target - from) * eased;
+					RenderDragTurnFrame();
+				});
+			}
+			catch
+			{
+			}
+			finally
+			{
+				dragTurnState = DragTurnState.None;
+			}
+			if (!complete)
+			{
+				dragTurnSuppressPaint = true;
+				suppressNavigationBlend = true;
+				try
+				{
+					Book.Navigate(dragTurnOriginalPage, PageSeekOrigin.Absolute);
+				}
+				catch
+				{
+				}
+				finally
+				{
+					suppressNavigationBlend = false;
+					dragTurnSuppressPaint = false;
+				}
+			}
+			dragSheetOut?.Dispose();
+			dragUnderOut?.Dispose();
+			dragSheetOut = null;
+			dragUnderOut = null;
+			Invalidate();
+		}
+
+		private bool NavigateForDragTurn(bool forward)
+		{
+			//Same page steps as ComicDisplay.DisplayNextPage / DisplayPreviousPage, which live in
+			//the engine and can not be called from here.
+			int offset;
+			if (forward)
+			{
+				offset = ((TwoPageDisplay && IsDoubleImage) ? 2 : 1);
+				if (offset == 2)
+				{
+					int next = Book.SeekNewPage(1, PageSeekOrigin.Current);
+					if (next >= 0 && Book.Comic.GetPage(next).PagePosition == ComicPagePosition.Near)
+					{
+						offset = 1;
+					}
+				}
+			}
+			else
+			{
+				int previous = Book.SeekNewPage(-1, PageSeekOrigin.Current);
+				int previous2 = Book.SeekNewPage(-2, PageSeekOrigin.Current);
+				if (!TwoPageDisplay || previous == -1 || previous2 == -1)
+				{
+					offset = -1;
+				}
+				else
+				{
+					ComicPageInfo a = Book.Comic.GetPage(previous);
+					ComicPageInfo b = Book.Comic.GetPage(previous2);
+					offset = ((a.IsSinglePageType || a.IsDoublePage || b.IsSinglePageType || b.IsDoublePage || (a.PagePosition == ComicPagePosition.Near && b.PagePosition != ComicPagePosition.Far)) ? (-1) : (-2));
+				}
+			}
+			return Book.Navigate(offset);
+		}
+
+		private bool RenderDragTurnFrame()
+		{
+			IBitmapRenderer bitmapRenderer = renderer;
+			if (bitmapRenderer == null || !bitmapRenderer.IsHardware || dragSheetOut == null || dragUnderOut == null)
+			{
+				return false;
+			}
+			try
+			{
+				if (bitmapRenderer.BeginScene(null))
+				{
+					using (bitmapRenderer.SaveState())
+					{
+						RenderPageCurl(bitmapRenderer, dragSheetOut, dragSheetPage, dragUnderOut, dragUnderPage, dragTurnT, base.RightToLeftReading, ease: false);
+					}
+					RenderImageOverlay(bitmapRenderer, dragTurnForward ? dragUnderOut : dragSheetOut);
+				}
+			}
+			catch (Exception e)
+			{
+				HandleRendererError(e);
+			}
+			finally
+			{
+				try
+				{
+					bitmapRenderer.EndScene();
+				}
+				catch
+				{
+				}
+			}
+			return true;
+		}
+
+		protected override void OnPaint(PaintEventArgs e)
+		{
+			if (dragTurnSuppressPaint)
+			{
+				//The page is being switched behind the scenes; the curl frame follows right after.
+				return;
+			}
+			if (dragTurnState == DragTurnState.Active && RenderDragTurnFrame())
+			{
+				return;
+			}
+			base.OnPaint(e);
 		}
 
 		#endregion

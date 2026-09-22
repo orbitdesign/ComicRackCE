@@ -228,6 +228,12 @@ namespace cYo.Projects.ComicRack.Engine.Display
 			set;
 		}
 
+		bool DragPageTurning
+		{
+			get;
+			set;
+		}
+
 		bool SoftwareFiltering
 		{
 			get;

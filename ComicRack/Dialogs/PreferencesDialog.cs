@@ -958,6 +958,7 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			Program.Settings.SoftwareFiltering = chkEnableSoftwareFiltering.Checked;
 			Program.Settings.HardwareFiltering = chkEnableHardwareFiltering.Checked;
 			Program.Settings.FlowingMouseScrolling = chkEnableInertialMouseScrolling.Checked;
+			Program.Settings.DragPageTurning = chkDragPageTurning.Checked;
 			Program.Settings.OverlayScaling = tbOverlayScaling.Value;
 			Program.Settings.RemoveMissingFilesOnFullScan = chkAutoRemoveMissing.Checked;
 			Program.Settings.DontAddRemoveFiles = chkDontAddRemovedFiles.Checked;
@@ -1080,6 +1081,7 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			chkEnableSoftwareFiltering.Checked = Program.Settings.SoftwareFiltering;
 			chkEnableHardwareFiltering.Checked = Program.Settings.HardwareFiltering;
 			chkEnableInertialMouseScrolling.Checked = Program.Settings.FlowingMouseScrolling;
+			chkDragPageTurning.Checked = Program.Settings.DragPageTurning;
 			chkEnableInternetCache.Checked = Program.Settings.InternetCacheEnabled;
 			numInternetCacheSize.Value = numInternetCacheSize.Clamp(Program.Settings.InternetCacheSizeMB);
 			chkEnableThumbnailCache.Checked = Program.Settings.ThumbCacheEnabled;

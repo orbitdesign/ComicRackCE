@@ -1,10 +1,11 @@
-orbitdesign Build 1.5 (based on Community Edition 0.9.184):
+orbitdesign Build 1.6 (based on Community Edition 0.9.184):
 
 * 1.1 FIX: Hardware acceleration stability. Fixed OpenGL extension detection, replaced the deprecated automatic mip map generation that crashed some drivers, checked texture uploads for errors, and added a startup guard that switches hardware acceleration off for one session if ComicRack failed to start last time.
 * 1.2 NEW: Direct2D renderer for the reader. Used by default when hardware acceleration is on, with OpenGL and then software rendering as fallbacks. Handles graphics device resets, uses high quality cubic sampling for "Enable Hardware Filters", and supports paper textures. Start with -hwgl to use the old OpenGL renderer.
 * 1.3 NEW: "Use dark theme" option in Preferences > Advanced > Appearance, so dark mode no longer needs ComicRack.ini. The ini value and the -dark / -theme switches still take precedence.
 * 1.4 NEW: Library windows opened with "Open in New Window" get their own taskbar button and can be minimized and restored independently of the main window.
 * 1.5 NEW: "Realistic Page Curl" page transition (Book Display Settings, F9). The page bends as it turns, with perspective, shading and a cast shadow; in two page layout the back of the sheet is the next spread's first page. Honors right-to-left reading. Duration is set by PageCurlDuration (default 600 ms). Needs hardware acceleration, like all page transitions.
+* 1.6 NEW: Turn pages by dragging. Grab a page near its outer edge and drag it towards the spine; the page curls under the mouse and completes the turn when released past about a third of the way or flicked, otherwise it falls back. Works in single and two page layouts and right-to-left books, needs hardware acceleration and the whole page width visible. Can be switched off in Preferences > Reader > Mouse & Scrolling.
 
 
 Community Edition Build 0.9.184:

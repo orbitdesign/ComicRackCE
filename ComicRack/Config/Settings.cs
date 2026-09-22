@@ -185,6 +185,8 @@ namespace cYo.Projects.ComicRack.Viewer.Config
 
 		private bool flowingMouseScrolling = true;
 
+		private bool dragPageTurning = true;
+
 		private bool softwareFiltering = true;
 
 		private bool hardwareFiltering;
@@ -852,6 +854,27 @@ namespace cYo.Projects.ComicRack.Viewer.Config
 				{
 					displayChangeAnimation = value;
 					FireEvent(this.DisplayChangeAnimationChanged);
+				}
+			}
+		}
+
+		/// <summary>
+		/// Turn pages in the reader by dragging them at their outer edge.
+		/// </summary>
+		[Browsable(false)]
+		[DefaultValue(true)]
+		public bool DragPageTurning
+		{
+			get
+			{
+				return dragPageTurning;
+			}
+			set
+			{
+				if (dragPageTurning != value)
+				{
+					dragPageTurning = value;
+					FireEvent(null);
 				}
 			}
 		}
