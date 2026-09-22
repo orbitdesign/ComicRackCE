@@ -3472,7 +3472,7 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 			Rectangle page = sheetOut.OutputBoundsScreen;
 			GetCurlGeometry(sheetOut, mirrored, out bool spread, out int sgn, out float spine, out float width);
 			float opacity = hr.Opacity;
-			Matrix baseTransform = hr.Transform;
+			System.Drawing.Drawing2D.Matrix baseTransform = hr.Transform;
 			try
 			{
 				if (width < 8f || page.Height < 8)
@@ -3588,9 +3588,9 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 						hr.Opacity = 1f;
 						hr.FillRectangle(target, PageCurlPaperColor);
 					}
-					using (Matrix slice = new Matrix(scaleX, 0f, 0f, s, x0 - scaleX * src0, centerY - s * centerY))
+					using (System.Drawing.Drawing2D.Matrix slice = new System.Drawing.Drawing2D.Matrix(scaleX, 0f, 0f, s, x0 - scaleX * src0, centerY - s * centerY))
 					{
-						Matrix m = baseTransform.Clone();
+						System.Drawing.Drawing2D.Matrix m = baseTransform.Clone();
 						m.Multiply(slice);
 						hr.Transform = m;
 						hr.Opacity = (front || spread) ? 1f : 0.12f;
@@ -3615,7 +3615,7 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 			}
 		}
 
-		private static void SetCurlClip(IBitmapRenderer hr, Matrix baseTransform, RectangleF rect)
+		private static void SetCurlClip(IBitmapRenderer hr, System.Drawing.Drawing2D.Matrix baseTransform, RectangleF rect)
 		{
 			//Clips are set in screen space, before any slice transform is applied. Setting them
 			//under a mirrored transform confuses the OpenGL renderer's scissor math.
@@ -4245,7 +4245,7 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 		/// <summary>
 		/// Reflection across the fold line, as a System.Drawing matrix.
 		/// </summary>
-		private static Matrix ReflectionMatrix(PointF origin, PointF normal)
+		private static System.Drawing.Drawing2D.Matrix ReflectionMatrix(PointF origin, PointF normal)
 		{
 			float nx = normal.X;
 			float ny = normal.Y;
@@ -4254,14 +4254,14 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 			float a11 = 1f - 2f * ny * ny;
 			float d = 2f * (origin.X * nx + origin.Y * ny);
 			//System.Drawing maps (x, y) to (x*m11 + y*m21 + dx, x*m12 + y*m22 + dy).
-			return new Matrix(a00, a01, a01, a11, d * nx, d * ny);
+			return new System.Drawing.Drawing2D.Matrix(a00, a01, a01, a11, d * nx, d * ny);
 		}
 
 		private void RenderCornerPeel(IBitmapRenderer hr, IGeometryClipRenderer clipper)
 		{
 			GetPeelGeometry(dragOldOut, dragPeelRight, out bool spread, out RectangleF sheet, out RectangleF visible, out float spine);
 			Rectangle client = base.ClientRectangle;
-			Matrix baseTransform = hr.Transform;
+			System.Drawing.Drawing2D.Matrix baseTransform = hr.Transform;
 			float opacity = hr.Opacity;
 			try
 			{
@@ -4326,16 +4326,16 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 					}
 					//5. The flap: the back of the sheet.
 					clipper.PushPolygonClip(flap);
-					using (Matrix fold = ReflectionMatrix(mid, normal))
+					using (System.Drawing.Drawing2D.Matrix fold = ReflectionMatrix(mid, normal))
 					{
-						Matrix m = baseTransform.Clone();
+						System.Drawing.Drawing2D.Matrix m = baseTransform.Clone();
 						if (spread)
 						{
 							//The back of this sheet is the facing page of the new spread, found on
 							//the other side of the spine: mirror across the spine, then fold.
-							using (Matrix mirror = new Matrix(-1f, 0f, 0f, 1f, 2f * spine, 0f))
+							using (System.Drawing.Drawing2D.Matrix mirror = new System.Drawing.Drawing2D.Matrix(-1f, 0f, 0f, 1f, 2f * spine, 0f))
 							{
-								Matrix combined = fold.Clone();
+								System.Drawing.Drawing2D.Matrix combined = fold.Clone();
 								combined.Multiply(mirror);
 								m.Multiply(combined);
 								combined.Dispose();
