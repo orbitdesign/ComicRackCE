@@ -140,6 +140,9 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
             this.chkAutoUpdateComicFiles = new System.Windows.Forms.CheckBox();
             this.txCoverFilter = new System.Windows.Forms.TextBox();
             this.grpLanguages = new cYo.Common.Windows.Forms.CollapsibleGroupBox();
+            this.grpAppearance = new cYo.Common.Windows.Forms.CollapsibleGroupBox();
+            this.chkDarkMode = new System.Windows.Forms.CheckBox();
+            this.labelDarkMode = new System.Windows.Forms.Label();
             this.btTranslate = new System.Windows.Forms.Button();
             this.labelLanguage = new System.Windows.Forms.Label();
             this.lbLanguages = new System.Windows.Forms.ListBox();
@@ -247,6 +250,7 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
             this.grpDatabaseBackup.SuspendLayout();
             this.groupOtherComics.SuspendLayout();
             this.grpLanguages.SuspendLayout();
+            this.grpAppearance.SuspendLayout();
             this.pageLibrary.SuspendLayout();
             this.grpVirtualTags.SuspendLayout();
             this.grpVtagConfig.SuspendLayout();
@@ -941,6 +945,7 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
             this.pageAdvanced.Controls.Add(this.grpDatabaseBackup);
             this.pageAdvanced.Controls.Add(this.groupOtherComics);
             this.pageAdvanced.Controls.Add(this.grpLanguages);
+            this.pageAdvanced.Controls.Add(this.grpAppearance);
             this.pageAdvanced.Location = new System.Drawing.Point(84, 8);
             this.pageAdvanced.Name = "pageAdvanced";
             this.pageAdvanced.Size = new System.Drawing.Size(517, 408);
@@ -1699,6 +1704,36 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
             this.txCoverFilter.Name = "txCoverFilter";
             this.txCoverFilter.Size = new System.Drawing.Size(482, 54);
             this.txCoverFilter.TabIndex = 3;
+            // 
+            // grpAppearance
+            // 
+            this.grpAppearance.Controls.Add(this.labelDarkMode);
+            this.grpAppearance.Controls.Add(this.chkDarkMode);
+            this.grpAppearance.Dock = System.Windows.Forms.DockStyle.Top;
+            this.grpAppearance.Location = new System.Drawing.Point(0, 0);
+            this.grpAppearance.Name = "grpAppearance";
+            this.grpAppearance.Size = new System.Drawing.Size(498, 90);
+            this.grpAppearance.TabIndex = 8;
+            this.grpAppearance.Text = "Appearance";
+            // 
+            // chkDarkMode
+            // 
+            this.chkDarkMode.AutoSize = true;
+            this.chkDarkMode.Location = new System.Drawing.Point(12, 38);
+            this.chkDarkMode.Name = "chkDarkMode";
+            this.chkDarkMode.Size = new System.Drawing.Size(107, 17);
+            this.chkDarkMode.TabIndex = 0;
+            this.chkDarkMode.Text = "Use dark theme";
+            this.chkDarkMode.UseVisualStyleBackColor = true;
+            // 
+            // labelDarkMode
+            // 
+            this.labelDarkMode.AutoSize = true;
+            this.labelDarkMode.Location = new System.Drawing.Point(30, 60);
+            this.labelDarkMode.Name = "labelDarkMode";
+            this.labelDarkMode.Size = new System.Drawing.Size(300, 13);
+            this.labelDarkMode.TabIndex = 1;
+            this.labelDarkMode.Text = "Takes effect after ComicRack is restarted.";
             // 
             // grpLanguages
             // 
@@ -2708,6 +2743,8 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
             this.groupOtherComics.ResumeLayout(false);
             this.groupOtherComics.PerformLayout();
             this.grpLanguages.ResumeLayout(false);
+            this.grpAppearance.ResumeLayout(false);
+            this.grpAppearance.PerformLayout();
             this.pageLibrary.ResumeLayout(false);
             this.grpVirtualTags.ResumeLayout(false);
             this.grpVirtualTags.PerformLayout();
@@ -2826,6 +2863,12 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 		private CollapsibleGroupBox groupHardwareAcceleration;
 		private Panel pageAdvanced;
 		private CollapsibleGroupBox grpLanguages;
+
+		private CollapsibleGroupBox grpAppearance;
+
+		private CheckBox chkDarkMode;
+
+		private Label labelDarkMode;
 		private CollapsibleGroupBox groupMessagesAndSocial;
 		private CollapsibleGroupBox groupOtherComics;
 		private CollapsibleGroupBox grpDatabaseBackup;

@@ -538,6 +538,17 @@ namespace cYo.Projects.ComicRack.Viewer.Config
 			set;
 		}
 
+		/// <summary>
+		/// Dark theme chosen in Preferences. Read once at startup; the UseDarkMode ini value and the
+		/// -dark / -theme switches still take precedence when set.
+		/// </summary>
+		[DefaultValue(false)]
+		public bool DarkMode
+		{
+			get;
+			set;
+		}
+
 		[Browsable(false)]
 		[DefaultValue(false)]
 		public bool AlsoRemoveFromLibrary

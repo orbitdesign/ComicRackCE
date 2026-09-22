@@ -131,6 +131,15 @@ namespace cYo.Projects.ComicRack.Viewer
 
 		private static bool hardwareStartupFailed;
 
+		/// <summary>
+		/// The theme this session is running with. Changing it needs a restart.
+		/// </summary>
+		public static Themes Theme
+		{
+			get;
+			private set;
+		} = Themes.Default;
+
 		private static void SetHardwareGuard(bool set)
 		{
 			try
@@ -775,9 +784,16 @@ namespace cYo.Projects.ComicRack.Viewer
 			CommandLineParser.Parse(EngineConfiguration.Default);
 			Application.EnableVisualStyles();
 			Application.SetCompatibleTextRenderingDefault(defaultValue: false);
-            ThemeManager.Initialize(ExtendedSettings.Theme); // if using dark mode, replace SystemColors and initialize native Windows theming
-			ResourceManagerEx.InitResourceManager(ExtendedSettings.Theme);
-			ThemePlugin.Register(ExtendedSettings.Theme); // Register the current theme for the IThemePlugin interface for plugins
+			//The ini file and command line win when they ask for a theme; otherwise use the choice
+			//made in Preferences. Config.xml has just been loaded above, so it is available here.
+			Theme = ExtendedSettings.Theme;
+			if (Theme == Themes.Default && Settings.DarkMode)
+			{
+				Theme = Themes.Dark;
+			}
+            ThemeManager.Initialize(Theme); // if using dark mode, replace SystemColors and initialize native Windows theming
+			ResourceManagerEx.InitResourceManager(Theme);
+			ThemePlugin.Register(Theme); // Register the current theme for the IThemePlugin interface for plugins
             ShellFile.DeleteAPI = ExtendedSettings.DeleteAPI;
 			DatabaseManager.FirstDatabaseAccess += delegate
 			{
@@ -869,7 +885,7 @@ namespace cYo.Projects.ComicRack.Viewer
 				ComicBook.FormatIcons.AddRange(ZipFileFolder.CreateFromFiles(defaultLocations, "Formats*.zip"), SplitIconKeys);
 				ComicBook.SpecialIcons.AddRange(ZipFileFolder.CreateFromFiles(defaultLocations, "Special*.zip"), SplitIconKeys);
 				ComicBook.GenericIcons = CreateGenericsIcons(defaultLocations, "*.zip", "_", SplitIconKeys);
-                if (ExtendedSettings.UseDarkMode)
+                if (Theme == Themes.Dark)
                 {
                     ToolStripManager.Renderer = new ThemeToolStripProRenderer();
                 }
