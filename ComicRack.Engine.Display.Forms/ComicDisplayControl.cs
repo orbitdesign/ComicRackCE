@@ -4254,6 +4254,62 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 		}
 
 		/// <summary>
+		/// Where paper at distance u beyond the fold ends up, measured along the fold normal.
+		/// Up to "roll" the paper curves over a half cylinder; past that it lies flat again.
+		/// A sharp fold would simply be -u.
+		/// </summary>
+		private static float RollOffset(float u, float roll)
+		{
+			if (roll < 0.01f)
+			{
+				return 0f - u;
+			}
+			if (u <= roll)
+			{
+				return roll / (float)Math.PI * (float)Math.Sin(Math.PI * u / roll);
+			}
+			return 0f - (u - roll);
+		}
+
+		/// <summary>
+		/// Moves a point of the lifted paper onto the roll, exactly (used for the outline).
+		/// </summary>
+		private static PointF MapRoll(PointF p, PointF origin, PointF normal, float unused, float roll)
+		{
+			float u = (p.X - origin.X) * normal.X + (p.Y - origin.Y) * normal.Y;
+			float x = RollOffset(u, roll);
+			return new PointF(p.X + (x - u) * normal.X, p.Y + (x - u) * normal.Y);
+		}
+
+		/// <summary>
+		/// Same, but with one slice's straight-line approximation of the curve.
+		/// </summary>
+		private static PointF MapRollSlice(PointF p, PointF origin, PointF normal, float slope, float shift)
+		{
+			float u = (p.X - origin.X) * normal.X + (p.Y - origin.Y) * normal.Y;
+			float x = slope * u + shift;
+			return new PointF(p.X + (x - u) * normal.X, p.Y + (x - u) * normal.Y);
+		}
+
+		/// <summary>
+		/// One slice's mapping as a System.Drawing matrix: along the fold normal the paper is
+		/// scaled by slope and shifted, across it nothing changes.
+		/// </summary>
+		private static System.Drawing.Drawing2D.Matrix RollMatrix(PointF origin, PointF normal, float slope, float shift)
+		{
+			float nx = normal.X;
+			float ny = normal.Y;
+			float k = slope - 1f;
+			float a00 = 1f + k * nx * nx;
+			float a01 = k * nx * ny;
+			float a11 = 1f + k * ny * ny;
+			//Translation: keep the fold line where it is, then apply the slice's own shift.
+			float ox = origin.X - (a00 * origin.X + a01 * origin.Y) + shift * nx;
+			float oy = origin.Y - (a01 * origin.X + a11 * origin.Y) + shift * ny;
+			return new System.Drawing.Drawing2D.Matrix(a00, a01, a01, a11, ox, oy);
+		}
+
+		/// <summary>
 		/// Reflection across the fold line, as a System.Drawing matrix.
 		/// </summary>
 		private static System.Drawing.Drawing2D.Matrix ReflectionMatrix(PointF origin, PointF normal)
@@ -4305,13 +4361,23 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 					clipper.PopPolygonClip();
 					return;
 				}
-				//Fold line: through the midpoint, normal pointing from the mouse to the corner.
+				float width = sheet.Width;
+				//The paper does not crease: it rolls. The roll takes up some of the sheet, so the
+				//fold sits a little further from the corner than the halfway point, which is what
+				//keeps the corner exactly under the mouse.
+				float roll = Math.Min(width * 0.12f, lift * 0.8f);
+				float creaseDistance = (lift + roll) / 2f;
 				PointF normal = new PointF((corner.X - mouse.X) / lift, (corner.Y - mouse.Y) / lift);
-				PointF mid = new PointF((corner.X + mouse.X) / 2f, (corner.Y + mouse.Y) / 2f);
+				PointF mid = new PointF(corner.X - normal.X * creaseDistance, corner.Y - normal.Y * creaseDistance);
 				PointF[] flat = ClipHalfPlane(sheetPolygon, mid, normal, keepNegative: true);
 				PointF[] lifted = ClipHalfPlane(sheetPolygon, mid, normal, keepNegative: false);
-				PointF[] flap = ClipToRect(lifted.Select((PointF p) => Reflect(p, mid, normal)).ToArray(), visible);
-				float width = sheet.Width;
+				//How far the lifted part reaches, measured from the fold.
+				float reach = 0f;
+				foreach (PointF p in lifted)
+				{
+					reach = Math.Max(reach, (p.X - mid.X) * normal.X + (p.Y - mid.Y) * normal.Y);
+				}
+				PointF[] flap = ClipToRect(lifted.Select((PointF p) => MapRoll(p, mid, normal, -1f, roll)).ToArray(), visible);
 				float shadowLength = Math.Min(width * 0.25f, lift * 0.5f) + 4f;
 				float strength = Math.Min(1f, lift / (width * 0.3f));
 
@@ -4329,21 +4395,61 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 				}
 				if (flap.Length >= 3)
 				{
-					//4. Soft drop shadow of the flap onto the flat part of the page.
+					//4. Soft drop shadow of the rolled part onto the page below it.
 					PointF[] drop = ClipToRect(OffsetPolygon(flap, -normal.X * 5f, -normal.Y * 5f + 2f), visible);
 					if (drop.Length >= 3)
 					{
 						clipper.FillPolygon(drop, Color.FromArgb((int)(60 * strength), Color.Black));
 					}
-					//5. The flap: the back of the sheet.
-					clipper.PushPolygonClip(flap);
-					using (System.Drawing.Drawing2D.Matrix fold = ReflectionMatrix(mid, normal))
+				}
+				//5. The lifted part, drawn as slices across the roll. Each slice gets its own
+				//   position along the curve and its own shading, so the paper bends instead of
+				//   creasing. Slices are drawn from the fold outwards, which is also furthest
+				//   from the viewer first.
+				int curved = 10;
+				float rollEnd = Math.Min(roll, reach);
+				for (int k = 0; k <= curved; k++)
+				{
+					float u0;
+					float u1;
+					if (k < curved)
+					{
+						u0 = rollEnd * k / curved;
+						u1 = rollEnd * (k + 1) / curved;
+					}
+					else
+					{
+						//Past the roll the paper is flat again, lying back over the page.
+						u0 = rollEnd;
+						u1 = reach;
+					}
+					if (u1 - u0 < 0.01f)
+					{
+						continue;
+					}
+					PointF[] band = ClipHalfPlane(lifted, new PointF(mid.X + normal.X * u0, mid.Y + normal.Y * u0), normal, keepNegative: false);
+					band = ClipHalfPlane(band, new PointF(mid.X + normal.X * u1, mid.Y + normal.Y * u1), normal, keepNegative: true);
+					if (band.Length < 3)
+					{
+						continue;
+					}
+					float x0 = RollOffset(u0, roll);
+					float x1 = RollOffset(u1, roll);
+					float slope = (x1 - x0) / (u1 - u0);
+					float shift = x0 - slope * u0;
+					PointF[] slice = ClipToRect(band.Select((PointF p) => MapRollSlice(p, mid, normal, slope, shift)).ToArray(), visible);
+					if (slice.Length < 3)
+					{
+						continue;
+					}
+					clipper.PushPolygonClip(slice);
+					using (System.Drawing.Drawing2D.Matrix fold = RollMatrix(mid, normal, slope, shift))
 					{
 						System.Drawing.Drawing2D.Matrix m = baseTransform.Clone();
 						if (spread)
 						{
 							//The back of this sheet is the facing page of the new spread, found on
-							//the other side of the spine: mirror across the spine, then fold.
+							//the other side of the spine: mirror across the spine, then bend.
 							using (System.Drawing.Drawing2D.Matrix mirror = new System.Drawing.Drawing2D.Matrix(-1f, 0f, 0f, 1f, 2f * spine, 0f))
 							{
 								System.Drawing.Drawing2D.Matrix combined = fold.Clone();
@@ -4359,7 +4465,7 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 						{
 							//A single page has plain paper on its back, with the print faintly
 							//showing through.
-							clipper.FillPolygon(flap, PageCurlPaperColor);
+							clipper.FillPolygon(slice, PageCurlPaperColor);
 							m.Multiply(fold);
 							hr.Transform = m;
 							hr.Opacity = 0.12f;
@@ -4369,8 +4475,13 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 						hr.Opacity = opacity;
 						m.Dispose();
 					}
-					//6. Shading on the flap: darker along the crease where the paper curves away.
-					clipper.FillPolygonGradient(flap, mid, Color.FromArgb((int)(90 * strength), Color.Black), new PointF(mid.X - normal.X * shadowLength * 1.2f, mid.Y - normal.Y * shadowLength * 1.2f), Color.FromArgb(0, Color.Black));
+					//Light: paper facing the viewer is bright, paper turned edge on is dark.
+					float angle = (float)Math.PI * Math.Min(1f, (u0 + u1) / 2f / Math.Max(0.01f, roll));
+					float shade = (1f - Math.Abs((float)Math.Cos(angle))) * 0.55f * strength;
+					if (shade > 0.01f)
+					{
+						clipper.FillPolygon(slice, Color.FromArgb((int)(255f * shade), Color.Black));
+					}
 					clipper.PopPolygonClip();
 				}
 			}
