@@ -621,6 +621,19 @@ namespace cYo.Common.Presentation.Direct2D
 			}
 		}
 
+		public void FillCurrentClip(Color color)
+		{
+			if (!drawing || color.A == 0 || activeLayerGeometries.Count == 0)
+			{
+				return;
+			}
+			FlushMultiply();
+			brush.Color = ToColor4(color);
+			target.Transform = Identity;
+			target.FillGeometry(activeLayerGeometries[activeLayerGeometries.Count - 1], brush);
+			target.Transform = ToRaw(transform.Elements, 0f, 0f);
+		}
+
 		public void FillPolygon(PointF[] polygon, Color color)
 		{
 			if (!drawing || polygon == null || polygon.Length < 3 || color.A == 0)

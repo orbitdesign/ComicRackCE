@@ -15,6 +15,12 @@ namespace cYo.Common.Presentation
 
 		void FillPolygon(PointF[] polygon, Color color);
 
+		/// <summary>
+		/// Fills the shape pushed by the last PushPolygonClip, without building it again.
+		/// Does nothing when no polygon clip is active.
+		/// </summary>
+		void FillCurrentClip(Color color);
+
 		void FillPolygonGradient(PointF[] polygon, PointF start, Color startColor, PointF end, Color endColor);
 	}
 }

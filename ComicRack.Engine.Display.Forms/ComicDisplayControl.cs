@@ -4262,10 +4262,25 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 			return ClipHalfPlane(polygon, new PointF(0f, r.Bottom), new PointF(0f, 1f), keepNegative: true);
 		}
 
-		private static PointF Reflect(PointF p, PointF origin, PointF normal)
+		/// <summary>
+		/// Rolls every point of a polygon, writing over the polygon it was given.
+		/// </summary>
+		private static PointF[] MapPolygon(PointF[] polygon, PointF origin, PointF normal, float roll)
 		{
-			float d = (p.X - origin.X) * normal.X + (p.Y - origin.Y) * normal.Y;
-			return new PointF(p.X - 2f * d * normal.X, p.Y - 2f * d * normal.Y);
+			for (int i = 0; i < polygon.Length; i++)
+			{
+				polygon[i] = MapRoll(polygon[i], origin, normal, roll);
+			}
+			return polygon;
+		}
+
+		private static PointF[] MapPolygonSlice(PointF[] polygon, PointF origin, PointF normal, float slope, float shift)
+		{
+			for (int i = 0; i < polygon.Length; i++)
+			{
+				polygon[i] = MapRollSlice(polygon[i], origin, normal, slope, shift);
+			}
+			return polygon;
 		}
 
 		private static PointF[] OffsetPolygon(PointF[] polygon, float dx, float dy)
@@ -4294,7 +4309,7 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 		/// <summary>
 		/// Moves a point of the lifted paper onto the roll, exactly (used for the outline).
 		/// </summary>
-		private static PointF MapRoll(PointF p, PointF origin, PointF normal, float unused, float roll)
+		private static PointF MapRoll(PointF p, PointF origin, PointF normal, float roll)
 		{
 			float u = (p.X - origin.X) * normal.X + (p.Y - origin.Y) * normal.Y;
 			float x = RollOffset(u, roll);
@@ -4329,25 +4344,6 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 			return new System.Drawing.Drawing2D.Matrix(a00, a01, a01, a11, ox, oy);
 		}
 
-		/// <summary>
-		/// Reflection across the fold line, as a System.Drawing matrix.
-		/// </summary>
-		private static System.Drawing.Drawing2D.Matrix ReflectionMatrix(PointF origin, PointF normal)
-		{
-			float nx = normal.X;
-			float ny = normal.Y;
-			float a00 = 1f - 2f * nx * nx;
-			float a01 = -2f * nx * ny;
-			float a11 = 1f - 2f * ny * ny;
-			float d = 2f * (origin.X * nx + origin.Y * ny);
-			//System.Drawing maps (x, y) to (x*m11 + y*m21 + dx, x*m12 + y*m22 + dy).
-			return new System.Drawing.Drawing2D.Matrix(a00, a01, a01, a11, d * nx, d * ny);
-		}
-
-		/// <summary>
-		/// Draws one frame of a page being peeled off: used both while dragging with the mouse and
-		/// by the Realistic Page Curl transition, which simply moves the grabbed point itself.
-		/// </summary>
 		private void RenderCornerPeel(IBitmapRenderer hr, IGeometryClipRenderer clipper, DisplayOutput oldOut, int oldPageIndex, DisplayOutput newOut, int newPageIndex, bool peelRight, PointF corner, PointF mouse)
 		{
 			GetPeelGeometry(oldOut, peelRight, out bool spread, out RectangleF sheet, out RectangleF visible, out float spine);
@@ -4408,7 +4404,7 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 				{
 					reach = Math.Max(reach, (p.X - mid.X) * normal.X + (p.Y - mid.Y) * normal.Y);
 				}
-				PointF[] flap = ClipToRect(lifted.Select((PointF p) => MapRoll(p, mid, normal, -1f, roll)).ToArray(), visible);
+				PointF[] flap = ClipToRect(MapPolygon((PointF[])lifted.Clone(), mid, normal, roll), visible);
 				float shadowLength = Math.Min(width * 0.25f, lift * 0.5f) + 4f;
 				float strength = Math.Min(1f, lift / (width * 0.3f));
 
@@ -4470,7 +4466,8 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 					float x1 = RollOffset(u1, roll);
 					float slope = (x1 - x0) / (u1 - u0);
 					float shift = x0 - slope * u0;
-					PointF[] slice = ClipToRect(band.Select((PointF p) => MapRollSlice(p, mid, normal, slope, shift)).ToArray(), visible);
+					//Mapped in place: band is not needed afterwards.
+					PointF[] slice = ClipToRect(MapPolygonSlice(band, mid, normal, slope, shift), visible);
 					if (slice.Length < 3)
 					{
 						continue;
@@ -4498,7 +4495,7 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 						{
 							//A single page has plain paper on its back, with the print faintly
 							//showing through.
-							clipper.FillPolygon(slice, PageCurlPaperColor);
+							clipper.FillCurrentClip(PageCurlPaperColor);
 							m.Multiply(fold);
 							hr.Transform = m;
 							hr.Opacity = 0.12f;
@@ -4513,7 +4510,7 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 					float shade = (1f - Math.Abs((float)Math.Cos(angle))) * 0.55f * strength;
 					if (shade > 0.01f)
 					{
-						clipper.FillPolygon(slice, Color.FromArgb((int)(255f * shade), Color.Black));
+						clipper.FillCurrentClip(Color.FromArgb((int)(255f * shade), Color.Black));
 					}
 					clipper.PopPolygonClip();
 				}
