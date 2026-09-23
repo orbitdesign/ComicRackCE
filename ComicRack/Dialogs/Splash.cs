@@ -146,7 +146,7 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
             {
                 Rectangle clientRectangle = base.ClientRectangle;
                 int bottom = ProgressBounds.Top - FormUtility.ScaleDpiY(5);
-                return new Rectangle(clientRectangle.Left + TextMargin, bottom - BandHeight, clientRectangle.Width * 3 / 10, BandHeight);
+                return new Rectangle(clientRectangle.Left + TextMargin, bottom - BandHeight, clientRectangle.Width / 4, BandHeight);
             }
         }
 
@@ -159,7 +159,9 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
             {
                 Rectangle clientRectangle = base.ClientRectangle;
                 int bottom = ProgressBounds.Top - FormUtility.ScaleDpiY(5);
-                int left = clientRectangle.Left + TextMargin + clientRectangle.Width * 3 / 10;
+                //The version lines are long, so they get most of the width; the startup
+                //messages are short.
+                int left = clientRectangle.Left + TextMargin + clientRectangle.Width / 4;
                 return Rectangle.FromLTRB(left, bottom - BandHeight, clientRectangle.Right - TextMargin, bottom);
             }
         }
@@ -319,6 +321,9 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
                 Trimming = StringTrimming.EllipsisCharacter
             })
             {
+                //Without this a long version line wraps onto a third line, which pushes the
+                //copyright out of the top of its box and cuts it in half.
+                rightFormat.FormatFlags |= StringFormatFlags.NoWrap;
                 DrawOutlinedString(e.Graphics, str, Font, Color.White, VersionBounds, rightFormat);
             }
             using (Brush brush = new SolidBrush(progressColor))
