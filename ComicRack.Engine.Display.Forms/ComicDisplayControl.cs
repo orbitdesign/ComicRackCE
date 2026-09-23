@@ -4274,6 +4274,21 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 		}
 
 		/// <summary>
+		/// How dark the paper is at distance u from the fold: brightest where it faces the reader,
+		/// darkest where it has turned edge on, and flat again once the roll is over.
+		/// </summary>
+		private static int RollShade(float u, float roll, float strength)
+		{
+			if (roll < 0.01f || u > roll)
+			{
+				return 0;
+			}
+			double angle = Math.PI * Math.Min(1f, u / roll);
+			float shade = (float)(1.0 - Math.Abs(Math.Cos(angle))) * 0.55f * strength;
+			return (int)(255f * shade.Clamp(0f, 1f));
+		}
+
+		/// <summary>
 		/// Rolls every point of a polygon, writing over the polygon it was given.
 		/// </summary>
 		private static PointF[] MapPolygon(PointF[] polygon, PointF origin, PointF normal, float roll)
@@ -4446,9 +4461,10 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 				//   position along the curve and its own shading, so the paper bends instead of
 				//   creasing. Slices are drawn from the fold outwards, which is also furthest
 				//   from the viewer first.
-				//Each slice is a separate pass over the page, so big scans get fewer of them.
+				//Drawing from a capture makes a slice cheap, so the roll can have plenty of them
+				//and look smooth. Redrawing the page per slice does not, so big scans get fewer.
 				int sourceWidth = Math.Max(oldOut.OutputBounds.Width, newOut.OutputBounds.Width);
-				int curved = ((sourceWidth > 4000) ? 5 : ((sourceWidth > 2000) ? 7 : 10));
+				int curved = (captured ? 16 : ((sourceWidth > 4000) ? 5 : ((sourceWidth > 2000) ? 7 : 10)));
 				float rollEnd = Math.Min(roll, reach);
 				for (int k = 0; k <= curved; k++)
 				{
@@ -4519,12 +4535,23 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 						hr.Opacity = opacity;
 						m.Dispose();
 					}
-					//Light: paper facing the viewer is bright, paper turned edge on is dark.
-					float angle = (float)Math.PI * Math.Min(1f, (u0 + u1) / 2f / Math.Max(0.01f, roll));
-					float shade = (1f - Math.Abs((float)Math.Cos(angle))) * 0.55f * strength;
-					if (shade > 0.01f)
+					//Light: paper facing the viewer is bright, paper turned edge on is dark. The
+					//shade runs across each slice rather than being flat, so the tone is continuous
+					//over the whole roll instead of stepping at every join.
+					int shade0 = RollShade(u0, roll, strength);
+					int shade1 = RollShade(u1, roll, strength);
+					if (shade0 > 2 || shade1 > 2)
 					{
-						clipper.FillCurrentClip(Color.FromArgb((int)(255f * shade), Color.Black));
+						PointF from = new PointF(mid.X + normal.X * x0, mid.Y + normal.Y * x0);
+						PointF to = new PointF(mid.X + normal.X * x1, mid.Y + normal.Y * x1);
+						if (Math.Abs(x1 - x0) < 0.5f)
+						{
+							clipper.FillCurrentClip(Color.FromArgb((shade0 + shade1) / 2, Color.Black));
+						}
+						else
+						{
+							clipper.FillPolygonGradient(slice, from, Color.FromArgb(shade0, Color.Black), to, Color.FromArgb(shade1, Color.Black));
+						}
 					}
 					clipper.PopPolygonClip();
 				}
