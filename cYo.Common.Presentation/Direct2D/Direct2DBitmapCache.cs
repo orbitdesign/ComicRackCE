@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Imaging;
+using System.Runtime.InteropServices;
 using cYo.Common.Drawing;
 using cYo.Common.Threading;
 using D2D = SharpDX.Direct2D1;
@@ -37,6 +38,10 @@ namespace cYo.Common.Presentation.Direct2D
 			public readonly List<Tile> Tiles = new List<Tile>();
 
 			public Size Size;
+
+			//How much the page was shrunk before being sent to the graphics card. 1 is full size,
+			//2 is half in each direction, and so on. Tile bounds are in these reduced pixels.
+			public int Reduction = 1;
 
 			public long Bytes;
 		}
@@ -117,7 +122,11 @@ namespace cYo.Common.Presentation.Direct2D
 		/// Returns the GPU copy of an image, uploading it on first use. Returns null when the image
 		/// is gone or cannot be uploaded, in which case the caller simply skips drawing it.
 		/// </summary>
-		public Entry Get(D2D.RenderTarget target, RendererImage image, BitmapAdjustment adjustment, int maxTileSize)
+		/// <param name="reduction">
+		/// How much detail the caller needs: 1 for full size, 2 for half, and so on. A page kept at
+		/// less detail than this is uploaded again.
+		/// </param>
+		public Entry Get(D2D.RenderTarget target, RendererImage image, BitmapAdjustment adjustment, int maxTileSize, int reduction = 1)
 		{
 			if (image == null)
 			{
@@ -138,11 +147,16 @@ namespace cYo.Common.Presentation.Direct2D
 			}
 			if (lookup.TryGetValue(key, out LinkedListNode<Entry> node))
 			{
-				lru.Remove(node);
-				lru.AddFirst(node);
-				return node.Value;
+				if (node.Value.Reduction <= reduction)
+				{
+					lru.Remove(node);
+					lru.AddFirst(node);
+					return node.Value;
+				}
+				//Zoomed in since it was uploaded: this copy is too coarse now.
+				Remove(node);
 			}
-			Entry entry = Upload(target, image, adjustment, maxTileSize);
+			Entry entry = Upload(target, image, adjustment, maxTileSize, reduction);
 			if (entry == null)
 			{
 				return null;
@@ -222,7 +236,7 @@ namespace cYo.Common.Presentation.Direct2D
 			entry.Tiles.Clear();
 		}
 
-		private Entry Upload(D2D.RenderTarget target, RendererImage image, BitmapAdjustment adjustment, int maxTileSize)
+		private Entry Upload(D2D.RenderTarget target, RendererImage image, BitmapAdjustment adjustment, int maxTileSize, int reduction)
 		{
 			Bitmap bitmap;
 			try
@@ -250,12 +264,12 @@ namespace cYo.Common.Presentation.Direct2D
 							adjusted = bitmap.CreateAdjustedBitmap(adjustment, PixelFormat.Format32bppArgb, alwaysClone: true);
 							source = adjusted;
 						}
-						Entry entry = TryUpload(target, source, maxTileSize);
+						Entry entry = TryUpload(target, source, maxTileSize, reduction);
 						if (entry == null)
 						{
 							//Most likely out of video memory. Make room and try once more.
 							Clear();
-							entry = TryUpload(target, source, maxTileSize);
+							entry = TryUpload(target, source, maxTileSize, reduction);
 						}
 						return entry;
 					}
@@ -273,18 +287,20 @@ namespace cYo.Common.Presentation.Direct2D
 			}
 		}
 
-		private static Entry TryUpload(D2D.RenderTarget target, Bitmap source, int maxTileSize)
+		private static Entry TryUpload(D2D.RenderTarget target, Bitmap source, int maxTileSize, int reduction)
 		{
 			Bitmap converted = null;
+			IntPtr reduced = IntPtr.Zero;
 			try
 			{
-				int width = source.Width;
-				int height = source.Height;
-				if (width <= 0 || height <= 0)
+				int fullWidth = source.Width;
+				int fullHeight = source.Height;
+				if (fullWidth <= 0 || fullHeight <= 0)
 				{
 					return null;
 				}
-				Rectangle all = new Rectangle(0, 0, width, height);
+				reduction = Math.Max(1, Math.Min(reduction, Math.Min(fullWidth, fullHeight)));
+				Rectangle all = new Rectangle(0, 0, fullWidth, fullHeight);
 				BitmapData data;
 				try
 				{
@@ -299,21 +315,37 @@ namespace cYo.Common.Presentation.Direct2D
 					source = converted;
 					data = source.LockBits(all, ImageLockMode.ReadOnly, PixelFormat.Format32bppPArgb);
 				}
+				int width = fullWidth;
+				int height = fullHeight;
+				IntPtr pixels = data.Scan0;
+				int stride = data.Stride;
 				Entry entry = new Entry
 				{
-					Size = new Size(width, height)
+					Reduction = reduction
 				};
 				try
 				{
+					if (reduction > 1)
+					{
+						//Shrinking here rather than sending the whole scan to the graphics card
+						//is the difference between a few megabytes and a few hundred for one page.
+						width = Math.Max(1, fullWidth / reduction);
+						height = Math.Max(1, fullHeight / reduction);
+						int reducedStride = width * 4;
+						reduced = Marshal.AllocHGlobal(reducedStride * height);
+						Shrink(pixels, stride, fullWidth, fullHeight, reduced, reducedStride, width, height, reduction);
+						pixels = reduced;
+						stride = reducedStride;
+					}
+					entry.Size = new Size(width, height);
 					D2D.BitmapProperties properties = new D2D.BitmapProperties(new D2D.PixelFormat(DXGI.Format.B8G8R8A8_UNorm, D2D.AlphaMode.Premultiplied));
-					int stride = data.Stride;
 					for (int y = 0; y < height; y += maxTileSize)
 					{
 						for (int x = 0; x < width; x += maxTileSize)
 						{
 							int w = Math.Min(maxTileSize, width - x);
 							int h = Math.Min(maxTileSize, height - y);
-							IntPtr start = new IntPtr(data.Scan0.ToInt64() + (long)y * stride + (long)x * 4);
+							IntPtr start = new IntPtr(pixels.ToInt64() + (long)y * stride + (long)x * 4);
 							int length = (h - 1) * stride + w * 4;
 							D2D.Bitmap tileBitmap = new D2D.Bitmap(target, new SharpDX.Size2(w, h), new SharpDX.DataPointer(start, length), stride, properties);
 							entry.Tiles.Add(new Tile
@@ -341,8 +373,61 @@ namespace cYo.Common.Presentation.Direct2D
 			}
 			finally
 			{
+				if (reduced != IntPtr.Zero)
+				{
+					Marshal.FreeHGlobal(reduced);
+				}
 				converted?.Dispose();
 			}
+		}
+
+		/// <summary>
+		/// Averages blocks of pixels down by a whole number factor. Premultiplied colours average
+		/// correctly, so this needs no other handling.
+		/// </summary>
+		private static unsafe void Shrink(IntPtr source, int sourceStride, int sourceWidth, int sourceHeight, IntPtr destination, int destinationStride, int width, int height, int factor)
+		{
+			byte* src = (byte*)source.ToPointer();
+			byte* dst = (byte*)destination.ToPointer();
+			int count = factor * factor;
+			//Rows are independent, and there are a lot of them on a large scan.
+			System.Threading.Tasks.Parallel.For(0, height, delegate(int y)
+			{
+				byte* outRow = dst + (long)y * destinationStride;
+				int sy0 = y * factor;
+				int sy1 = Math.Min(sy0 + factor, sourceHeight);
+				for (int x = 0; x < width; x++)
+				{
+					int sx0 = x * factor;
+					int sx1 = Math.Min(sx0 + factor, sourceWidth);
+					int b = 0;
+					int g = 0;
+					int r = 0;
+					int a = 0;
+					for (int sy = sy0; sy < sy1; sy++)
+					{
+						byte* inRow = src + (long)sy * sourceStride + (long)sx0 * 4;
+						for (int sx = sx0; sx < sx1; sx++)
+						{
+							b += inRow[0];
+							g += inRow[1];
+							r += inRow[2];
+							a += inRow[3];
+							inRow += 4;
+						}
+					}
+					int taken = (sy1 - sy0) * (sx1 - sx0);
+					if (taken <= 0)
+					{
+						taken = count;
+					}
+					outRow[0] = (byte)(b / taken);
+					outRow[1] = (byte)(g / taken);
+					outRow[2] = (byte)(r / taken);
+					outRow[3] = (byte)(a / taken);
+					outRow += 4;
+				}
+			});
 		}
 
 		private static void SafeDispose(IDisposable disposable)

@@ -424,7 +424,7 @@ namespace cYo.Common.Presentation.Direct2D
 				return;
 			}
 			FlushMultiply();
-			Direct2DBitmapCache.Entry entry = cache.Get(target, image, ajustment, maxTileSize);
+			Direct2DBitmapCache.Entry entry = cache.Get(target, image, ajustment, maxTileSize, ChooseReduction(dest, src));
 			if (entry == null)
 			{
 				return;
@@ -1220,7 +1220,7 @@ namespace cYo.Common.Presentation.Direct2D
 					multiplyLayer.Clear(new RawColor4(0f, 0f, 0f, 0f));
 					foreach (PendingMultiply item in pendingMultiply)
 					{
-						Direct2DBitmapCache.Entry entry = cache.Get(target, item.Image, item.Adjustment, maxTileSize);
+						Direct2DBitmapCache.Entry entry = cache.Get(target, item.Image, item.Adjustment, maxTileSize, ChooseReduction(item.Dest, item.Src));
 						if (entry == null)
 						{
 							continue;
@@ -1303,8 +1303,43 @@ namespace cYo.Common.Presentation.Direct2D
 			public RawRectangleF Src;
 		}
 
+		/// <summary>
+		/// How much a page can be shrunk before being sent to the graphics card without the reader
+		/// seeing it: whole number factors only, with a little detail in hand for small zooms.
+		/// A page displayed at a quarter of its size costs a sixteenth of the video memory.
+		/// </summary>
+		private static int ChooseReduction(RectangleF dest, RectangleF src)
+		{
+			if (dest.Width <= 0f || dest.Height <= 0f || src.Width <= 0f || src.Height <= 0f)
+			{
+				return 1;
+			}
+			float shrink = Math.Min(src.Width / dest.Width, src.Height / dest.Height);
+			//Keep 1.5x more detail than is shown, so a small zoom does not force a reload.
+			int factor = (int)(shrink / 1.5f);
+			if (factor >= 8)
+			{
+				return 8;
+			}
+			if (factor >= 4)
+			{
+				return 4;
+			}
+			if (factor >= 2)
+			{
+				return 2;
+			}
+			return 1;
+		}
+
 		private static IEnumerable<TilePart> GetTileParts(Direct2DBitmapCache.Entry entry, RectangleF dest, RectangleF src)
 		{
+			if (entry.Reduction > 1)
+			{
+				//Tiles are stored in the reduced page's pixels, so the wanted area shrinks with it.
+				float f = entry.Reduction;
+				src = new RectangleF(src.X / f, src.Y / f, src.Width / f, src.Height / f);
+			}
 			float scaleX = dest.Width / src.Width;
 			float scaleY = dest.Height / src.Height;
 			foreach (Direct2DBitmapCache.Tile tile in entry.Tiles)
