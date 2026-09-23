@@ -322,14 +322,25 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
                 using (StringFormat leftFormat = new StringFormat
                 {
                     Alignment = StringAlignment.Near,
-                    LineAlignment = StringAlignment.Center,
+                    LineAlignment = StringAlignment.Far,
                     Trimming = StringTrimming.EllipsisCharacter
                 })
                 {
                     leftFormat.FormatFlags |= StringFormatFlags.NoWrap;
-                    //Only the newest message: the band has room for one line.
+                    //Newest message at the bottom, older ones stacked above it and fading out.
+                    //However many lines the band has room for, up to MessageLines.
                     string[] lines = message.Split('\n');
-                    DrawOutlinedString(e.Graphics, lines[lines.Length - 1], Font, MessageColor, MessageBounds, leftFormat);
+                    int count = Math.Max(1, Math.Min(messageLines, BandHeight / Math.Max(1, Font.Height)));
+                    count = Math.Min(count, lines.Length);
+                    Rectangle bounds = MessageBounds;
+                    int alpha = 220;
+                    int fade = alpha / (count + 1);
+                    for (int i = 0; i < count; i++)
+                    {
+                        DrawOutlinedString(e.Graphics, lines[lines.Length - 1 - i], Font, Color.FromArgb(alpha, MessageColor), bounds, leftFormat);
+                        bounds.Height -= Font.Height;
+                        alpha -= fade;
+                    }
                 }
             }
         }
