@@ -4498,7 +4498,10 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 					//   towards the fold, and one the other way so the shadow also shows in the pocket
 					//   under the rolled edge, where the paper curves back down to the page. Only the
 					//   parts that stick out past the sheet are seen, since the sheet is drawn over it.
-					PointF[] drop = ClipToRect(OffsetPolygon(flap, -normal.X * 5f, -normal.Y * 5f + 2f), visible);
+					//The further the page is lifted, the further its shadow falls from the edge, which
+					//is what gives the fold its depth. A fixed few pixels left it looking pasted down.
+					float shadowOffset = Math.Min(28f, 6f + lift * 0.09f);
+					PointF[] drop = ClipToRect(OffsetPolygon(flap, 0f - normal.X * shadowOffset, 0f - normal.Y * shadowOffset + shadowOffset * 0.25f), visible);
 					if (drop.Length >= 3)
 					{
 						clipper.FillPolygon(drop, Color.FromArgb((int)(60 * strength * fade), Color.Black));
