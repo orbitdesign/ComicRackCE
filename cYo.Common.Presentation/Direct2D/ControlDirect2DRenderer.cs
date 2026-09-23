@@ -114,6 +114,12 @@ namespace cYo.Common.Presentation.Direct2D
 
 		private bool multiplyFailed;
 
+		//A blend that fails inside a shaped clip only costs the texture on a page being folded,
+		//so that case is remembered separately instead of switching textures off altogether.
+		private bool multiplySkipInLayers;
+
+		private int multiplyFailures;
+
 		private bool highQualityCubicFailed;
 
 		private bool usedHighQualityCubic;
@@ -880,6 +886,10 @@ namespace cYo.Common.Presentation.Direct2D
 			}
 			pendingMultiply.Clear();
 			pendingMultiplyBounds = RectangleF.Empty;
+			//A new device may well manage what the old one could not.
+			multiplyFailed = false;
+			multiplySkipInLayers = false;
+			multiplyFailures = 0;
 			cache.Clear();
 			ReleaseMultiplyResources();
 			foreach (D2D.Layer layer in layerPool)
@@ -977,7 +987,7 @@ namespace cYo.Common.Presentation.Direct2D
 
 		private void QueueMultiply(RendererImage image, RectangleF dest, RectangleF src, BitmapAdjustment adjustment, float opacity)
 		{
-			if (context == null || multiplyFailed)
+			if (context == null || multiplyFailed || (multiplySkipInLayers && layerDepth > 0))
 			{
 				//No Direct2D 1.1, or it failed before: leave the paper texture out rather than
 				//painting it over the page as a normal image.
@@ -1030,13 +1040,21 @@ namespace cYo.Common.Presentation.Direct2D
 				//them again, which is what keeps paper textures working on a folded page.
 				bool hadClip = clipPushed;
 				int suspended = SuspendLayers();
-				PopClip();
-				multiplyScratch.CopyFromRenderTarget(target, new RawPoint(0, 0), new RawRectangle(region.Left, region.Top, region.Right, region.Bottom));
-				if (hadClip)
+				try
 				{
-					PushClip();
+					PopClip();
+					multiplyScratch.CopyFromRenderTarget(target, new RawPoint(0, 0), new RawRectangle(region.Left, region.Top, region.Right, region.Bottom));
 				}
-				ResumeLayers(suspended);
+				finally
+				{
+					//Whatever happened, the clips have to go back on or everything drawn afterwards
+					//would spill outside the shape it belongs in.
+					if (hadClip)
+					{
+						PushClip();
+					}
+					ResumeLayers(suspended);
+				}
 				multiplyLayer.BeginDraw();
 				try
 				{
@@ -1072,12 +1090,21 @@ namespace cYo.Common.Presentation.Direct2D
 				target.Transform = Identity;
 				context.DrawImage(multiplyEffect, new RawVector2(region.X, region.Y), D2D.InterpolationMode.NearestNeighbor, D2D.CompositeMode.SourceOver);
 				target.Transform = ToRaw(transform.Elements, 0f, 0f);
+				multiplyFailures = 0;
 			}
 			catch (Exception)
 			{
-				//Paper textures are decoration. If this machine can not do them, turn them off
-				//for this session instead of losing hardware acceleration.
-				multiplyFailed = true;
+				//Paper textures are decoration, so a failure must never cost hardware acceleration.
+				//Inside a shaped clip (a page being folded) give up only on that case; otherwise
+				//try again on later frames and stop only if it keeps failing.
+				if (layerDepth > 0)
+				{
+					multiplySkipInLayers = true;
+				}
+				else if (++multiplyFailures > 8)
+				{
+					multiplyFailed = true;
+				}
 				ReleaseMultiplyResources();
 				if (drawing && target != null)
 				{
