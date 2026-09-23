@@ -569,9 +569,14 @@ namespace cYo.Common.Presentation.Direct2D
 			{
 				layerPool.Add(new D2D.Layer(target));
 			}
+			RectangleF area = PolygonBounds(polygon);
+			area.Inflate(1f, 1f);
 			D2D.LayerParameters parameters = new D2D.LayerParameters
 			{
-				ContentBounds = new RawRectangleF(float.MinValue, float.MinValue, float.MaxValue, float.MaxValue),
+				//Bounding the layer matters: with unbounded content Direct2D sets aside an
+				//intermediate surface the size of the whole window for every layer, which is
+				//ruinous when a page is drawn as a dozen thin slices.
+				ContentBounds = ToRect(area),
 				GeometricMask = geometry,
 				MaskAntialiasMode = D2D.AntialiasMode.PerPrimitive,
 				MaskTransform = Identity,
@@ -698,9 +703,11 @@ namespace cYo.Common.Presentation.Direct2D
 			RawMatrix3x2 current = ToRaw(transform.Elements, 0f, 0f);
 			for (int i = 0; i < count && i < activeLayerGeometries.Count; i++)
 			{
+				RectangleF area = activeLayerBounds[i];
+				area.Inflate(1f, 1f);
 				D2D.LayerParameters parameters = new D2D.LayerParameters
 				{
-					ContentBounds = new RawRectangleF(float.MinValue, float.MinValue, float.MaxValue, float.MaxValue),
+					ContentBounds = ToRect(area),
 					GeometricMask = activeLayerGeometries[i],
 					MaskAntialiasMode = D2D.AntialiasMode.PerPrimitive,
 					MaskTransform = Identity,

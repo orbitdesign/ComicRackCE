@@ -4354,6 +4354,15 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 			Rectangle client = base.ClientRectangle;
 			System.Drawing.Drawing2D.Matrix baseTransform = hr.Transform;
 			float opacity = hr.Opacity;
+			//While the page is moving, sample it the cheap way. High quality sampling of a very
+			//large scan, a dozen times per frame, is what makes big books stutter, and the
+			//difference is invisible on a page in motion.
+			IHardwareRenderer hardware = hr as IHardwareRenderer;
+			bool wasOptimized = hardware != null && hardware.OptimizedTextures;
+			if (hardware != null)
+			{
+				hardware.OptimizedTextures = true;
+			}
 			try
 			{
 				//1. What is underneath: the new page on the side being peeled, and in a spread the
@@ -4428,7 +4437,9 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 				//   position along the curve and its own shading, so the paper bends instead of
 				//   creasing. Slices are drawn from the fold outwards, which is also furthest
 				//   from the viewer first.
-				int curved = 10;
+				//Each slice is a separate pass over the page, so big scans get fewer of them.
+				int sourceWidth = Math.Max(oldOut.OutputBounds.Width, newOut.OutputBounds.Width);
+				int curved = ((sourceWidth > 4000) ? 5 : ((sourceWidth > 2000) ? 7 : 10));
 				float rollEnd = Math.Min(roll, reach);
 				for (int k = 0; k <= curved; k++)
 				{
@@ -4512,6 +4523,10 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 				hr.Transform = baseTransform;
 				hr.Clip = RectangleF.Empty;
 				hr.Opacity = opacity;
+				if (hardware != null)
+				{
+					hardware.OptimizedTextures = wasOptimized;
+				}
 			}
 		}
 
