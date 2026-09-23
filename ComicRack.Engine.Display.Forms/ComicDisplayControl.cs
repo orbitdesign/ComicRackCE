@@ -4494,21 +4494,25 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 				}
 				if (flap.Length >= 3)
 				{
-					//4. Soft drop shadow of the rolled part onto the page below it. Two offsets: one
-					//   towards the fold, and one the other way so the shadow also shows in the pocket
-					//   under the rolled edge, where the paper curves back down to the page. Only the
-					//   parts that stick out past the sheet are seen, since the sheet is drawn over it.
-					//The further the page is lifted, the further its shadow falls from the edge, which
-					//is what gives the fold its depth. A fixed few pixels left it looking pasted down.
+					//4. The shadow. One shape stepped out from the edge in several goes rather than
+					//   one hard copy: the steps pile up close to the paper and thin out further away,
+					//   which gives a single soft shadow instead of two outlines. The first step sits
+					//   in place, which is what shades the pocket under the curled edge.
 					float shadowOffset = Math.Min(28f, 6f + lift * 0.09f);
-					PointF[] drop = ClipToRect(OffsetPolygon(flap, 0f - normal.X * shadowOffset, 0f - normal.Y * shadowOffset + shadowOffset * 0.25f), visible);
-					if (drop.Length >= 3)
+					const int steps = 6;
+					int stepAlpha = (int)(26f * strength * fade);
+					if (stepAlpha > 1)
 					{
-						clipper.FillPolygon(drop, Color.FromArgb((int)(60 * strength * fade), Color.Black));
+						for (int step = 0; step < steps; step++)
+						{
+							float away = shadowOffset * step / (steps - 1);
+							PointF[] drop = ClipToRect(OffsetPolygon(flap, 0f - normal.X * away, 0f - normal.Y * away + away * 0.25f), visible);
+							if (drop.Length >= 3)
+							{
+								clipper.FillPolygon(drop, Color.FromArgb(stepAlpha, Color.Black));
+							}
+						}
 					}
-					//And the pocket itself, where the paper curves back down to the page: the sheet is
-					//drawn over this, so only the part it does not reach stays visible.
-					clipper.FillPolygon(flap, Color.FromArgb((int)(70 * strength * fade), Color.Black));
 				}
 				//5. The lifted part, drawn as slices across the roll. Each slice gets its own
 				//   position along the curve and its own shading, so the paper bends instead of

@@ -1,4 +1,4 @@
-orbitdesign Build 1.31 (based on Community Edition 0.9.184):
+orbitdesign Build 1.32 (based on Community Edition 0.9.184):
 
 * 1.1 FIX: Hardware acceleration stability. Fixed OpenGL extension detection, replaced the deprecated automatic mip map generation that crashed some drivers, checked texture uploads for errors, and added a startup guard that switches hardware acceleration off for one session if ComicRack failed to start last time.
 * 1.2 NEW: Direct2D renderer for the reader. Used by default when hardware acceleration is on, with OpenGL and then software rendering as fallbacks. Handles graphics device resets, uses high quality cubic sampling for "Enable Hardware Filters", and supports paper textures. Start with -hwgl to use the old OpenGL renderer.
@@ -31,6 +31,7 @@ orbitdesign Build 1.31 (based on Community Edition 0.9.184):
 * 1.29 FIX: The pocket where a rolled page curves back down to the page below stayed white, which made the curled corner look flat. It is now shaded, and the shadow follows the curve of the roll all the way round its end.
 * 1.30 FIX: The long shadow along the edge of a folded page came back, and the pocket under the curled edge is shaded. Both are now cast from where the paper would lie if it folded flat rather than rolling, which always reaches a little past the sheet itself.
 * 1.31 CHANGE: The shadow along the edge of a folded page falls further from the edge the more the page is lifted, instead of a fixed few pixels, restoring the depth the fold had before the shadow work.
+* 1.32 FIX: A folded page cast two shadows with separate outlines. It is now one soft shadow, built by stepping the same shape out from the edge so it is darkest against the paper and fades outwards.
 
 
 Community Edition Build 0.9.184:
