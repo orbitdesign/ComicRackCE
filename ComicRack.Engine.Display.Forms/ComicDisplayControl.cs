@@ -4446,7 +4446,9 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 				if (!spread)
 				{
 					float turn = creaseDistance / Math.Max(1f, Math.Abs(corner.X - spine));
-					fade = ((1f - turn) / 0.25f).Clamp(0f, 1f);
+					//Keep the sheet solid for as long as possible: while it fades it is see through,
+					//and anything dark on the page underneath shows through it.
+					fade = ((1f - turn) / 0.12f).Clamp(0f, 1f);
 					if (fade <= 0.01f)
 					{
 						return;
