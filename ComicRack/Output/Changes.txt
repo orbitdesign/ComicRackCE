@@ -1,4 +1,4 @@
-orbitdesign Build 1.18 (based on Community Edition 0.9.184):
+orbitdesign Build 1.19 (based on Community Edition 0.9.184):
 
 * 1.1 FIX: Hardware acceleration stability. Fixed OpenGL extension detection, replaced the deprecated automatic mip map generation that crashed some drivers, checked texture uploads for errors, and added a startup guard that switches hardware acceleration off for one session if ComicRack failed to start last time.
 * 1.2 NEW: Direct2D renderer for the reader. Used by default when hardware acceleration is on, with OpenGL and then software rendering as fallbacks. Handles graphics device resets, uses high quality cubic sampling for "Enable Hardware Filters", and supports paper textures. Start with -hwgl to use the old OpenGL renderer.
@@ -18,6 +18,7 @@ orbitdesign Build 1.18 (based on Community Edition 0.9.184):
 * 1.16 CHANGE: Splash screen text and progress bar now keep an even margin from the edges of the artwork, with the version text no longer running off the right edge.
 * 1.17 CHANGE: The Direct2D renderer now uses high quality sampling whenever a page is being shrunk to fit, even with hardware filters switched off, so a page is sharp the moment it lands instead of waiting for the software filter to catch up. Pages in motion still use fast sampling.
 * 1.18 FIX: Paper textures could stop appearing for the rest of the session after a single failed blend, usually one that happened while a page was being folded. Failures during a fold now only disable the texture on folded pages, other failures are retried, and a shaped clip is always restored even when the blend fails.
+* 1.19 NEW: Display > Paper Texture switches the paper texture off and back on again, remembering which texture was in use. It is also available as a Toggle Paper Texture command for a keyboard shortcut.
 
 
 Community Edition Build 0.9.184:

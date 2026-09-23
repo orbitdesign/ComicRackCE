@@ -1445,6 +1445,7 @@ namespace cYo.Projects.ComicRack.Viewer
 				ComicDisplay.ImageAutoRotate = !ComicDisplay.ImageAutoRotate;
 			}, notContinuousLayout, () => ComicDisplay.ImageAutoRotate, miAutoRotate, tbAutoRotate);
 			commands.Add(ComicDisplay.ToggleMagnifier, true, () => ComicDisplay.MagnifierVisible, miMagnify, tbMagnify, cmMagnify);
+			commands.Add(ComicDisplay.TogglePaperTexture, true, () => !string.IsNullOrEmpty(ComicDisplay.PaperTexture), miPaperTexture);
 			commands.Add(delegate
 			{
 				ShowPortableDevices();
@@ -1665,6 +1666,7 @@ namespace cYo.Projects.ComicRack.Viewer
 			ComicDisplay.KeyboardMap.Commands.Add(new KeyboardCommand(miFullScreen.Image, "ToggleFullScreen", group, "Toggle Full Screen", ComicDisplay.ToggleFullScreen, CommandKey.F, CommandKey.MouseDoubleLeft, CommandKey.Gesture2));
 			ComicDisplay.KeyboardMap.Commands.Add(new KeyboardCommand(miTwoPages.Image, "ToggleTwoPages", group, "Toggle Two Pages", ComicDisplay.TogglePageLayout, CommandKey.T));
 			ComicDisplay.KeyboardMap.Commands.Add(new KeyboardCommand("ToggleRealisticPages", group, "Toggle Realistic Display", ComicDisplay.ToogleRealisticPages, CommandKey.D | CommandKey.Shift));
+			ComicDisplay.KeyboardMap.Commands.Add(new KeyboardCommand("TogglePaperTexture", group, "Toggle Paper Texture", ComicDisplay.TogglePaperTexture));
 			ComicDisplay.KeyboardMap.Commands.Add(new KeyboardCommand(miMagnify.Image, "ToggleMagnify", group, "Toggle Magnifier", (Action)delegate
 			{
 				ComicDisplay.MagnifierVisible = !ComicDisplay.MagnifierVisible;

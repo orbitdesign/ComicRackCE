@@ -209,6 +209,7 @@ namespace cYo.Projects.ComicRack.Viewer
 			this.miReaderUndocked = new System.Windows.Forms.ToolStripMenuItem();
 			this.toolStripMenuItem41 = new System.Windows.Forms.ToolStripSeparator();
 			this.miMagnify = new System.Windows.Forms.ToolStripMenuItem();
+			this.miPaperTexture = new System.Windows.Forms.ToolStripMenuItem();
 			this.helpMenu = new System.Windows.Forms.ToolStripMenuItem();
 			this.miHelp = new System.Windows.Forms.ToolStripMenuItem();
 			this.miWebHelp = new System.Windows.Forms.ToolStripMenuItem();
@@ -1327,7 +1328,8 @@ namespace cYo.Projects.ComicRack.Viewer
             this.miFullScreen,
             this.miReaderUndocked,
             this.toolStripMenuItem41,
-            this.miMagnify});
+            this.miMagnify,
+            this.miPaperTexture});
 			this.displayMenu.ImageTransparentColor = System.Drawing.Color.Fuchsia;
 			this.displayMenu.Name = "displayMenu";
 			this.displayMenu.Size = new System.Drawing.Size(57, 20);
@@ -1693,6 +1695,12 @@ namespace cYo.Projects.ComicRack.Viewer
 			this.miMagnify.ShortcutKeys = ((System.Windows.Forms.Keys)((System.Windows.Forms.Keys.Control | System.Windows.Forms.Keys.M)));
 			this.miMagnify.Size = new System.Drawing.Size(221, 22);
 			this.miMagnify.Text = "&Magnifier";
+			// 
+			// miPaperTexture
+			// 
+			this.miPaperTexture.Name = "miPaperTexture";
+			this.miPaperTexture.Size = new System.Drawing.Size(221, 22);
+			this.miPaperTexture.Text = "Paper &Texture";
 			// 
 			// helpMenu
 			// 
@@ -3572,6 +3580,8 @@ namespace cYo.Projects.ComicRack.Viewer
 		private NotifyIcon notifyIcon;
 		private ToolStripMenuItem miNews;
 		private ToolStripMenuItem miMagnify;
+
+		private ToolStripMenuItem miPaperTexture;
 		private ToolStripMenuItem cmMagnify;
 		private ToolStripMenuItem miFileAutomation;
 		private ToolStripSeparator toolStripMenuItem40;

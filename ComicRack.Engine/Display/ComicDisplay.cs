@@ -34,6 +34,9 @@ namespace cYo.Projects.ComicRack.Engine.Display
 
 		private readonly IComicDisplay display;
 
+		//Remembers the texture to come back to when the paper texture is switched on again.
+		private string lastPaperTexture = string.Empty;
+
 		private ContainerControl control;
 
 		private float scrollLines = 1f;
@@ -1488,6 +1491,23 @@ namespace cYo.Projects.ComicRack.Engine.Display
 		public void ToogleRealisticPages()
 		{
 			RealisticPages = !RealisticPages;
+		}
+
+		/// <summary>
+		/// Switches the paper texture off, and back on to whichever texture was last chosen.
+		/// Pick a different one in Book Display Settings.
+		/// </summary>
+		public void TogglePaperTexture()
+		{
+			if (!string.IsNullOrEmpty(PaperTexture))
+			{
+				lastPaperTexture = PaperTexture;
+				PaperTexture = string.Empty;
+			}
+			else if (!string.IsNullOrEmpty(lastPaperTexture))
+			{
+				PaperTexture = lastPaperTexture;
+			}
 		}
 
 		public void ToggleFitOnlyIfOversized()
