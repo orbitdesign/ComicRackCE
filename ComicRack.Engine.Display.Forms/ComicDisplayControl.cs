@@ -4459,9 +4459,10 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 				{
 					reach = Math.Max(reach, (p.X - mid.X) * normal.X + (p.Y - mid.Y) * normal.Y);
 				}
-				//Points along the edges, not just the corners: bending a shape by its corners alone
-				//cuts the curve off the rolled end.
-				PointF[] flap = ClipToRect(MapPolygon(Subdivide(lifted, 8f), mid, normal, roll), visible);
+				//Shape for the shadows: where the lifted paper would lie if it folded flat instead of
+				//rolling. The roll takes up paper, so this reaches a little further than the sheet
+				//itself, and the difference is the pocket under the curled edge that should be shaded.
+				PointF[] flap = ClipToRect(MapPolygon(Subdivide(lifted, 8f), mid, normal, 0f), visible);
 				float shadowLength = Math.Min(width * 0.25f, lift * 0.5f) + 4f;
 				float strength = Math.Min(1f, lift / (width * 0.3f));
 				//A single page has nothing on the far side of its hinge for the sheet to land on, so
@@ -4502,11 +4503,9 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 					{
 						clipper.FillPolygon(drop, Color.FromArgb((int)(60 * strength * fade), Color.Black));
 					}
-					PointF[] under = ClipToRect(OffsetPolygon(flap, normal.X * 4f, normal.Y * 4f + 3f), visible);
-					if (under.Length >= 3)
-					{
-						clipper.FillPolygon(under, Color.FromArgb((int)(70 * strength * fade), Color.Black));
-					}
+					//And the pocket itself, where the paper curves back down to the page: the sheet is
+					//drawn over this, so only the part it does not reach stays visible.
+					clipper.FillPolygon(flap, Color.FromArgb((int)(70 * strength * fade), Color.Black));
 				}
 				//5. The lifted part, drawn as slices across the roll. Each slice gets its own
 				//   position along the curve and its own shading, so the paper bends instead of
