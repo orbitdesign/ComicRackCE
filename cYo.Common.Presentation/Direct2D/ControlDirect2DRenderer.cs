@@ -39,7 +39,7 @@ namespace cYo.Common.Presentation.Direct2D
 	/// - Large images are split into tiles only when they exceed the device limit, so a typical
 	///   page is a single GPU bitmap instead of dozens of 512x512 textures.
 	/// </summary>
-	public class ControlDirect2DRenderer : DisposableObject, IControlRenderer, IHardwareRenderer, IGeometryClipRenderer
+	public class ControlDirect2DRenderer : DisposableObject, IControlRenderer, IHardwareRenderer, IGeometryClipRenderer, IOffscreenRenderer
 	{
 		private struct PendingMultiply
 		{
@@ -71,6 +71,18 @@ namespace cYo.Common.Presentation.Direct2D
 		private D2D.WindowRenderTarget target;
 
 		private D2D.DeviceContext context;
+
+		//What drawing currently goes to: the window, or an offscreen surface while one is being
+		//captured. Everything that draws uses these rather than the window target directly.
+		private D2D.RenderTarget surface;
+
+		private D2D.DeviceContext surfaceContext;
+
+		private Offscreen activeOffscreen;
+
+		//Bumped whenever the graphics device is rebuilt, so offscreen surfaces made for the old
+		//one can be spotted and replaced.
+		private int deviceGeneration;
 
 		private D2D.SolidColorBrush brush;
 
@@ -362,7 +374,7 @@ namespace cYo.Common.Presentation.Direct2D
 				usedHighQualityCubic = false;
 				target.BeginDraw();
 				drawing = true;
-				target.Transform = Identity;
+				surface.Transform = Identity;
 				SetPrimitiveBlend(copy: false);
 				Clear(Control.BackColor);
 			}
@@ -396,7 +408,7 @@ namespace cYo.Common.Presentation.Direct2D
 				return;
 			}
 			FlushMultiply();
-			target.Clear(ToColor4(color));
+			surface.Clear(ToColor4(color));
 		}
 
 		public void DrawImage(RendererImage image, RectangleF dest, RectangleF src, BitmapAdjustment ajustment, float opacity)
@@ -427,13 +439,13 @@ namespace cYo.Common.Presentation.Direct2D
 				D2D.InterpolationMode mode = ChooseInterpolation(dest, src);
 				foreach (TilePart part in GetTileParts(entry, dest, src))
 				{
-					if (context != null)
+					if (surfaceContext != null)
 					{
-						context.DrawBitmap(part.Bitmap, part.Dest, opacity, mode, part.Src, null);
+						surfaceContext.DrawBitmap(part.Bitmap, part.Dest, opacity, mode, part.Src, null);
 					}
 					else
 					{
-						target.DrawBitmap(part.Bitmap, part.Dest, opacity, D2D.BitmapInterpolationMode.Linear, part.Src);
+						surface.DrawBitmap(part.Bitmap, part.Dest, opacity, D2D.BitmapInterpolationMode.Linear, part.Src);
 					}
 				}
 			}
@@ -473,7 +485,7 @@ namespace cYo.Common.Presentation.Direct2D
 			}
 			try
 			{
-				target.FillRectangle(ToRect(bounds), brush);
+				surface.FillRectangle(ToRect(bounds), brush);
 			}
 			finally
 			{
@@ -503,7 +515,7 @@ namespace cYo.Common.Presentation.Direct2D
 			{
 				if (!first)
 				{
-					target.DrawLine(new RawVector2(last.X, last.Y), new RawVector2(point.X, point.Y), brush, width);
+					surface.DrawLine(new RawVector2(last.X, last.Y), new RawVector2(point.X, point.Y), brush, width);
 				}
 				last = point;
 				first = false;
@@ -589,9 +601,9 @@ namespace cYo.Common.Presentation.Direct2D
 				Opacity = 1f
 			};
 			//The mask is transformed by the world transform, so push it in screen space.
-			target.Transform = Identity;
-			target.PushLayer(ref parameters, layerPool[layerDepth]);
-			target.Transform = ToRaw(transform.Elements, 0f, 0f);
+			surface.Transform = Identity;
+			surface.PushLayer(ref parameters, layerPool[layerDepth]);
+			surface.Transform = ToRaw(transform.Elements, 0f, 0f);
 			activeLayerGeometries.Add(geometry);
 			activeLayerBounds.Add(PolygonBounds(polygon));
 			layerDepth++;
@@ -611,7 +623,7 @@ namespace cYo.Common.Presentation.Direct2D
 			if (drawing)
 			{
 				FlushMultiply();
-				target.PopLayer();
+				surface.PopLayer();
 			}
 			layerDepth--;
 			if (activeLayerGeometries.Count > layerDepth)
@@ -629,9 +641,9 @@ namespace cYo.Common.Presentation.Direct2D
 			}
 			FlushMultiply();
 			brush.Color = ToColor4(color);
-			target.Transform = Identity;
-			target.FillGeometry(activeLayerGeometries[activeLayerGeometries.Count - 1], brush);
-			target.Transform = ToRaw(transform.Elements, 0f, 0f);
+			surface.Transform = Identity;
+			surface.FillGeometry(activeLayerGeometries[activeLayerGeometries.Count - 1], brush);
+			surface.Transform = ToRaw(transform.Elements, 0f, 0f);
 		}
 
 		public void FillPolygon(PointF[] polygon, Color color)
@@ -644,9 +656,9 @@ namespace cYo.Common.Presentation.Direct2D
 			D2D.PathGeometry geometry = CreatePolygon(polygon);
 			frameTemporaries.Add(geometry);
 			brush.Color = ToColor4(color);
-			target.Transform = Identity;
-			target.FillGeometry(geometry, brush);
-			target.Transform = ToRaw(transform.Elements, 0f, 0f);
+			surface.Transform = Identity;
+			surface.FillGeometry(geometry, brush);
+			surface.Transform = ToRaw(transform.Elements, 0f, 0f);
 		}
 
 		public void FillPolygonGradient(PointF[] polygon, PointF start, Color startColor, PointF end, Color endColor)
@@ -679,9 +691,9 @@ namespace cYo.Common.Presentation.Direct2D
 				EndPoint = new RawVector2(end.X, end.Y)
 			}, collection);
 			frameTemporaries.Add(gradient);
-			target.Transform = Identity;
-			target.FillGeometry(geometry, gradient);
-			target.Transform = ToRaw(transform.Elements, 0f, 0f);
+			surface.Transform = Identity;
+			surface.FillGeometry(geometry, gradient);
+			surface.Transform = ToRaw(transform.Elements, 0f, 0f);
 		}
 
 		/// <summary>
@@ -708,7 +720,7 @@ namespace cYo.Common.Presentation.Direct2D
 			int count = layerDepth;
 			for (int i = 0; i < count; i++)
 			{
-				target.PopLayer();
+				surface.PopLayer();
 			}
 			layerDepth = 0;
 			return count;
@@ -732,12 +744,140 @@ namespace cYo.Common.Presentation.Direct2D
 					MaskTransform = Identity,
 					Opacity = 1f
 				};
-				target.Transform = Identity;
-				target.PushLayer(ref parameters, layerPool[i]);
+				surface.Transform = Identity;
+				surface.PushLayer(ref parameters, layerPool[i]);
 				layerDepth++;
 			}
-			target.Transform = current;
+			surface.Transform = current;
 		}
+
+		#region Offscreen surfaces
+
+		private sealed class Offscreen
+		{
+			public D2D.BitmapRenderTarget Target;
+
+			public D2D.DeviceContext Context;
+
+			public D2D.Bitmap Bitmap;
+
+			public Size Size;
+
+			public int Generation;
+		}
+
+		public object CreateOffscreen(Size size)
+		{
+			if (target == null || size.Width <= 0 || size.Height <= 0)
+			{
+				return null;
+			}
+			try
+			{
+				D2D.BitmapRenderTarget bitmapTarget = new D2D.BitmapRenderTarget(target, D2D.CompatibleRenderTargetOptions.None, new SharpDX.Size2F(size.Width, size.Height));
+				return new Offscreen
+				{
+					Target = bitmapTarget,
+					Context = bitmapTarget.QueryInterfaceOrNull<D2D.DeviceContext>(),
+					Bitmap = bitmapTarget.Bitmap,
+					Size = size,
+					Generation = deviceGeneration
+				};
+			}
+			catch (SharpDX.SharpDXException)
+			{
+				return null;
+			}
+		}
+
+		public bool BeginOffscreen(object handle)
+		{
+			Offscreen offscreen = handle as Offscreen;
+			if (!drawing || offscreen == null || offscreen.Generation != deviceGeneration || activeOffscreen != null || layerDepth > 0 || clipPushed)
+			{
+				//Never start a capture with clips still applied: they belong to the window.
+				return false;
+			}
+			FlushMultiply();
+			try
+			{
+				offscreen.Target.BeginDraw();
+			}
+			catch (SharpDX.SharpDXException)
+			{
+				return false;
+			}
+			activeOffscreen = offscreen;
+			surface = offscreen.Target;
+			surfaceContext = offscreen.Context;
+			surface.AntialiasMode = D2D.AntialiasMode.PerPrimitive;
+			surface.Transform = Identity;
+			surface.Clear(new RawColor4(0f, 0f, 0f, 0f));
+			surface.Transform = ToRaw(transform.Elements, 0f, 0f);
+			return true;
+		}
+
+		public void EndOffscreen()
+		{
+			if (activeOffscreen == null)
+			{
+				return;
+			}
+			FlushMultiply();
+			try
+			{
+				activeOffscreen.Target.EndDraw();
+			}
+			catch (SharpDX.SharpDXException)
+			{
+				//The capture is lost; the caller will simply see an empty surface.
+			}
+			activeOffscreen = null;
+			surface = target;
+			surfaceContext = context;
+			if (surface != null)
+			{
+				surface.Transform = ToRaw(transform.Elements, 0f, 0f);
+			}
+		}
+
+		public void DrawOffscreen(object handle, RectangleF dest, RectangleF src, float opacity)
+		{
+			Offscreen offscreen = handle as Offscreen;
+			if (!drawing || offscreen == null || offscreen.Generation != deviceGeneration || offscreen.Bitmap == null)
+			{
+				return;
+			}
+			opacity *= Opacity;
+			if (opacity < 0.02f || !IsDrawable(dest) || !IsDrawable(src))
+			{
+				return;
+			}
+			FlushMultiply();
+			//The capture is already at screen size, so plain linear sampling is exact.
+			surface.DrawBitmap(offscreen.Bitmap, ToRect(dest), opacity, D2D.BitmapInterpolationMode.Linear, ToRect(src));
+		}
+
+		public void DisposeOffscreen(object handle)
+		{
+			Offscreen offscreen = handle as Offscreen;
+			if (offscreen == null)
+			{
+				return;
+			}
+			if (activeOffscreen == offscreen)
+			{
+				EndOffscreen();
+			}
+			SafeDispose(offscreen.Bitmap);
+			SafeDispose(offscreen.Context);
+			SafeDispose(offscreen.Target);
+			offscreen.Bitmap = null;
+			offscreen.Context = null;
+			offscreen.Target = null;
+		}
+
+		#endregion
 
 		private D2D.PathGeometry CreatePolygon(PointF[] polygon)
 		{
@@ -767,7 +907,7 @@ namespace cYo.Common.Presentation.Direct2D
 				//Layers left open by a caller would make EndDraw fail, so close them first.
 				while (layerDepth > 0)
 				{
-					target.PopLayer();
+					surface.PopLayer();
 					layerDepth--;
 				}
 				activeLayerGeometries.Clear();
@@ -876,6 +1016,8 @@ namespace cYo.Common.Presentation.Direct2D
 			{
 				target.AntialiasMode = D2D.AntialiasMode.PerPrimitive;
 				context = target.QueryInterfaceOrNull<D2D.DeviceContext>();
+				surface = target;
+				surfaceContext = context;
 				brush = new D2D.SolidColorBrush(target, new RawColor4(0f, 0f, 0f, 1f));
 				maxTileSize = Math.Max(512, Math.Min(target.MaximumBitmapSize, 16384));
 				targetHandle = handle;
@@ -918,6 +1060,10 @@ namespace cYo.Common.Presentation.Direct2D
 			multiplyEffect = null;
 			SafeDispose(brush);
 			brush = null;
+			activeOffscreen = null;
+			surface = null;
+			surfaceContext = null;
+			deviceGeneration++;
 			SafeDispose(context);
 			context = null;
 			SafeDispose(target);
@@ -958,9 +1104,9 @@ namespace cYo.Common.Presentation.Direct2D
 
 		private void SetPrimitiveBlend(bool copy)
 		{
-			if (context != null)
+			if (surfaceContext != null)
 			{
-				context.PrimitiveBlend = copy ? D2D.PrimitiveBlend.Copy : D2D.PrimitiveBlend.SourceOver;
+				surfaceContext.PrimitiveBlend = copy ? D2D.PrimitiveBlend.Copy : D2D.PrimitiveBlend.SourceOver;
 			}
 		}
 
@@ -968,7 +1114,7 @@ namespace cYo.Common.Presentation.Direct2D
 		{
 			if (drawing && target != null)
 			{
-				target.Transform = ToRaw(transform.Elements, 0f, 0f);
+				surface.Transform = ToRaw(transform.Elements, 0f, 0f);
 			}
 		}
 
@@ -976,9 +1122,9 @@ namespace cYo.Common.Presentation.Direct2D
 		{
 			//Pushed in device space with an identity transform, so it can be popped and pushed
 			//again later (CopyFromRenderTarget refuses to run while a clip is active).
-			target.Transform = Identity;
-			target.PushAxisAlignedClip(ToRect(clipDevice), D2D.AntialiasMode.Aliased);
-			target.Transform = ToRaw(transform.Elements, 0f, 0f);
+			surface.Transform = Identity;
+			surface.PushAxisAlignedClip(ToRect(clipDevice), D2D.AntialiasMode.Aliased);
+			surface.Transform = ToRaw(transform.Elements, 0f, 0f);
 			clipPushed = true;
 		}
 
@@ -986,7 +1132,7 @@ namespace cYo.Common.Presentation.Direct2D
 		{
 			if (clipPushed)
 			{
-				target.PopAxisAlignedClip();
+				surface.PopAxisAlignedClip();
 				clipPushed = false;
 			}
 		}
@@ -1000,7 +1146,7 @@ namespace cYo.Common.Presentation.Direct2D
 
 		private void QueueMultiply(RendererImage image, RectangleF dest, RectangleF src, BitmapAdjustment adjustment, float opacity)
 		{
-			if (context == null || multiplyFailed || (multiplySkipInLayers && layerDepth > 0))
+			if (surfaceContext == null || multiplyFailed || (multiplySkipInLayers && layerDepth > 0))
 			{
 				//No Direct2D 1.1, or it failed before: leave the paper texture out rather than
 				//painting it over the page as a normal image.
@@ -1056,7 +1202,7 @@ namespace cYo.Common.Presentation.Direct2D
 				try
 				{
 					PopClip();
-					multiplyScratch.CopyFromRenderTarget(target, new RawPoint(0, 0), new RawRectangle(region.Left, region.Top, region.Right, region.Bottom));
+					multiplyScratch.CopyFromRenderTarget(surface, new RawPoint(0, 0), new RawRectangle(region.Left, region.Top, region.Right, region.Bottom));
 				}
 				finally
 				{
@@ -1094,15 +1240,15 @@ namespace cYo.Common.Presentation.Direct2D
 				frameTemporaries.Add(layerBitmap);
 				if (multiplyEffect == null)
 				{
-					multiplyEffect = new D2D.Effects.Blend(context);
+					multiplyEffect = new D2D.Effects.Blend(surfaceContext);
 					multiplyEffect.Mode = D2D.BlendMode.Multiply;
 				}
 				//Input 0 is the destination (what is on screen), input 1 the source (the texture).
 				multiplyEffect.SetInput(0, multiplyScratch, true);
 				multiplyEffect.SetInput(1, layerBitmap, true);
-				target.Transform = Identity;
-				context.DrawImage(multiplyEffect, new RawVector2(region.X, region.Y), D2D.InterpolationMode.NearestNeighbor, D2D.CompositeMode.SourceOver);
-				target.Transform = ToRaw(transform.Elements, 0f, 0f);
+				surface.Transform = Identity;
+				surfaceContext.DrawImage(multiplyEffect, new RawVector2(region.X, region.Y), D2D.InterpolationMode.NearestNeighbor, D2D.CompositeMode.SourceOver);
+				surface.Transform = ToRaw(transform.Elements, 0f, 0f);
 				multiplyFailures = 0;
 			}
 			catch (Exception)
@@ -1121,7 +1267,7 @@ namespace cYo.Common.Presentation.Direct2D
 				ReleaseMultiplyResources();
 				if (drawing && target != null)
 				{
-					target.Transform = ToRaw(transform.Elements, 0f, 0f);
+					surface.Transform = ToRaw(transform.Elements, 0f, 0f);
 				}
 			}
 			finally

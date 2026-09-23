@@ -4141,6 +4141,17 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 
 		private bool dragCornerMode;
 
+		//This frame's pictures of the two pages, kept between frames and rebuilt when the window
+		//changes size.
+		private object peelOldCapture;
+
+		private object peelNewCapture;
+
+		private Size peelCaptureSize;
+
+		//Which renderer the pictures belong to, so they are dropped if the renderer is swapped.
+		private IOffscreenRenderer peelCaptureOwner;
+
 		private bool dragPeelRight;
 
 		private PointF dragCorner;
@@ -4350,13 +4361,15 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 			Rectangle client = base.ClientRectangle;
 			System.Drawing.Drawing2D.Matrix baseTransform = hr.Transform;
 			float opacity = hr.Opacity;
-			//While the page is moving, sample it the cheap way. High quality sampling of a very
-			//large scan, a dozen times per frame, is what makes big books stutter, and the
-			//difference is invisible on a page in motion.
+			//Draw each page once into an offscreen picture the size of the window, then fold that
+			//picture. Without this every slice of the fold redraws the page, which is ruinous on a
+			//7000 pixel scan. It also means the fold shows the page at full quality.
+			bool captured = CapturePeelPages(hr, oldOut, oldPageIndex, newOut, newPageIndex);
 			IHardwareRenderer hardware = hr as IHardwareRenderer;
 			bool wasOptimized = hardware != null && hardware.OptimizedTextures;
-			if (hardware != null)
+			if (hardware != null && !captured)
 			{
+				//Falling back to redrawing per slice: sample the cheap way while it moves.
 				hardware.OptimizedTextures = true;
 			}
 			try
@@ -4369,14 +4382,14 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 					RectangleF peelSide = peelRight ? RectangleF.FromLTRB(spine, client.Top, client.Right, client.Bottom) : RectangleF.FromLTRB(client.Left, client.Top, spine, client.Bottom);
 					RectangleF otherSide = peelRight ? RectangleF.FromLTRB(client.Left, client.Top, spine, client.Bottom) : RectangleF.FromLTRB(spine, client.Top, client.Right, client.Bottom);
 					SetCurlClip(hr, baseTransform, peelSide);
-					RenderImageSafe(hr, newOut, newPageIndex, RenderType.WithoutBackground);
+					DrawPeelPage(hr, captured, isOld: false, newOut, newPageIndex);
 					SetCurlClip(hr, baseTransform, otherSide);
-					RenderImageSafe(hr, oldOut, oldPageIndex, RenderType.WithoutBackground);
+					DrawPeelPage(hr, captured, isOld: true, oldOut, oldPageIndex);
 				}
 				else
 				{
 					SetCurlClip(hr, baseTransform, RectangleF.Empty);
-					RenderImageSafe(hr, newOut, newPageIndex, RenderType.WithoutBackground);
+					DrawPeelPage(hr, captured, isOld: false, newOut, newPageIndex);
 				}
 				SetCurlClip(hr, baseTransform, RectangleF.Empty);
 				float lift = Distance(corner, mouse);
@@ -4384,7 +4397,7 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 				if (lift < 0.5f)
 				{
 					clipper.PushPolygonClip(sheetPolygon);
-					RenderImageSafe(hr, oldOut, oldPageIndex, RenderType.WithoutBackground);
+					DrawPeelPage(hr, captured, isOld: true, oldOut, oldPageIndex);
 					clipper.PopPolygonClip();
 					return;
 				}
@@ -4412,7 +4425,7 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 				if (flat.Length >= 3)
 				{
 					clipper.PushPolygonClip(flat);
-					RenderImageSafe(hr, oldOut, oldPageIndex, RenderType.WithoutBackground);
+					DrawPeelPage(hr, captured, isOld: true, oldOut, oldPageIndex);
 					clipper.PopPolygonClip();
 				}
 				//3. Shadow the lifted flap throws on the uncovered page, darkest at the crease.
@@ -4489,7 +4502,7 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 							}
 							hr.Transform = m;
 							hr.Opacity = 1f;
-							RenderImageSafe(hr, newOut, newPageIndex, RenderType.WithoutBackground);
+							DrawPeelPage(hr, captured, isOld: false, newOut, newPageIndex);
 						}
 						else
 						{
@@ -4499,7 +4512,7 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 							m.Multiply(fold);
 							hr.Transform = m;
 							hr.Opacity = 0.12f;
-							RenderImageSafe(hr, oldOut, oldPageIndex, RenderType.WithoutBackground);
+							DrawPeelPage(hr, captured, isOld: true, oldOut, oldPageIndex);
 						}
 						hr.Transform = baseTransform;
 						hr.Opacity = opacity;
@@ -4525,6 +4538,97 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 					hardware.OptimizedTextures = wasOptimized;
 				}
 			}
+		}
+
+		/// <summary>
+		/// Draws one of the two pages, either from this frame's capture or, when captures are
+		/// not available, by rendering it again.
+		/// </summary>
+		private void DrawPeelPage(IBitmapRenderer hr, bool captured, bool isOld, DisplayOutput output, int page)
+		{
+			if (captured)
+			{
+				RectangleF all = base.ClientRectangle;
+				((IOffscreenRenderer)hr).DrawOffscreen(isOld ? peelOldCapture : peelNewCapture, all, all, 1f);
+			}
+			else
+			{
+				RenderImageSafe(hr, output, page, RenderType.WithoutBackground);
+			}
+		}
+
+		/// <summary>
+		/// Renders both pages into offscreen pictures for this frame. Returns false when the
+		/// renderer cannot do it, and the caller redraws per slice instead.
+		/// </summary>
+		private bool CapturePeelPages(IBitmapRenderer hr, DisplayOutput oldOut, int oldPageIndex, DisplayOutput newOut, int newPageIndex)
+		{
+			IOffscreenRenderer offscreen = hr as IOffscreenRenderer;
+			Size size = base.ClientRectangle.Size;
+			if (offscreen == null || size.Width <= 0 || size.Height <= 0)
+			{
+				return false;
+			}
+			if (peelCaptureOwner != offscreen)
+			{
+				//A different renderer: the old pictures belong to something that is gone.
+				peelOldCapture = null;
+				peelNewCapture = null;
+				peelCaptureSize = Size.Empty;
+				peelCaptureOwner = offscreen;
+			}
+			if (peelCaptureSize != size)
+			{
+				ReleasePeelCaptures(offscreen);
+				peelCaptureOwner = offscreen;
+			}
+			if (peelOldCapture == null)
+			{
+				peelOldCapture = offscreen.CreateOffscreen(size);
+				peelNewCapture = offscreen.CreateOffscreen(size);
+				peelCaptureSize = size;
+			}
+			if (peelOldCapture == null || peelNewCapture == null)
+			{
+				ReleasePeelCaptures(offscreen);
+				return false;
+			}
+			if (!CaptureOne(hr, offscreen, peelOldCapture, oldOut, oldPageIndex) || !CaptureOne(hr, offscreen, peelNewCapture, newOut, newPageIndex))
+			{
+				//Usually means the graphics device was rebuilt; try again next frame.
+				ReleasePeelCaptures(offscreen);
+				return false;
+			}
+			return true;
+		}
+
+		private bool CaptureOne(IBitmapRenderer hr, IOffscreenRenderer offscreen, object capture, DisplayOutput output, int page)
+		{
+			if (!offscreen.BeginOffscreen(capture))
+			{
+				return false;
+			}
+			try
+			{
+				RenderImageSafe(hr, output, page, RenderType.WithoutBackground);
+			}
+			finally
+			{
+				offscreen.EndOffscreen();
+			}
+			return true;
+		}
+
+		private void ReleasePeelCaptures(IOffscreenRenderer offscreen)
+		{
+			if (offscreen != null)
+			{
+				offscreen.DisposeOffscreen(peelOldCapture);
+				offscreen.DisposeOffscreen(peelNewCapture);
+			}
+			peelOldCapture = null;
+			peelNewCapture = null;
+			peelCaptureSize = Size.Empty;
 		}
 
 		#endregion
