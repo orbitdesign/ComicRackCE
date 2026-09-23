@@ -418,7 +418,7 @@ namespace cYo.Common.Presentation.Direct2D
 			}
 			try
 			{
-				D2D.InterpolationMode mode = ChooseInterpolation();
+				D2D.InterpolationMode mode = ChooseInterpolation(dest, src);
 				foreach (TilePart part in GetTileParts(entry, dest, src))
 				{
 					if (context != null)
@@ -914,9 +914,18 @@ namespace cYo.Common.Presentation.Direct2D
 			multiplySize = Size.Empty;
 		}
 
-		private D2D.InterpolationMode ChooseInterpolation()
+		private D2D.InterpolationMode ChooseInterpolation(RectangleF dest, RectangleF src)
 		{
-			if (EnableFilter && !OptimizedTextures && !highQualityCubicFailed)
+			if (OptimizedTextures || highQualityCubicFailed)
+			{
+				//Something is moving, or the driver rejected cubic sampling.
+				return D2D.InterpolationMode.Linear;
+			}
+			bool shrinking = src.Width > 0f && src.Height > 0f && (dest.Width < src.Width * 0.95f || dest.Height < src.Height * 0.95f);
+			//Shrinking a page is where sampling quality shows, so use the good filter there even
+			//when hardware filters are switched off. Direct2D does this on the GPU, unlike the old
+			//OpenGL renderer where the option paid for hand built mip maps.
+			if (EnableFilter || shrinking)
 			{
 				usedHighQualityCubic = true;
 				return HighQualityCubic;
