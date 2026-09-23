@@ -4374,9 +4374,11 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 		{
 			GetPeelGeometry(oldOut, peelRight, out bool spread, out RectangleF sheet, out RectangleF visible, out float spine);
 			Rectangle client = base.ClientRectangle;
-			//Paper folded at an angle reaches past the top or bottom of the page, exactly as it
-			//would in life. Cutting it off at the page edge left a straight break across the sheet.
-			visible = RectangleF.FromLTRB(visible.Left, client.Top, visible.Right, client.Bottom);
+			//Paper folded at an angle reaches past the edges of the page, exactly as it would in
+			//life, and cutting it off there left a straight break across the sheet. The only edge
+			//that still cuts is a single page's far edge: once the sheet has swung past there it
+			//has left the book and should be gone.
+			visible = client;
 			System.Drawing.Drawing2D.Matrix baseTransform = hr.Transform;
 			float opacity = hr.Opacity;
 			//Draw each page once into an offscreen picture the size of the window, then fold that
@@ -4438,6 +4440,18 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 				PointF[] flap = ClipToRect(MapPolygon((PointF[])lifted.Clone(), mid, normal, roll), visible);
 				float shadowLength = Math.Min(width * 0.25f, lift * 0.5f) + 4f;
 				float strength = Math.Min(1f, lift / (width * 0.3f));
+				//A single page has nothing on the far side of its hinge for the sheet to land on, so
+				//once it swings past there it fades away rather than being chopped off at the edge.
+				float fade = 1f;
+				if (!spread)
+				{
+					float turn = creaseDistance / Math.Max(1f, Math.Abs(corner.X - spine));
+					fade = ((1f - turn) / 0.25f).Clamp(0f, 1f);
+					if (fade <= 0.01f)
+					{
+						return;
+					}
+				}
 
 				//2. The part of the old page still lying flat.
 				if (flat.Length >= 3)
@@ -4457,7 +4471,7 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 					PointF[] drop = ClipToRect(OffsetPolygon(flap, -normal.X * 5f, -normal.Y * 5f + 2f), visible);
 					if (drop.Length >= 3)
 					{
-						clipper.FillPolygon(drop, Color.FromArgb((int)(60 * strength), Color.Black));
+						clipper.FillPolygon(drop, Color.FromArgb((int)(60 * strength * fade), Color.Black));
 					}
 				}
 				//5. The lifted part, drawn as slices across the roll. Each slice gets its own
@@ -4525,17 +4539,17 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 								combined.Dispose();
 							}
 							hr.Transform = m;
-							hr.Opacity = 1f;
+							hr.Opacity = fade;
 							DrawPeelPage(hr, captured, isOld: false, newOut, newPageIndex);
 						}
 						else
 						{
 							//A single page has plain paper on its back, with the print faintly
 							//showing through.
-							clipper.FillCurrentClip(PageCurlPaperColor);
+							clipper.FillCurrentClip(Color.FromArgb((int)(255 * fade), PageCurlPaperColor));
 							m.Multiply(fold);
 							hr.Transform = m;
-							hr.Opacity = 0.12f;
+							hr.Opacity = 0.12f * fade;
 							DrawPeelPage(hr, captured, isOld: true, oldOut, oldPageIndex);
 						}
 						hr.Transform = baseTransform;
@@ -4545,8 +4559,8 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 					//Light: paper facing the viewer is bright, paper turned edge on is dark. The
 					//shade runs across each slice rather than being flat, so the tone is continuous
 					//over the whole roll instead of stepping at every join.
-					int shade0 = RollShade(u0, roll, strength);
-					int shade1 = RollShade(u1, roll, strength);
+					int shade0 = RollShade(u0, roll, strength * fade);
+					int shade1 = RollShade(u1, roll, strength * fade);
 					if (shade0 > 2 || shade1 > 2)
 					{
 						PointF from = new PointF(mid.X + normal.X * x0, mid.Y + normal.Y * x0);
