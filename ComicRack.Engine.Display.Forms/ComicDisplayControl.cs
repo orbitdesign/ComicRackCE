@@ -4289,6 +4289,28 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 		}
 
 		/// <summary>
+		/// Adds points along every edge of a polygon, so that bending it keeps its shape instead
+		/// of cutting corners.
+		/// </summary>
+		private static PointF[] Subdivide(PointF[] polygon, float step)
+		{
+			List<PointF> result = new List<PointF>(polygon.Length * 4);
+			for (int i = 0; i < polygon.Length; i++)
+			{
+				PointF a = polygon[i];
+				PointF b = polygon[(i + 1) % polygon.Length];
+				result.Add(a);
+				int parts = (int)(Distance(a, b) / Math.Max(1f, step));
+				for (int k = 1; k < parts; k++)
+				{
+					float t = (float)k / parts;
+					result.Add(new PointF(a.X + (b.X - a.X) * t, a.Y + (b.Y - a.Y) * t));
+				}
+			}
+			return result.ToArray();
+		}
+
+		/// <summary>
 		/// Rolls every point of a polygon, writing over the polygon it was given.
 		/// </summary>
 		private static PointF[] MapPolygon(PointF[] polygon, PointF origin, PointF normal, float roll)
@@ -4437,7 +4459,9 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 				{
 					reach = Math.Max(reach, (p.X - mid.X) * normal.X + (p.Y - mid.Y) * normal.Y);
 				}
-				PointF[] flap = ClipToRect(MapPolygon((PointF[])lifted.Clone(), mid, normal, roll), visible);
+				//Points along the edges, not just the corners: bending a shape by its corners alone
+				//cuts the curve off the rolled end.
+				PointF[] flap = ClipToRect(MapPolygon(Subdivide(lifted, 8f), mid, normal, roll), visible);
 				float shadowLength = Math.Min(width * 0.25f, lift * 0.5f) + 4f;
 				float strength = Math.Min(1f, lift / (width * 0.3f));
 				//A single page has nothing on the far side of its hinge for the sheet to land on, so
@@ -4469,11 +4493,19 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 				}
 				if (flap.Length >= 3)
 				{
-					//4. Soft drop shadow of the rolled part onto the page below it.
+					//4. Soft drop shadow of the rolled part onto the page below it. Two offsets: one
+					//   towards the fold, and one the other way so the shadow also shows in the pocket
+					//   under the rolled edge, where the paper curves back down to the page. Only the
+					//   parts that stick out past the sheet are seen, since the sheet is drawn over it.
 					PointF[] drop = ClipToRect(OffsetPolygon(flap, -normal.X * 5f, -normal.Y * 5f + 2f), visible);
 					if (drop.Length >= 3)
 					{
 						clipper.FillPolygon(drop, Color.FromArgb((int)(60 * strength * fade), Color.Black));
+					}
+					PointF[] under = ClipToRect(OffsetPolygon(flap, normal.X * 4f, normal.Y * 4f + 3f), visible);
+					if (under.Length >= 3)
+					{
+						clipper.FillPolygon(under, Color.FromArgb((int)(70 * strength * fade), Color.Black));
 					}
 				}
 				//5. The lifted part, drawn as slices across the roll. Each slice gets its own
