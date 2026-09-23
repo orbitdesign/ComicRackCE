@@ -118,40 +118,49 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
         public EventWaitHandle Initialized => initialized;
 
         /// <summary>
-        /// Height of the dark band along the bottom of the artwork, which all the text sits in.
+        /// Height of the text area at the bottom of the artwork.
         /// </summary>
         protected int BandHeight => FormUtility.ScaleDpiY(34);
+
+        /// <summary>
+        /// Inset from the edges of the artwork that all text and the progress bar keep to.
+        /// </summary>
+        protected int TextMargin => FormUtility.ScaleDpiX(18);
 
         protected Rectangle ProgressBounds
         {
             get
             {
                 Rectangle clientRectangle = base.ClientRectangle;
-                return new Rectangle(clientRectangle.Left + FormUtility.ScaleDpiX(2), clientRectangle.Bottom - FormUtility.ScaleDpiY(4), clientRectangle.Width - FormUtility.ScaleDpiX(4), FormUtility.ScaleDpiY(2));
+                int height = FormUtility.ScaleDpiY(3);
+                return new Rectangle(clientRectangle.Left + TextMargin, clientRectangle.Bottom - TextMargin - height, clientRectangle.Width - 2 * TextMargin, height);
             }
         }
 
         /// <summary>
-        /// Startup messages: left half of the band.
+        /// Startup messages: bottom left, inside the margin.
         /// </summary>
         protected Rectangle MessageBounds
         {
             get
             {
                 Rectangle clientRectangle = base.ClientRectangle;
-                return new Rectangle(clientRectangle.Left + FormUtility.ScaleDpiX(10), clientRectangle.Bottom - BandHeight, clientRectangle.Width / 2, BandHeight - FormUtility.ScaleDpiY(6));
+                int bottom = ProgressBounds.Top - FormUtility.ScaleDpiY(5);
+                return new Rectangle(clientRectangle.Left + TextMargin, bottom - BandHeight, clientRectangle.Width * 3 / 10, BandHeight);
             }
         }
 
         /// <summary>
-        /// Copyright and version: right half of the band.
+        /// Copyright and version: bottom right, inside the margin.
         /// </summary>
         protected Rectangle VersionBounds
         {
             get
             {
                 Rectangle clientRectangle = base.ClientRectangle;
-                return new Rectangle(clientRectangle.Left + clientRectangle.Width / 2, clientRectangle.Bottom - BandHeight, clientRectangle.Width / 2 - FormUtility.ScaleDpiX(10), BandHeight - FormUtility.ScaleDpiY(6));
+                int bottom = ProgressBounds.Top - FormUtility.ScaleDpiY(5);
+                int left = clientRectangle.Left + TextMargin + clientRectangle.Width * 3 / 10;
+                return Rectangle.FromLTRB(left, bottom - BandHeight, clientRectangle.Right - TextMargin, bottom);
             }
         }
 
@@ -306,7 +315,8 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
             using (StringFormat rightFormat = new StringFormat
             {
                 Alignment = StringAlignment.Far,
-                LineAlignment = StringAlignment.Center
+                LineAlignment = StringAlignment.Far,
+                Trimming = StringTrimming.EllipsisCharacter
             })
             {
                 DrawOutlinedString(e.Graphics, str, Font, Color.White, VersionBounds, rightFormat);
