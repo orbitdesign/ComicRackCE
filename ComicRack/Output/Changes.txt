@@ -1,4 +1,4 @@
-orbitdesign Build 1.25 (based on Community Edition 0.9.184):
+orbitdesign Build 1.26 (based on Community Edition 0.9.184):
 
 * 1.1 FIX: Hardware acceleration stability. Fixed OpenGL extension detection, replaced the deprecated automatic mip map generation that crashed some drivers, checked texture uploads for errors, and added a startup guard that switches hardware acceleration off for one session if ComicRack failed to start last time.
 * 1.2 NEW: Direct2D renderer for the reader. Used by default when hardware acceleration is on, with OpenGL and then software rendering as fallbacks. Handles graphics device resets, uses high quality cubic sampling for "Enable Hardware Filters", and supports paper textures. Start with -hwgl to use the old OpenGL renderer.
@@ -25,6 +25,7 @@ orbitdesign Build 1.25 (based on Community Edition 0.9.184):
 * 1.23 CHANGE: Pages are now sent to the graphics card at the size they are shown rather than at full scan resolution, which cuts video memory for a large scan from hundreds of megabytes per page to a few, and makes a page appear sooner. Zooming in reloads the page at the detail needed.
 * 1.24 FIX: Thin lines showed across a bending page where the slices of the roll met. The slices are now cut with hard edges so they meet exactly.
 * 1.25 FIX: Lines still showed across a bending page. The shading is now a gradient running over the roll instead of a flat tint per slice, and the roll is built from 16 slices when pages are drawn from a capture.
+* 1.26 FIX: A dragged page broke along a straight line when the fold ran at an angle, because the lifted paper was cut off at the top and bottom edges of the page. It can now hang past them, and the slices of the roll overlap slightly so no hairline gap can appear between them.
 
 
 Community Edition Build 0.9.184:

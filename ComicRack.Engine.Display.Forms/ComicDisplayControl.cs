@@ -4374,6 +4374,9 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 		{
 			GetPeelGeometry(oldOut, peelRight, out bool spread, out RectangleF sheet, out RectangleF visible, out float spine);
 			Rectangle client = base.ClientRectangle;
+			//Paper folded at an angle reaches past the top or bottom of the page, exactly as it
+			//would in life. Cutting it off at the page edge left a straight break across the sheet.
+			visible = RectangleF.FromLTRB(visible.Left, client.Top, visible.Right, client.Bottom);
 			System.Drawing.Drawing2D.Matrix baseTransform = hr.Transform;
 			float opacity = hr.Opacity;
 			//Draw each page once into an offscreen picture the size of the window, then fold that
@@ -4485,8 +4488,12 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 					{
 						continue;
 					}
-					PointF[] band = ClipHalfPlane(lifted, new PointF(mid.X + normal.X * u0, mid.Y + normal.Y * u0), normal, keepNegative: false);
-					band = ClipHalfPlane(band, new PointF(mid.X + normal.X * u1, mid.Y + normal.Y * u1), normal, keepNegative: true);
+					//Take a sliver more paper than the slice needs at each end: neighbouring slices
+					//then overlap instead of risking a hairline gap where they meet.
+					float cut0 = u0 - 0.5f;
+					float cut1 = (k < curved) ? (u1 + 0.5f) : (reach + 2f);
+					PointF[] band = ClipHalfPlane(lifted, new PointF(mid.X + normal.X * cut0, mid.Y + normal.Y * cut0), normal, keepNegative: false);
+					band = ClipHalfPlane(band, new PointF(mid.X + normal.X * cut1, mid.Y + normal.Y * cut1), normal, keepNegative: true);
 					if (band.Length < 3)
 					{
 						continue;
