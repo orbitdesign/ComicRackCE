@@ -124,6 +124,14 @@ namespace cYo.Common.Presentation.Direct2D
 
 		private readonly List<D2D.Layer> layerPool = new List<D2D.Layer>();
 
+		//Geometry of each layer currently pushed, so they can be popped and pushed again around
+		//operations that Direct2D refuses to do inside a layer.
+		private readonly List<D2D.PathGeometry> activeLayerGeometries = new List<D2D.PathGeometry>();
+
+		//Bounding box of each active layer, so work can be limited to the part of the frame the
+		//layers actually let through.
+		private readonly List<RectangleF> activeLayerBounds = new List<RectangleF>();
+
 		//One entry per PushPolygonClip: true when a Direct2D layer was really pushed, false for a
 		//no-op push, so every PopPolygonClip undoes exactly its own push.
 		private readonly Stack<bool> clipLayers = new Stack<bool>();
@@ -573,6 +581,8 @@ namespace cYo.Common.Presentation.Direct2D
 			target.Transform = Identity;
 			target.PushLayer(ref parameters, layerPool[layerDepth]);
 			target.Transform = ToRaw(transform.Elements, 0f, 0f);
+			activeLayerGeometries.Add(geometry);
+			activeLayerBounds.Add(PolygonBounds(polygon));
 			layerDepth++;
 			clipLayers.Push(true);
 		}
@@ -593,6 +603,11 @@ namespace cYo.Common.Presentation.Direct2D
 				target.PopLayer();
 			}
 			layerDepth--;
+			if (activeLayerGeometries.Count > layerDepth)
+			{
+				activeLayerGeometries.RemoveAt(activeLayerGeometries.Count - 1);
+				activeLayerBounds.RemoveAt(activeLayerBounds.Count - 1);
+			}
 		}
 
 		public void FillPolygon(PointF[] polygon, Color color)
@@ -645,6 +660,59 @@ namespace cYo.Common.Presentation.Direct2D
 			target.Transform = ToRaw(transform.Elements, 0f, 0f);
 		}
 
+		/// <summary>
+		/// Pops every layer, remembering them, and returns how many were popped.
+		/// </summary>
+		private static RectangleF PolygonBounds(PointF[] polygon)
+		{
+			float minX = float.MaxValue;
+			float minY = float.MaxValue;
+			float maxX = float.MinValue;
+			float maxY = float.MinValue;
+			foreach (PointF p in polygon)
+			{
+				minX = Math.Min(minX, p.X);
+				minY = Math.Min(minY, p.Y);
+				maxX = Math.Max(maxX, p.X);
+				maxY = Math.Max(maxY, p.Y);
+			}
+			return RectangleF.FromLTRB(minX, minY, maxX, maxY);
+		}
+
+		private int SuspendLayers()
+		{
+			int count = layerDepth;
+			for (int i = 0; i < count; i++)
+			{
+				target.PopLayer();
+			}
+			layerDepth = 0;
+			return count;
+		}
+
+		/// <summary>
+		/// Pushes the layers again, in the order they were originally pushed.
+		/// </summary>
+		private void ResumeLayers(int count)
+		{
+			RawMatrix3x2 current = ToRaw(transform.Elements, 0f, 0f);
+			for (int i = 0; i < count && i < activeLayerGeometries.Count; i++)
+			{
+				D2D.LayerParameters parameters = new D2D.LayerParameters
+				{
+					ContentBounds = new RawRectangleF(float.MinValue, float.MinValue, float.MaxValue, float.MaxValue),
+					GeometricMask = activeLayerGeometries[i],
+					MaskAntialiasMode = D2D.AntialiasMode.PerPrimitive,
+					MaskTransform = Identity,
+					Opacity = 1f
+				};
+				target.Transform = Identity;
+				target.PushLayer(ref parameters, layerPool[i]);
+				layerDepth++;
+			}
+			target.Transform = current;
+		}
+
 		private D2D.PathGeometry CreatePolygon(PointF[] polygon)
 		{
 			D2D.PathGeometry geometry = new D2D.PathGeometry(factory);
@@ -676,6 +744,8 @@ namespace cYo.Common.Presentation.Direct2D
 					target.PopLayer();
 					layerDepth--;
 				}
+				activeLayerGeometries.Clear();
+				activeLayerBounds.Clear();
 				clipLayers.Clear();
 				PopClip();
 				try
@@ -810,6 +880,8 @@ namespace cYo.Common.Presentation.Direct2D
 				SafeDispose(layer);
 			}
 			layerPool.Clear();
+			activeLayerGeometries.Clear();
+			activeLayerBounds.Clear();
 			layerDepth = 0;
 			clipLayers.Clear();
 			SafeDispose(multiplyEffect);
@@ -915,20 +987,19 @@ namespace cYo.Common.Presentation.Direct2D
 			{
 				return;
 			}
-			if (layerDepth > 0)
-			{
-				//CopyFromRenderTarget refuses to run inside a layer. Skip the texture for this part
-				//of the frame (only happens while a page is being folded) but keep it enabled.
-				pendingMultiply.Clear();
-				pendingMultiplyBounds = RectangleF.Empty;
-				return;
-			}
+
 			try
 			{
 				RectangleF bounds = pendingMultiplyBounds;
 				if (clipPushed)
 				{
 					bounds.Intersect(clipDevice);
+				}
+				foreach (RectangleF layerBounds in activeLayerBounds)
+				{
+					//Only the part the layers let through can be affected, so only that part has to
+					//be copied and blended.
+					bounds.Intersect(layerBounds);
 				}
 				bounds.Intersect(new RectangleF(0f, 0f, targetSize.Width, targetSize.Height));
 				Rectangle region = Rectangle.FromLTRB((int)Math.Floor(bounds.Left), (int)Math.Floor(bounds.Top), (int)Math.Ceiling(bounds.Right), (int)Math.Ceiling(bounds.Bottom));
@@ -938,13 +1009,18 @@ namespace cYo.Common.Presentation.Direct2D
 					return;
 				}
 				EnsureMultiplyResources(region.Size);
+				//Copying from the target is refused while any clip or layer is active, so take them
+				//off for the copy and put them straight back. The blend itself is then drawn inside
+				//them again, which is what keeps paper textures working on a folded page.
 				bool hadClip = clipPushed;
+				int suspended = SuspendLayers();
 				PopClip();
 				multiplyScratch.CopyFromRenderTarget(target, new RawPoint(0, 0), new RawRectangle(region.Left, region.Top, region.Right, region.Bottom));
 				if (hadClip)
 				{
 					PushClip();
 				}
+				ResumeLayers(suspended);
 				multiplyLayer.BeginDraw();
 				try
 				{
