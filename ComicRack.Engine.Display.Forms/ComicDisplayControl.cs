@@ -4485,7 +4485,8 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 					{
 						continue;
 					}
-					clipper.PushPolygonClip(slice);
+					//Hard edges: neighbouring slices meet exactly, with no seam along the join.
+					clipper.PushPolygonClip(slice, smoothEdges: false);
 					using (System.Drawing.Drawing2D.Matrix fold = RollMatrix(mid, normal, slope, shift))
 					{
 						System.Drawing.Drawing2D.Matrix m = baseTransform.Clone();

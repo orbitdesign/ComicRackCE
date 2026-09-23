@@ -150,6 +150,8 @@ namespace cYo.Common.Presentation.Direct2D
 		//layers actually let through.
 		private readonly List<RectangleF> activeLayerBounds = new List<RectangleF>();
 
+		private readonly List<bool> activeLayerSmooth = new List<bool>();
+
 		//One entry per PushPolygonClip: true when a Direct2D layer was really pushed, false for a
 		//no-op push, so every PopPolygonClip undoes exactly its own push.
 		private readonly Stack<bool> clipLayers = new Stack<bool>();
@@ -575,6 +577,11 @@ namespace cYo.Common.Presentation.Direct2D
 
 		public void PushPolygonClip(PointF[] polygon)
 		{
+			PushPolygonClip(polygon, smoothEdges: true);
+		}
+
+		public void PushPolygonClip(PointF[] polygon, bool smoothEdges)
+		{
 			if (!drawing || polygon == null || polygon.Length < 3)
 			{
 				clipLayers.Push(false);
@@ -596,7 +603,7 @@ namespace cYo.Common.Presentation.Direct2D
 				//ruinous when a page is drawn as a dozen thin slices.
 				ContentBounds = ToRect(area),
 				GeometricMask = geometry,
-				MaskAntialiasMode = D2D.AntialiasMode.PerPrimitive,
+				MaskAntialiasMode = (smoothEdges ? D2D.AntialiasMode.PerPrimitive : D2D.AntialiasMode.Aliased),
 				MaskTransform = Identity,
 				Opacity = 1f
 			};
@@ -606,6 +613,7 @@ namespace cYo.Common.Presentation.Direct2D
 			surface.Transform = ToRaw(transform.Elements, 0f, 0f);
 			activeLayerGeometries.Add(geometry);
 			activeLayerBounds.Add(PolygonBounds(polygon));
+			activeLayerSmooth.Add(smoothEdges);
 			layerDepth++;
 			clipLayers.Push(true);
 		}
@@ -630,6 +638,7 @@ namespace cYo.Common.Presentation.Direct2D
 			{
 				activeLayerGeometries.RemoveAt(activeLayerGeometries.Count - 1);
 				activeLayerBounds.RemoveAt(activeLayerBounds.Count - 1);
+				activeLayerSmooth.RemoveAt(activeLayerSmooth.Count - 1);
 			}
 		}
 
@@ -740,7 +749,7 @@ namespace cYo.Common.Presentation.Direct2D
 				{
 					ContentBounds = ToRect(area),
 					GeometricMask = activeLayerGeometries[i],
-					MaskAntialiasMode = D2D.AntialiasMode.PerPrimitive,
+					MaskAntialiasMode = (activeLayerSmooth[i] ? D2D.AntialiasMode.PerPrimitive : D2D.AntialiasMode.Aliased),
 					MaskTransform = Identity,
 					Opacity = 1f
 				};
@@ -912,6 +921,7 @@ namespace cYo.Common.Presentation.Direct2D
 				}
 				activeLayerGeometries.Clear();
 				activeLayerBounds.Clear();
+				activeLayerSmooth.Clear();
 				clipLayers.Clear();
 				PopClip();
 				try
@@ -1054,6 +1064,7 @@ namespace cYo.Common.Presentation.Direct2D
 			layerPool.Clear();
 			activeLayerGeometries.Clear();
 			activeLayerBounds.Clear();
+			activeLayerSmooth.Clear();
 			layerDepth = 0;
 			clipLayers.Clear();
 			SafeDispose(multiplyEffect);

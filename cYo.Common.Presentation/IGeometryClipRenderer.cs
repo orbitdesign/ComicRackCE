@@ -11,6 +11,13 @@ namespace cYo.Common.Presentation
 	{
 		void PushPolygonClip(PointF[] polygon);
 
+		/// <summary>
+		/// As above, but lets the caller ask for hard edges. Shapes that are drawn side by side to
+		/// make up one surface must use hard edges: with smoothed edges each shape only partly
+		/// covers the pixels along the join, and the seam shows as a thin line.
+		/// </summary>
+		void PushPolygonClip(PointF[] polygon, bool smoothEdges);
+
 		void PopPolygonClip();
 
 		void FillPolygon(PointF[] polygon, Color color);
