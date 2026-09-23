@@ -4289,28 +4289,6 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 		}
 
 		/// <summary>
-		/// Adds points along every edge of a polygon, so that bending it keeps its shape instead
-		/// of cutting corners.
-		/// </summary>
-		private static PointF[] Subdivide(PointF[] polygon, float step)
-		{
-			List<PointF> result = new List<PointF>(polygon.Length * 4);
-			for (int i = 0; i < polygon.Length; i++)
-			{
-				PointF a = polygon[i];
-				PointF b = polygon[(i + 1) % polygon.Length];
-				result.Add(a);
-				int parts = (int)(Distance(a, b) / Math.Max(1f, step));
-				for (int k = 1; k < parts; k++)
-				{
-					float t = (float)k / parts;
-					result.Add(new PointF(a.X + (b.X - a.X) * t, a.Y + (b.Y - a.Y) * t));
-				}
-			}
-			return result.ToArray();
-		}
-
-		/// <summary>
 		/// Rolls every point of a polygon, writing over the polygon it was given.
 		/// </summary>
 		private static PointF[] MapPolygon(PointF[] polygon, PointF origin, PointF normal, float roll)
@@ -4459,10 +4437,7 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 				{
 					reach = Math.Max(reach, (p.X - mid.X) * normal.X + (p.Y - mid.Y) * normal.Y);
 				}
-				//The roll curves, so the outline of the lifted paper has to be worked out from points
-				//along its edges, not just its corners. Using the corners alone cut the curved end off
-				//the shape, which is why the shadow stopped short of the rolled edge.
-				PointF[] flap = ClipToRect(MapPolygon(Subdivide(lifted, 8f), mid, normal, roll), visible);
+				PointF[] flap = ClipToRect(MapPolygon((PointF[])lifted.Clone(), mid, normal, roll), visible);
 				float shadowLength = Math.Min(width * 0.25f, lift * 0.5f) + 4f;
 				float strength = Math.Min(1f, lift / (width * 0.3f));
 				//A single page has nothing on the far side of its hinge for the sheet to land on, so
