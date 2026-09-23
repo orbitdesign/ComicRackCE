@@ -529,7 +529,10 @@ namespace cYo.Projects.ComicRack.Engine
 			set;
 		}
 
-		[DefaultValue(1000)]
+		/// <summary>
+		/// How long after a page is shown the deeper read ahead starts, in milliseconds.
+		/// </summary>
+		[DefaultValue(400)]
 		public int PageCachingDelay
 		{
 			get;
@@ -678,7 +681,7 @@ namespace cYo.Projects.ComicRack.Engine
 			SyncCreateThumbnails = true;
 			SyncOptimizeWebP = true;
 			SyncKeepReadComics = 1;
-			PageCachingDelay = 1000;
+			PageCachingDelay = 400;
 			CbzUses = (CbrUses = (Cb7Uses = (CbtUses = CbEngines.SevenZip)));
 			FreeDeviceMemoryMB = 128;
 			ParallelConversions = 32;

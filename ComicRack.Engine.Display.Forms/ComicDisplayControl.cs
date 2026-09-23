@@ -1753,8 +1753,11 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 			}
 			if (flag)
 			{
+				//Two pages ahead, not one: in two page layout the next turn needs both, and while
+				//reading forwards this is the page after the one being read.
 				CachePage(page, 1, fastMem: true, bottom: false);
-				InvalidatePendingImageCacheUpdate();
+				CachePage(page, 2, fastMem: true, bottom: false);
+				EnsurePendingImageCacheUpdate();
 			}
 			if (page2 != null)
 			{
@@ -1768,6 +1771,19 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 				page2 = pagePool.GetPage(lastValidKey, onlyMemory: false);
 			}
 			return page2 ?? new ItemLock<PageImage>(null);
+		}
+
+		/// <summary>
+		/// Makes sure the deeper read ahead will run, without putting it off again. Restarting the
+		/// timer on every page meant that reading at any normal pace kept pushing it back, so the
+		/// cache was never filled beyond the next page and every turn waited on the decoder.
+		/// </summary>
+		private void EnsurePendingImageCacheUpdate()
+		{
+			if (!cacheUpdateTimer.Enabled)
+			{
+				cacheUpdateTimer.Start();
+			}
 		}
 
 		private void InvalidatePendingImageCacheUpdate()

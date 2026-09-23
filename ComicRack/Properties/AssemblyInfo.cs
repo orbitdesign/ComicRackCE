@@ -25,7 +25,7 @@ using System.Runtime.Versioning;
 // Our own build number, shown in the About box and crash reports. The second number counts the
 // changes made on top of Community Edition; add one for each new change (see Changes.txt).
 [assembly: AssemblyMetadata("BuildName", "orbitdesign")]
-[assembly: AssemblyMetadata("BuildVersion", "1.32")]
+[assembly: AssemblyMetadata("BuildVersion", "1.33")]
 [assembly: AssemblyDelaySign(false)]
 [assembly: AssemblyKeyName("")]
 [assembly: AssemblyVersion("1.0.*")]
