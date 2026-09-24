@@ -1797,6 +1797,17 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 			cacheUpdateTimer.Stop();
 		}
 
+		//How far the deep read ahead reaches, tuned automatically by whether the page right next
+		//door has been keeping up. Starts modest, grows a page at a time every tick it keeps up,
+		//and is cut sharply back the moment it does not - so a fast local disk gradually earns a
+		//wide reach that makes jumping around a book feel instant, while a slow connection settles
+		//to whatever depth it can actually sustain instead of being handed a fixed guess.
+		private int adaptiveReadAheadRadius = ReadAheadRadiusFloor;
+
+		private const int ReadAheadRadiusFloor = 2;
+
+		private const int ReadAheadRadiusCeiling = 20;
+
 		private void cacheUpdateTimer_Tick(object sender, EventArgs e)
 		{
 			cacheUpdateTimer.Stop();
@@ -1815,12 +1826,16 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 				//nothing: the next page turn re-arms the timer and it simply tries again.
 				if (!IsPageInCache(num, 1, fastMem: true, putInCache: false))
 				{
+					//Not keeping up: pull the reach back sharply rather than just trying the same
+					//depth again next time.
+					adaptiveReadAheadRadius = Math.Max(ReadAheadRadiusFloor, adaptiveReadAheadRadius / 2);
 					return;
 				}
+				adaptiveReadAheadRadius = Math.Min(ReadAheadRadiusCeiling, adaptiveReadAheadRadius + 1);
 				//Capped on its own regardless of how large the memory cache is configured to be, so a
 				//generous cache size (set for headroom, not for a wider read ahead) can not turn one
 				//tick into a burst of many concurrent background fetches.
-				int num2 = Math.Min(6, (pagePool.MaximumMemoryItems - 15) / 2);
+				int num2 = Math.Min(adaptiveReadAheadRadius, (pagePool.MaximumMemoryItems - 15) / 2);
 				int page = CachePage(num, 1, fastMem: true, bottom: false);
 				int page2 = num;
 				bool flag = page != -1;
