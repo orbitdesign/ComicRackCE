@@ -51,6 +51,20 @@ namespace cYo.Projects.ComicRack.Engine.Display
 
 		private long lastPaging;
 
+		//A quick flick of the wheel arrives as several separate wheel events queued one after
+		//another, each turning one page. These three fields recognise that run as it happens and
+		//make each of those page turns progressively quicker, so a fast flick reads as pages
+		//riffling past rather than as several ordinary turns queued up one behind another.
+		private const int WheelRiffleGapTicks = 450;
+
+		private const int WheelRiffleMinDuration = 60;
+
+		private long wheelRiffleTicks;
+
+		private int wheelRiffleSign;
+
+		private int wheelRiffleDuration;
+
 		private bool fullScreen;
 
 		private Rectangle orgRect = Rectangle.Empty;
@@ -963,6 +977,18 @@ namespace cYo.Projects.ComicRack.Engine.Display
 			set
 			{
 				display.PageCurlDuration = value;
+			}
+		}
+
+		public int NextPageTurnDuration
+		{
+			get
+			{
+				return display.NextPageTurnDuration;
+			}
+			set
+			{
+				display.NextPageTurnDuration = value;
 			}
 		}
 
@@ -1915,8 +1941,28 @@ namespace cYo.Projects.ComicRack.Engine.Display
 			else
 			{
 				scrollLines = (float)Math.Abs(e.Delta / SystemInformation.MouseWheelScrollDelta) * MouseWheelSpeed;
+				ArmWheelRiffle(Math.Sign(e.Delta));
 				keyboardMap.HandleKey((e.Delta > 0) ? CommandKey.MouseWheelUp : CommandKey.MouseWheelDown, Control.ModifierKeys);
+				//Safe either way: consumed already if a page turn just happened, otherwise there is
+				//nothing for it to affect later.
+				display.NextPageTurnDuration = 0;
 			}
+		}
+
+		/// <summary>
+		/// Decides whether this wheel notch continues a run of same-direction turns that arrived
+		/// close enough together to read as one fast flick, and if so shortens the duration a
+		/// little further each time, down to a floor where the eye reads it as pages blurring by.
+		/// The very first notch of a fresh run always keeps the normal duration.
+		/// </summary>
+		private void ArmWheelRiffle(int sign)
+		{
+			long ticks = Machine.Ticks;
+			bool flag = sign != 0 && sign == wheelRiffleSign && ticks - wheelRiffleTicks < WheelRiffleGapTicks;
+			wheelRiffleTicks = ticks;
+			wheelRiffleSign = sign;
+			wheelRiffleDuration = (flag ? Math.Max(WheelRiffleMinDuration, (int)((float)((wheelRiffleDuration > 0) ? wheelRiffleDuration : PageCurlDuration) * 0.6f)) : 0);
+			display.NextPageTurnDuration = wheelRiffleDuration;
 		}
 
 		private void display_MouseHWheel(object sender, MouseEventArgs e)

@@ -3678,7 +3678,12 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 		{
 			if (blender != null && blender.Target == this && blender.Method.Name == nameof(PageCurlBlending))
 			{
-				return PageCurlDuration;
+				//A fast run of wheel notches sets this just before triggering the turn, asking for a
+				//quicker fold so the run reads as pages riffling by. Consumed once so it can never
+				//linger onto some later, unrelated turn.
+				int duration = NextPageTurnDuration;
+				NextPageTurnDuration = 0;
+				return (duration > 0) ? duration : PageCurlDuration;
 			}
 			return EngineConfiguration.Default.BlendDuration;
 		}
@@ -3762,6 +3767,12 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 			get;
 			set;
 		} = 600;
+
+		public int NextPageTurnDuration
+		{
+			get;
+			set;
+		}
 
 		private bool CanDragTurn()
 		{

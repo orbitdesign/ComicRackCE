@@ -258,6 +258,18 @@ namespace cYo.Projects.ComicRack.Engine.Display
 			set;
 		}
 
+		/// <summary>
+		/// One-shot override for the next Realistic Page Curl transition's duration, in
+		/// milliseconds. 0 means no override: use PageCurlDuration as normal. Set just before
+		/// triggering a page change and consumed (reset to 0) the moment that transition starts,
+		/// so it can never affect a later, unrelated page turn.
+		/// </summary>
+		int NextPageTurnDuration
+		{
+			get;
+			set;
+		}
+
 		bool SoftwareFiltering
 		{
 			get;

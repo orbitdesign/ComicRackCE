@@ -1,4 +1,4 @@
-orbitdesign Build 1.36 (based on Community Edition 0.9.184):
+orbitdesign Build 1.37 (based on Community Edition 0.9.184):
 
 * 1.1 FIX: Hardware acceleration stability. Fixed OpenGL extension detection, replaced the deprecated automatic mip map generation that crashed some drivers, checked texture uploads for errors, and added a startup guard that switches hardware acceleration off for one session if ComicRack failed to start last time.
 * 1.2 NEW: Direct2D renderer for the reader. Used by default when hardware acceleration is on, with OpenGL and then software rendering as fallbacks. Handles graphics device resets, uses high quality cubic sampling for "Enable Hardware Filters", and supports paper textures. Start with -hwgl to use the old OpenGL renderer.
@@ -36,6 +36,7 @@ orbitdesign Build 1.36 (based on Community Edition 0.9.184):
 * 1.34 NEW: "Reveal in Explorer" added to the page right-click menu (previously only on the tab's right-click menu), next to Copy Page and Export Page. Opens the book's folder with the file selected; disabled for books that are not local files.
 * 1.35 NEW: A "Page Curl" group in Book Display Settings (F9), next to Effects: Curl Amount, Shadow Strength, Grab Area and Turn Duration are now sliders instead of fixed numbers baked into the code. Saved with the rest of the current display settings, so they survive a restart.
 * 1.36 FIX: Page turning over a network share slowed down badly and kept getting worse the longer a book stayed open. The page read ahead fix in 1.33, made to actually run instead of being postponed forever, now also checks that the very next page has already arrived before reaching further, and its reach is capped on its own regardless of memory cache size. On a slow connection this stops each turn from piling more concurrent background fetches onto the same link on top of ones still in flight.
+* 1.37 NEW: Flicking the mouse wheel fast now riffles through pages: each page turn in a fast run gets a little quicker than the one before, down to a floor, instead of every turn using the same fixed duration. A single, deliberate scroll still turns one page at the normal speed. How many pages get skipped follows however many turns the flick actually produces, so it tracks scroll speed directly.
 
 
 Community Edition Build 0.9.184:
