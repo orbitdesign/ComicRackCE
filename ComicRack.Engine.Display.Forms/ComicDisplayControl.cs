@@ -1807,7 +1807,20 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 			try
 			{
 				int num = CurrentPage;
-				int num2 = (pagePool.MaximumMemoryItems - 15) / 2;
+				//Only reach further ahead once the page right next door has actually arrived. On a
+				//slow connection that page can itself take a long time, and starting a wide,
+				//multi-threaded read ahead on top of a fetch that has not even finished piles more
+				//concurrent traffic onto the same slow link and onto whatever archive is still being
+				//read from, which is what dragged page turning to a crawl. Skipping this tick costs
+				//nothing: the next page turn re-arms the timer and it simply tries again.
+				if (!IsPageInCache(num, 1, fastMem: true, putInCache: false))
+				{
+					return;
+				}
+				//Capped on its own regardless of how large the memory cache is configured to be, so a
+				//generous cache size (set for headroom, not for a wider read ahead) can not turn one
+				//tick into a burst of many concurrent background fetches.
+				int num2 = Math.Min(6, (pagePool.MaximumMemoryItems - 15) / 2);
 				int page = CachePage(num, 1, fastMem: true, bottom: false);
 				int page2 = num;
 				bool flag = page != -1;
