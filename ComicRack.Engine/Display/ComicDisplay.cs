@@ -1003,6 +1003,18 @@ namespace cYo.Projects.ComicRack.Engine.Display
 			}
 		}
 
+		//These two satisfy IComicDisplayConfig by simply forwarding, exactly like every other
+		//member on this interface. RiffleTo (below) is the one that actually drives them.
+		public void BeginRiffle()
+		{
+			display.BeginRiffle();
+		}
+
+		public void EndRiffle(int duration)
+		{
+			display.EndRiffle(duration);
+		}
+
 		public void RiffleTo(int pages, int duration)
 		{
 			if (pages == 0)
