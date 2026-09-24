@@ -2725,6 +2725,10 @@ namespace cYo.Projects.ComicRack.Viewer
 				ComicDisplay.BackgroundTexture = workspace.BackgroundTexture;
 				ComicDisplay.PaperTexture = workspace.PaperTexture;
 				ComicDisplay.PaperTextureStrength = workspace.PaperTextureStrength;
+				ComicDisplay.PageCurlAmount = workspace.PageCurlAmount;
+				ComicDisplay.PageCurlShadowStrength = workspace.PageCurlShadowStrength;
+				ComicDisplay.PageCurlGrabArea = workspace.PageCurlGrabArea;
+				ComicDisplay.PageCurlDuration = workspace.PageCurlDuration;
 				ComicDisplay.ImageBackgroundMode = workspace.PageImageBackgroundMode;
 				ComicDisplay.PaperTextureLayout = workspace.PaperTextureLayout;
 				ComicDisplay.BackgroundImageLayout = workspace.BackgroundImageLayout;
@@ -2757,6 +2761,10 @@ namespace cYo.Projects.ComicRack.Viewer
 			workspace.BackgroundTexture = ComicDisplay.BackgroundTexture;
 			workspace.PaperTexture = ComicDisplay.PaperTexture;
 			workspace.PaperTextureStrength = ComicDisplay.PaperTextureStrength;
+			workspace.PageCurlAmount = ComicDisplay.PageCurlAmount;
+			workspace.PageCurlShadowStrength = ComicDisplay.PageCurlShadowStrength;
+			workspace.PageCurlGrabArea = ComicDisplay.PageCurlGrabArea;
+			workspace.PageCurlDuration = ComicDisplay.PageCurlDuration;
 			workspace.PageImageBackgroundMode = ComicDisplay.ImageBackgroundMode;
 			workspace.PaperTextureLayout = ComicDisplay.PaperTextureLayout;
 			workspace.BackgroundImageLayout = ComicDisplay.BackgroundImageLayout;

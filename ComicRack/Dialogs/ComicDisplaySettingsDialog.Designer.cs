@@ -39,6 +39,15 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
             this.grpGeneral = new System.Windows.Forms.GroupBox();
             this.tbMargin = new cYo.Common.Windows.Forms.TrackBarLite();
             this.grpEffects = new System.Windows.Forms.GroupBox();
+            this.grpPageCurl = new System.Windows.Forms.GroupBox();
+            this.labelCurlAmount = new System.Windows.Forms.Label();
+            this.tbCurlAmount = new cYo.Common.Windows.Forms.TrackBarLite();
+            this.labelShadowStrength = new System.Windows.Forms.Label();
+            this.tbShadowStrength = new cYo.Common.Windows.Forms.TrackBarLite();
+            this.labelGrabArea = new System.Windows.Forms.Label();
+            this.tbGrabArea = new cYo.Common.Windows.Forms.TrackBarLite();
+            this.labelTurnDuration = new System.Windows.Forms.Label();
+            this.nudTurnDuration = new System.Windows.Forms.NumericUpDown();
             this.cbPaperLayout = new System.Windows.Forms.ComboBox();
             this.labelPaperStrength = new System.Windows.Forms.Label();
             this.tbPaperStrength = new cYo.Common.Windows.Forms.TrackBarLite();
@@ -53,6 +62,8 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
             this.toolTip = new System.Windows.Forms.ToolTip(this.components);
             this.grpGeneral.SuspendLayout();
             this.grpEffects.SuspendLayout();
+            this.grpPageCurl.SuspendLayout();
+            ((System.ComponentModel.ISupportInitialize)(this.nudTurnDuration)).BeginInit();
             this.grpBackground.SuspendLayout();
             this.flowLayoutPanel1.SuspendLayout();
             this.panel1.SuspendLayout();
@@ -240,6 +251,129 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
             this.grpEffects.TabStop = false;
             this.grpEffects.Text = "Effects";
             // 
+            // grpPageCurl
+            // 
+            this.grpPageCurl.AutoSize = true;
+            this.grpPageCurl.AutoSizeMode = System.Windows.Forms.AutoSizeMode.GrowAndShrink;
+            this.grpPageCurl.Controls.Add(this.labelCurlAmount);
+            this.grpPageCurl.Controls.Add(this.tbCurlAmount);
+            this.grpPageCurl.Controls.Add(this.labelShadowStrength);
+            this.grpPageCurl.Controls.Add(this.tbShadowStrength);
+            this.grpPageCurl.Controls.Add(this.labelGrabArea);
+            this.grpPageCurl.Controls.Add(this.tbGrabArea);
+            this.grpPageCurl.Controls.Add(this.labelTurnDuration);
+            this.grpPageCurl.Controls.Add(this.nudTurnDuration);
+            this.grpPageCurl.Location = new System.Drawing.Point(3, 237);
+            this.grpPageCurl.Name = "grpPageCurl";
+            this.grpPageCurl.Padding = new System.Windows.Forms.Padding(3, 3, 3, 0);
+            this.grpPageCurl.Size = new System.Drawing.Size(395, 140);
+            this.grpPageCurl.TabIndex = 8;
+            this.grpPageCurl.TabStop = false;
+            this.grpPageCurl.Text = "Page Curl (drag and Realistic Page Curl)";
+            // 
+            // labelCurlAmount
+            // 
+            this.labelCurlAmount.AutoSize = true;
+            this.labelCurlAmount.Location = new System.Drawing.Point(15, 26);
+            this.labelCurlAmount.Name = "labelCurlAmount";
+            this.labelCurlAmount.Size = new System.Drawing.Size(72, 13);
+            this.labelCurlAmount.TabIndex = 0;
+            this.labelCurlAmount.Text = "Curl Amount:";
+            this.labelCurlAmount.TextAlign = System.Drawing.ContentAlignment.MiddleLeft;
+            // 
+            // tbCurlAmount
+            // 
+            this.tbCurlAmount.Location = new System.Drawing.Point(103, 26);
+            this.tbCurlAmount.Margin = new System.Windows.Forms.Padding(3, 3, 3, 0);
+            this.tbCurlAmount.Maximum = 30;
+            this.tbCurlAmount.Minimum = 4;
+            this.tbCurlAmount.Name = "tbCurlAmount";
+            this.tbCurlAmount.Size = new System.Drawing.Size(280, 18);
+            this.tbCurlAmount.TabIndex = 1;
+            this.tbCurlAmount.ThumbSize = new System.Drawing.Size(8, 16);
+            this.tbCurlAmount.ValueChanged += new System.EventHandler(this.PercentTrackbarValueChanged);
+            // 
+            // labelShadowStrength
+            // 
+            this.labelShadowStrength.AutoSize = true;
+            this.labelShadowStrength.Location = new System.Drawing.Point(15, 53);
+            this.labelShadowStrength.Name = "labelShadowStrength";
+            this.labelShadowStrength.Size = new System.Drawing.Size(94, 13);
+            this.labelShadowStrength.TabIndex = 2;
+            this.labelShadowStrength.Text = "Shadow Strength:";
+            this.labelShadowStrength.TextAlign = System.Drawing.ContentAlignment.MiddleLeft;
+            // 
+            // tbShadowStrength
+            // 
+            this.tbShadowStrength.Location = new System.Drawing.Point(103, 53);
+            this.tbShadowStrength.Margin = new System.Windows.Forms.Padding(3, 3, 3, 0);
+            this.tbShadowStrength.Maximum = 200;
+            this.tbShadowStrength.Minimum = 0;
+            this.tbShadowStrength.Name = "tbShadowStrength";
+            this.tbShadowStrength.Size = new System.Drawing.Size(280, 18);
+            this.tbShadowStrength.TabIndex = 3;
+            this.tbShadowStrength.ThumbSize = new System.Drawing.Size(8, 16);
+            this.tbShadowStrength.ValueChanged += new System.EventHandler(this.PercentTrackbarValueChanged);
+            // 
+            // labelGrabArea
+            // 
+            this.labelGrabArea.AutoSize = true;
+            this.labelGrabArea.Location = new System.Drawing.Point(15, 80);
+            this.labelGrabArea.Name = "labelGrabArea";
+            this.labelGrabArea.Size = new System.Drawing.Size(63, 13);
+            this.labelGrabArea.TabIndex = 4;
+            this.labelGrabArea.Text = "Grab Area:";
+            this.labelGrabArea.TextAlign = System.Drawing.ContentAlignment.MiddleLeft;
+            // 
+            // tbGrabArea
+            // 
+            this.tbGrabArea.Location = new System.Drawing.Point(103, 80);
+            this.tbGrabArea.Margin = new System.Windows.Forms.Padding(3, 3, 3, 0);
+            this.tbGrabArea.Maximum = 100;
+            this.tbGrabArea.Minimum = 20;
+            this.tbGrabArea.Name = "tbGrabArea";
+            this.tbGrabArea.Size = new System.Drawing.Size(280, 18);
+            this.tbGrabArea.TabIndex = 5;
+            this.tbGrabArea.ThumbSize = new System.Drawing.Size(8, 16);
+            this.tbGrabArea.ValueChanged += new System.EventHandler(this.PercentTrackbarValueChanged);
+            // 
+            // labelTurnDuration
+            // 
+            this.labelTurnDuration.AutoSize = true;
+            this.labelTurnDuration.Location = new System.Drawing.Point(15, 109);
+            this.labelTurnDuration.Name = "labelTurnDuration";
+            this.labelTurnDuration.Size = new System.Drawing.Size(103, 13);
+            this.labelTurnDuration.TabIndex = 6;
+            this.labelTurnDuration.Text = "Turn Duration (ms):";
+            this.labelTurnDuration.TextAlign = System.Drawing.ContentAlignment.MiddleLeft;
+            // 
+            // nudTurnDuration
+            // 
+            this.nudTurnDuration.Increment = new decimal(new int[] {
+            50,
+            0,
+            0,
+            0});
+            this.nudTurnDuration.Location = new System.Drawing.Point(103, 107);
+            this.nudTurnDuration.Maximum = new decimal(new int[] {
+            2000,
+            0,
+            0,
+            0});
+            this.nudTurnDuration.Minimum = new decimal(new int[] {
+            100,
+            0,
+            0,
+            0});
+            this.nudTurnDuration.Name = "nudTurnDuration";
+            this.nudTurnDuration.Size = new System.Drawing.Size(80, 20);
+            this.nudTurnDuration.TabIndex = 7;
+            this.nudTurnDuration.Value = new decimal(new int[] {
+            600,
+            0,
+            0,
+            0});
+            // 
             // cbPaperLayout
             // 
             this.cbPaperLayout.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList;
@@ -355,6 +489,7 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
             this.flowLayoutPanel1.AutoSizeMode = System.Windows.Forms.AutoSizeMode.GrowAndShrink;
             this.flowLayoutPanel1.Controls.Add(this.grpGeneral);
             this.flowLayoutPanel1.Controls.Add(this.grpEffects);
+            this.flowLayoutPanel1.Controls.Add(this.grpPageCurl);
             this.flowLayoutPanel1.Controls.Add(this.grpBackground);
             this.flowLayoutPanel1.Controls.Add(this.panel1);
             this.flowLayoutPanel1.FlowDirection = System.Windows.Forms.FlowDirection.TopDown;
@@ -396,6 +531,9 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
             this.grpGeneral.PerformLayout();
             this.grpEffects.ResumeLayout(false);
             this.grpEffects.PerformLayout();
+            this.grpPageCurl.ResumeLayout(false);
+            this.grpPageCurl.PerformLayout();
+            ((System.ComponentModel.ISupportInitialize)(this.nudTurnDuration)).EndInit();
             this.grpBackground.ResumeLayout(false);
             this.flowLayoutPanel1.ResumeLayout(false);
             this.flowLayoutPanel1.PerformLayout();
@@ -420,6 +558,24 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 		private Label labelPaging;
 		private GroupBox grpGeneral;
 		private GroupBox grpEffects;
+
+		private GroupBox grpPageCurl;
+
+		private Label labelCurlAmount;
+
+		private TrackBarLite tbCurlAmount;
+
+		private Label labelShadowStrength;
+
+		private TrackBarLite tbShadowStrength;
+
+		private Label labelGrabArea;
+
+		private TrackBarLite tbGrabArea;
+
+		private Label labelTurnDuration;
+
+		private NumericUpDown nudTurnDuration;
 		private GroupBox grpBackground;
 		private Button btApply;
 		private ComboBox cbPaperTexture;

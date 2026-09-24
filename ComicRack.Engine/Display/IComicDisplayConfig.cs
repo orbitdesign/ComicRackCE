@@ -234,6 +234,30 @@ namespace cYo.Projects.ComicRack.Engine.Display
 			set;
 		}
 
+		float PageCurlAmount
+		{
+			get;
+			set;
+		}
+
+		float PageCurlShadowStrength
+		{
+			get;
+			set;
+		}
+
+		float PageCurlGrabArea
+		{
+			get;
+			set;
+		}
+
+		int PageCurlDuration
+		{
+			get;
+			set;
+		}
+
 		bool SoftwareFiltering
 		{
 			get;

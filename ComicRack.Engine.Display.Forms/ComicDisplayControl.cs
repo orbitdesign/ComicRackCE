@@ -3665,7 +3665,7 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 		{
 			if (blender != null && blender.Target == this && blender.Method.Name == nameof(PageCurlBlending))
 			{
-				return EngineConfiguration.Default.PageCurlDuration;
+				return PageCurlDuration;
 			}
 			return EngineConfiguration.Default.BlendDuration;
 		}
@@ -3726,6 +3726,30 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 			set;
 		} = true;
 
+		public float PageCurlAmount
+		{
+			get;
+			set;
+		} = 0.12f;
+
+		public float PageCurlShadowStrength
+		{
+			get;
+			set;
+		} = 1f;
+
+		public float PageCurlGrabArea
+		{
+			get;
+			set;
+		} = 0.6f;
+
+		public int PageCurlDuration
+		{
+			get;
+			set;
+		} = 600;
+
 		private bool CanDragTurn()
 		{
 			return DragPageTurning && renderer != null && renderer.IsHardware && Book != null && PageLayout != PageLayoutMode.Continuous && !MagnifierVisible && !inBlendAnmation && base.Display != null && base.Display.IsAllVisible;
@@ -3745,7 +3769,7 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 			//Roughly the outer 60% of each page can be grabbed. In a spread that is 30% of the
 			//whole width, measured from each outer edge, so the inner thirds near the gutter are
 			//left alone.
-			float zone = Math.Max(40f, page.Width * (TwoPageDisplay ? 0.3f : 0.6f));
+			float zone = Math.Max(40f, page.Width * (TwoPageDisplay ? (PageCurlGrabArea * 0.5f) : PageCurlGrabArea));
 			bool right = pt.X >= page.Right - zone;
 			bool left = pt.X <= page.Left + zone;
 			if (!right && !left)
@@ -3961,7 +3985,7 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 			GetPeelGeometry(dragOldOut, dragPeelRight, out bool _, out RectangleF _, out RectangleF _, out float spine);
 			PointF from = dragMouse;
 			PointF to = complete ? new PointF(2f * spine - dragCorner.X, dragCorner.Y) : dragCorner;
-			int duration = Math.Max(80, (int)(EngineConfiguration.Default.PageCurlDuration * Math.Abs(complete ? (1f - dragProgress) : dragProgress)));
+			int duration = Math.Max(80, (int)(PageCurlDuration * Math.Abs(complete ? (1f - dragProgress) : dragProgress)));
 			try
 			{
 				dragTurnState = DragTurnState.Active;
@@ -4000,7 +4024,7 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 			}
 			float target = (dragTurnForward == complete) ? 1f : 0f;
 			float from = dragTurnT;
-			int duration = Math.Max(60, (int)(EngineConfiguration.Default.PageCurlDuration * Math.Abs(target - from)));
+			int duration = Math.Max(60, (int)(PageCurlDuration * Math.Abs(target - from)));
 			try
 			{
 				dragTurnState = DragTurnState.Active;
@@ -4463,7 +4487,7 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 				//The paper does not crease: it rolls. The roll takes up some of the sheet, so the
 				//fold sits a little further from the corner than the halfway point, which is what
 				//keeps the corner exactly under the mouse.
-				float roll = Math.Min(width * 0.12f, lift * 0.8f);
+				float roll = Math.Min(width * PageCurlAmount, lift * 0.8f);
 				float creaseDistance = (lift + roll) / 2f;
 				PointF normal = new PointF((corner.X - mouse.X) / lift, (corner.Y - mouse.Y) / lift);
 				PointF mid = new PointF(corner.X - normal.X * creaseDistance, corner.Y - normal.Y * creaseDistance);
@@ -4506,7 +4530,7 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 				//3. Shadow the lifted flap throws on the uncovered page, darkest at the crease.
 				if (lifted.Length >= 3)
 				{
-					clipper.FillPolygonGradient(lifted, mid, Color.FromArgb((int)(115 * strength), Color.Black), new PointF(mid.X + normal.X * shadowLength, mid.Y + normal.Y * shadowLength), Color.FromArgb(0, Color.Black));
+					clipper.FillPolygonGradient(lifted, mid, Color.FromArgb((int)(115 * strength * PageCurlShadowStrength).Clamp(0, 255), Color.Black), new PointF(mid.X + normal.X * shadowLength, mid.Y + normal.Y * shadowLength), Color.FromArgb(0, Color.Black));
 				}
 				if (flap.Length >= 3)
 				{
@@ -4516,7 +4540,7 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 					//   in place, which is what shades the pocket under the curled edge.
 					float shadowOffset = Math.Min(28f, 6f + lift * 0.09f);
 					const int steps = 6;
-					int stepAlpha = (int)(26f * strength * fade);
+					int stepAlpha = (int)(26f * strength * fade * PageCurlShadowStrength).Clamp(0, 255);
 					if (stepAlpha > 1)
 					{
 						for (int step = 0; step < steps; step++)
@@ -4615,8 +4639,8 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 					//Light: paper facing the viewer is bright, paper turned edge on is dark. The
 					//shade runs across each slice rather than being flat, so the tone is continuous
 					//over the whole roll instead of stepping at every join.
-					int shade0 = RollShade(u0, roll, strength * fade);
-					int shade1 = RollShade(u1, roll, strength * fade);
+					int shade0 = RollShade(u0, roll, strength * fade * PageCurlShadowStrength);
+					int shade1 = RollShade(u1, roll, strength * fade * PageCurlShadowStrength);
 					if (shade0 > 2 || shade1 > 2)
 					{
 						PointF from = new PointF(mid.X + normal.X * x0, mid.Y + normal.Y * x0);

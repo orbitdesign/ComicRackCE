@@ -328,6 +328,10 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			ws.PaperTextureStrength = (float)tbPaperStrength.Value / 100f;
 			ws.PaperTextureLayout = (ImageLayout)cbPaperLayout.SelectedIndex;
 			ws.BackgroundImageLayout = (ImageLayout)cbTextureLayout.SelectedIndex;
+			ws.PageCurlAmount = (float)tbCurlAmount.Value / 100f;
+			ws.PageCurlShadowStrength = (float)tbShadowStrength.Value / 100f;
+			ws.PageCurlGrabArea = (float)tbGrabArea.Value / 100f;
+			ws.PageCurlDuration = (int)nudTurnDuration.Value;
 		}
 
 		private void Update(DisplayWorkspace ws)
@@ -344,6 +348,10 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			tbPaperStrength.Value = (int)(ws.PaperTextureStrength * 100f);
 			cbPaperLayout.SelectedIndex = (int)ws.PaperTextureLayout;
 			cbTextureLayout.SelectedIndex = (int)ws.BackgroundImageLayout;
+			tbCurlAmount.Value = (int)(ws.PageCurlAmount * 100f);
+			tbShadowStrength.Value = (int)(ws.PageCurlShadowStrength * 100f);
+			tbGrabArea.Value = (int)(ws.PageCurlGrabArea * 100f);
+			nudTurnDuration.Value = ws.PageCurlDuration;
 		}
 
 		private void SelectTextureFile(ComboBox cb, string texture)
@@ -391,6 +399,7 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 				comicDisplaySettingsDialog.Update(ws);
 				comicDisplaySettingsDialog.ApplyAction = apply;
 				comicDisplaySettingsDialog.grpEffects.Visible = enableHardware;
+				comicDisplaySettingsDialog.grpPageCurl.Visible = enableHardware;
 				if (comicDisplaySettingsDialog.ShowDialog(parent) != DialogResult.OK)
 				{
 					return false;

@@ -918,6 +918,54 @@ namespace cYo.Projects.ComicRack.Engine.Display
 			}
 		}
 
+		public float PageCurlAmount
+		{
+			get
+			{
+				return display.PageCurlAmount;
+			}
+			set
+			{
+				display.PageCurlAmount = value;
+			}
+		}
+
+		public float PageCurlShadowStrength
+		{
+			get
+			{
+				return display.PageCurlShadowStrength;
+			}
+			set
+			{
+				display.PageCurlShadowStrength = value;
+			}
+		}
+
+		public float PageCurlGrabArea
+		{
+			get
+			{
+				return display.PageCurlGrabArea;
+			}
+			set
+			{
+				display.PageCurlGrabArea = value;
+			}
+		}
+
+		public int PageCurlDuration
+		{
+			get
+			{
+				return display.PageCurlDuration;
+			}
+			set
+			{
+				display.PageCurlDuration = value;
+			}
+		}
+
 		public bool SoftwareFiltering
 		{
 			get
