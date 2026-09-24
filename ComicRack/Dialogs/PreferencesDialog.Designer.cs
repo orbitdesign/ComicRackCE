@@ -1111,8 +1111,6 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
             // 
             // grpReadAhead
             // 
-            this.grpReadAhead.AutoSize = true;
-            this.grpReadAhead.AutoSizeMode = System.Windows.Forms.AutoSizeMode.GrowAndShrink;
             this.grpReadAhead.Controls.Add(this.labelReadAhead);
             this.grpReadAhead.Controls.Add(this.numReadAheadPages);
             this.grpReadAhead.Controls.Add(this.labelReadAheadHint);
@@ -1120,7 +1118,7 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
             this.grpReadAhead.Location = new System.Drawing.Point(0, 355);
             this.grpReadAhead.Name = "grpReadAhead";
             this.grpReadAhead.Padding = new System.Windows.Forms.Padding(3, 3, 3, 0);
-            this.grpReadAhead.Size = new System.Drawing.Size(498, 90);
+            this.grpReadAhead.Size = new System.Drawing.Size(498, 105);
             this.grpReadAhead.TabIndex = 14;
             this.grpReadAhead.Text = "Page Read Ahead";
             // 
