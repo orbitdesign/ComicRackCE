@@ -2002,7 +2002,10 @@ namespace cYo.Projects.ComicRack.Engine.Display
 				}
 				else
 				{
-					QueueWheelPageTurn(Math.Sign(e.Delta));
+					//Wheel up is "back" and wheel down is "forward" throughout the rest of ComicRack
+					//(ScrollUp/ScrollDown below turn to the previous/next page respectively), which is
+					//the opposite sign from a raw wheel delta, where up is positive.
+					QueueWheelPageTurn(-Math.Sign(e.Delta));
 				}
 			}
 		}
