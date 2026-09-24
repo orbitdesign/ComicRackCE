@@ -3798,6 +3798,8 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 
 		private bool riffleWasSuppressed;
 
+		private bool riffleSuppressPaint;
+
 		/// <summary>
 		/// Remembers the page shown right now, and mutes the ordinary per-turn fold until EndRiffle
 		/// turns it back on - used to step through several pages one by one (each through the
@@ -3810,6 +3812,7 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 			riffleOldConfig = base.DisplayConfig;
 			riffleWasSuppressed = suppressNavigationBlend;
 			suppressNavigationBlend = true;
+			riffleSuppressPaint = true;
 		}
 
 		/// <summary>
@@ -3820,6 +3823,7 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 		public void EndRiffle(int duration)
 		{
 			suppressNavigationBlend = riffleWasSuppressed;
+			riffleSuppressPaint = false;
 			if (!IsValid || currentPage == riffleOldPage)
 			{
 				//Already at the start or end of the book, or nothing else moved it: nothing to show.
@@ -4233,9 +4237,12 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 
 		protected override void OnPaint(PaintEventArgs e)
 		{
-			if (dragTurnSuppressPaint)
+			if (dragTurnSuppressPaint || riffleSuppressPaint)
 			{
-				//The page is being switched behind the scenes; the curl frame follows right after.
+				//The page is being switched behind the scenes; the next frame - the curl catching
+				//up, or the riffle's own fold - follows right after. Without this, book_Navigation's
+				//own forced repaint at the end of each silent step would flash the destination page
+				//in early, a beat before the fold that is supposed to reveal it.
 				return;
 			}
 			if (dragTurnState == DragTurnState.Active && RenderDragTurnFrame())
