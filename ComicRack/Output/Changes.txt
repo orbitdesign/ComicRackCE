@@ -1,4 +1,4 @@
-orbitdesign Build 1.43 (based on Community Edition 0.9.184):
+orbitdesign Build 1.44 (based on Community Edition 0.9.184):
 
 * 1.1 FIX: Hardware acceleration stability. Fixed OpenGL extension detection, replaced the deprecated automatic mip map generation that crashed some drivers, checked texture uploads for errors, and added a startup guard that switches hardware acceleration off for one session if ComicRack failed to start last time.
 * 1.2 NEW: Direct2D renderer for the reader. Used by default when hardware acceleration is on, with OpenGL and then software rendering as fallbacks. Handles graphics device resets, uses high quality cubic sampling for "Enable Hardware Filters", and supports paper textures. Start with -hwgl to use the old OpenGL renderer.
@@ -43,6 +43,7 @@ orbitdesign Build 1.43 (based on Community Edition 0.9.184):
 * 1.41 FIX: A wheel-turned page flashed into view for an instant before the fold animation started, on every turn either direction. The page change behind a fold was forcing its own repaint before the fold got to draw anything; painting is now held back for that instant the same way the existing drag-to-turn code already does it.
 * 1.42 CHANGE: Maintenance pass over the wheel-flick and read-ahead code added the last few builds: the learned read-ahead depth now resets when a new book opens instead of carrying over from whatever book was open before, and a few stale or imprecise comments left over from earlier redesigns were corrected. No behaviour changes beyond the reset.
 * 1.43 FIX: The self-tuning read ahead from 1.40 could still get progressively worse the longer a book stayed open over a slow connection. It grew its reach whenever the very next page was ready, but that check passes easily even while a much bigger walk from an earlier turn is still draining in the background, so the reach kept climbing regardless of whether the connection could sustain it, and the growing walks eventually began overlapping. Growth now also requires that the farthest page the previous walk asked for has actually landed, not just the one next door.
+* 1.44 NEW: "Page Read Ahead" in Preferences > Advanced, next to Caches & Memory Usage: a ceiling (1-20) on how many pages the reader is allowed to fetch ahead in the background. Set to 1 to turn background fetching off entirely and fetch only the page being read, one at a time, for a slow network share or drive that struggles to keep up with more.
 
 
 Community Edition Build 0.9.184:

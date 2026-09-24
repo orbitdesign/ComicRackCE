@@ -234,6 +234,12 @@ namespace cYo.Projects.ComicRack.Engine.Display
 			set;
 		}
 
+		int ReadAheadPages
+		{
+			get;
+			set;
+		}
+
 		float PageCurlAmount
 		{
 			get;

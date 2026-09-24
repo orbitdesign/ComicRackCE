@@ -94,6 +94,10 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
             this.btResetMessages = new System.Windows.Forms.Button();
             this.labelReshowHidden = new System.Windows.Forms.Label();
             this.groupMemory = new cYo.Common.Windows.Forms.CollapsibleGroupBox();
+            this.grpReadAhead = new cYo.Common.Windows.Forms.CollapsibleGroupBox();
+            this.labelReadAhead = new System.Windows.Forms.Label();
+            this.numReadAheadPages = new System.Windows.Forms.NumericUpDown();
+            this.labelReadAheadHint = new System.Windows.Forms.Label();
             this.grpMaximumMemoryUsage = new System.Windows.Forms.GroupBox();
             this.lblMaximumMemoryUsageValue = new System.Windows.Forms.Label();
             this.tbMaximumMemoryUsage = new cYo.Common.Windows.Forms.TrackBarLite();
@@ -238,6 +242,8 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
             this.grpIntegration.SuspendLayout();
             this.groupMessagesAndSocial.SuspendLayout();
             this.groupMemory.SuspendLayout();
+            this.grpReadAhead.SuspendLayout();
+            ((System.ComponentModel.ISupportInitialize)(this.numReadAheadPages)).BeginInit();
             this.grpMaximumMemoryUsage.SuspendLayout();
             this.grpMemoryCache.SuspendLayout();
             ((System.ComponentModel.ISupportInitialize)(this.numMemPageCount)).BeginInit();
@@ -943,6 +949,7 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
             this.pageAdvanced.Controls.Add(this.grpIntegration);
             this.pageAdvanced.Controls.Add(this.groupMessagesAndSocial);
             this.pageAdvanced.Controls.Add(this.groupMemory);
+            this.pageAdvanced.Controls.Add(this.grpReadAhead);
             this.pageAdvanced.Controls.Add(this.grpBackupManager);
             this.pageAdvanced.Controls.Add(this.grpDatabaseBackup);
             this.pageAdvanced.Controls.Add(this.groupOtherComics);
@@ -1101,6 +1108,65 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
             this.groupMemory.Size = new System.Drawing.Size(498, 355);
             this.groupMemory.TabIndex = 1;
             this.groupMemory.Text = "Caches & Memory Usage";
+            // 
+            // grpReadAhead
+            // 
+            this.grpReadAhead.AutoSize = true;
+            this.grpReadAhead.AutoSizeMode = System.Windows.Forms.AutoSizeMode.GrowAndShrink;
+            this.grpReadAhead.Controls.Add(this.labelReadAhead);
+            this.grpReadAhead.Controls.Add(this.numReadAheadPages);
+            this.grpReadAhead.Controls.Add(this.labelReadAheadHint);
+            this.grpReadAhead.Dock = System.Windows.Forms.DockStyle.Top;
+            this.grpReadAhead.Location = new System.Drawing.Point(0, 355);
+            this.grpReadAhead.Name = "grpReadAhead";
+            this.grpReadAhead.Padding = new System.Windows.Forms.Padding(3, 3, 3, 0);
+            this.grpReadAhead.Size = new System.Drawing.Size(498, 90);
+            this.grpReadAhead.TabIndex = 14;
+            this.grpReadAhead.Text = "Page Read Ahead";
+            // 
+            // labelReadAhead
+            // 
+            this.labelReadAhead.AutoSize = true;
+            this.labelReadAhead.Location = new System.Drawing.Point(12, 38);
+            this.labelReadAhead.Name = "labelReadAhead";
+            this.labelReadAhead.Size = new System.Drawing.Size(140, 13);
+            this.labelReadAhead.TabIndex = 0;
+            this.labelReadAhead.Text = "Fetch up to this many pages ahead:";
+            this.labelReadAhead.TextAlign = System.Drawing.ContentAlignment.MiddleLeft;
+            // 
+            // numReadAheadPages
+            // 
+            this.numReadAheadPages.Location = new System.Drawing.Point(258, 36);
+            this.numReadAheadPages.Maximum = new decimal(new int[] {
+            20,
+            0,
+            0,
+            0});
+            this.numReadAheadPages.Minimum = new decimal(new int[] {
+            1,
+            0,
+            0,
+            0});
+            this.numReadAheadPages.Name = "numReadAheadPages";
+            this.numReadAheadPages.Size = new System.Drawing.Size(50, 20);
+            this.numReadAheadPages.TabIndex = 1;
+            this.numReadAheadPages.TextAlign = System.Windows.Forms.HorizontalAlignment.Right;
+            this.numReadAheadPages.Value = new decimal(new int[] {
+            20,
+            0,
+            0,
+            0});
+            // 
+            // labelReadAheadHint
+            // 
+            this.labelReadAheadHint.AutoSize = true;
+            this.labelReadAheadHint.Location = new System.Drawing.Point(12, 65);
+            this.labelReadAheadHint.MaximumSize = new System.Drawing.Size(460, 0);
+            this.labelReadAheadHint.Name = "labelReadAheadHint";
+            this.labelReadAheadHint.Size = new System.Drawing.Size(420, 13);
+            this.labelReadAheadHint.TabIndex = 2;
+            this.labelReadAheadHint.Text = "Set to 1 to fetch only the page being read, one at a time - use this if a netwo' +
+    "rk share or slow drive is struggling to keep up.";
             // 
             // grpMaximumMemoryUsage
             // 
@@ -2736,6 +2802,9 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
             this.grpIntegration.PerformLayout();
             this.groupMessagesAndSocial.ResumeLayout(false);
             this.groupMemory.ResumeLayout(false);
+            this.grpReadAhead.ResumeLayout(false);
+            this.grpReadAhead.PerformLayout();
+            ((System.ComponentModel.ISupportInitialize)(this.numReadAheadPages)).EndInit();
             this.grpMaximumMemoryUsage.ResumeLayout(false);
             this.grpMaximumMemoryUsage.PerformLayout();
             this.grpMemoryCache.ResumeLayout(false);
@@ -2888,6 +2957,14 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 		private CollapsibleGroupBox grpDatabaseBackup;
 		private CollapsibleGroupBox grpBackupManager;
 		private CollapsibleGroupBox groupMemory;
+
+		private CollapsibleGroupBox grpReadAhead;
+
+		private Label labelReadAhead;
+
+		private NumericUpDown numReadAheadPages;
+
+		private Label labelReadAheadHint;
 		private CollapsibleGroupBox grpIntegration;
 		private Panel pageLibrary;
 		private CollapsibleGroupBox grpSharing;

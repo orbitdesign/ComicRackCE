@@ -1782,6 +1782,12 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 		/// </summary>
 		private void EnsurePendingImageCacheUpdate()
 		{
+			if (ReadAheadPages <= 1)
+			{
+				//Read ahead turned off: the single next page fetched for the page currently being
+				//shown is all this book will ever get, so there is nothing for the deep walk to do.
+				return;
+			}
 			if (!cacheUpdateTimer.Enabled)
 			{
 				cacheUpdateTimer.Start();
@@ -1806,8 +1812,6 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 		//to whatever depth it can actually sustain instead of being handed a fixed guess.
 		private const int ReadAheadRadiusFloor = 2;
 
-		private const int ReadAheadRadiusCeiling = 20;
-
 		private int adaptiveReadAheadRadius = ReadAheadRadiusFloor;
 
 		//The farthest forward page the last successful walk actually asked for, so the next tick
@@ -1818,8 +1822,10 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 		private void cacheUpdateTimer_Tick(object sender, EventArgs e)
 		{
 			cacheUpdateTimer.Stop();
-			if (!IsValid)
+			if (!IsValid || ReadAheadPages <= 1)
 			{
+				//Read ahead may have just been turned off while this tick was already waiting to
+				//fire; check again rather than trust that EnsurePendingImageCacheUpdate caught it.
 				return;
 			}
 			try
@@ -1854,7 +1860,7 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 					lastReadAheadReach = -1;
 					return;
 				}
-				adaptiveReadAheadRadius = Math.Min(ReadAheadRadiusCeiling, adaptiveReadAheadRadius + 1);
+				adaptiveReadAheadRadius = Math.Min(ReadAheadPages, adaptiveReadAheadRadius + 1);
 				//Capped on its own regardless of how large the memory cache is configured to be, so a
 				//generous cache size (set for headroom, not for a wider read ahead) can not turn one
 				//tick into a burst of many concurrent background fetches.
@@ -3784,6 +3790,16 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 			get;
 			set;
 		} = true;
+
+		/// <summary>
+		/// Ceiling on the adaptive read ahead below. 1 turns the deep, speculative read ahead off
+		/// entirely - only the page being shown, and its double-page partner, are ever fetched.
+		/// </summary>
+		public int ReadAheadPages
+		{
+			get;
+			set;
+		} = 20;
 
 		public float PageCurlAmount
 		{

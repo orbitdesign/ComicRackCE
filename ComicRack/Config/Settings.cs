@@ -187,6 +187,8 @@ namespace cYo.Projects.ComicRack.Viewer.Config
 
 		private bool dragPageTurning = true;
 
+		private int readAheadPages = 20;
+
 		private bool softwareFiltering = true;
 
 		private bool hardwareFiltering;
@@ -854,6 +856,34 @@ namespace cYo.Projects.ComicRack.Viewer.Config
 				{
 					displayChangeAnimation = value;
 					FireEvent(this.DisplayChangeAnimationChanged);
+				}
+			}
+		}
+
+		/// <summary>
+		/// How many pages ahead the reader is allowed to fetch in the background while reading.
+		/// The reader only ever grows toward this on its own, and pulls back well short of it
+		/// the moment a fetch falls behind, so it mainly matters as a ceiling on how far that
+		/// growth is allowed to go. 1 turns background fetching off: only the page being shown
+		/// (and its double-page partner) is ever requested, one at a time, the same as ComicRack
+		/// has always done without any read ahead at all - the setting to fall back on if a
+		/// slow source (a network share, say) is struggling to keep up with more than that.
+		/// </summary>
+		[Browsable(false)]
+		[DefaultValue(20)]
+		public int ReadAheadPages
+		{
+			get
+			{
+				return readAheadPages;
+			}
+			set
+			{
+				value = value.Clamp(1, 20);
+				if (readAheadPages != value)
+				{
+					readAheadPages = value;
+					FireEvent(null);
 				}
 			}
 		}
