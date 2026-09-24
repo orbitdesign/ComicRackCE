@@ -461,6 +461,7 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 				}
 				StopPendingImageCacheUpdate();
 				adaptiveReadAheadRadius = ReadAheadRadiusFloor;
+				lastReadAheadReach = -1;
 				if (comicBookNavigator != null)
 				{
 					comicBookNavigator.Disposing -= book_Disposing;
@@ -1809,6 +1810,11 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 
 		private int adaptiveReadAheadRadius = ReadAheadRadiusFloor;
 
+		//The farthest forward page the last successful walk actually asked for, so the next tick
+		//can check whether that whole walk has landed - not just the one page right next door -
+		//before growing the reach any further. -1 means there is nothing to wait on yet.
+		private int lastReadAheadReach = -1;
+
 		private void cacheUpdateTimer_Tick(object sender, EventArgs e)
 		{
 			cacheUpdateTimer.Stop();
@@ -1830,6 +1836,22 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 					//Not keeping up: pull the reach back sharply rather than just trying the same
 					//depth again next time.
 					adaptiveReadAheadRadius = Math.Max(ReadAheadRadiusFloor, adaptiveReadAheadRadius / 2);
+					lastReadAheadReach = -1;
+					return;
+				}
+				//The page right next door arriving is a weak signal on its own - the urgent, high
+				//priority fetch for that one page keeps winning a fair race against a slow link even
+				//while a much bigger walk from a previous tick is still draining in the background.
+				//Left unguarded, that let the reach keep growing tick after tick regardless of
+				//whether the connection could actually sustain what was already being asked for,
+				//until the growing walks began overlapping and the whole thing bogged down again -
+				//worse the longer reading continued, exactly as a fixed depth never did. So growth
+				//also needs the farthest page the previous walk reached for to have landed; if it
+				//has not, the reach simply holds where it is for now rather than being asked to
+				//stretch even further on top of a walk that has not finished yet.
+				if (lastReadAheadReach > num && !IsPageInCache(lastReadAheadReach, 0, fastMem: true, putInCache: false))
+				{
+					lastReadAheadReach = -1;
 					return;
 				}
 				adaptiveReadAheadRadius = Math.Min(ReadAheadRadiusCeiling, adaptiveReadAheadRadius + 1);
@@ -1844,6 +1866,9 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 				while (num2 > 0 && (!flag || !(flag = CacheBackPage(ref page, 1)) || --num2 != 0) && (!flag || !(flag = CacheBackPage(ref page, 1)) || --num2 != 0) && (!flag2 || !(flag2 = CacheBackPage(ref page2, -1)) || --num2 != 0) && (flag || flag2))
 				{
 				}
+				//Remember how far forward this walk actually reached - a valid page only if the walk
+				//did not simply run off the end of the book - so next tick can check it landed.
+				lastReadAheadReach = flag ? page : (-1);
 			}
 			catch (Exception)
 			{
