@@ -1165,8 +1165,8 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
             this.labelReadAheadHint.Name = "labelReadAheadHint";
             this.labelReadAheadHint.Size = new System.Drawing.Size(420, 13);
             this.labelReadAheadHint.TabIndex = 2;
-            this.labelReadAheadHint.Text = "Set to 1 to fetch only the page being read, one at a time - use this if a netwo' +
-    "rk share or slow drive is struggling to keep up.";
+            this.labelReadAheadHint.Text = "Set to 1 to fetch only the page being read, one at a time - use this if a networ" +
+    "k share or slow drive is struggling to keep up.";
             // 
             // grpMaximumMemoryUsage
             // 
