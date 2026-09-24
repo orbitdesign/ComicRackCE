@@ -460,6 +460,7 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 					return;
 				}
 				StopPendingImageCacheUpdate();
+				adaptiveReadAheadRadius = ReadAheadRadiusFloor;
 				if (comicBookNavigator != null)
 				{
 					comicBookNavigator.Disposing -= book_Disposing;
@@ -1802,11 +1803,11 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 		//and is cut sharply back the moment it does not - so a fast local disk gradually earns a
 		//wide reach that makes jumping around a book feel instant, while a slow connection settles
 		//to whatever depth it can actually sustain instead of being handed a fixed guess.
-		private int adaptiveReadAheadRadius = ReadAheadRadiusFloor;
-
 		private const int ReadAheadRadiusFloor = 2;
 
 		private const int ReadAheadRadiusCeiling = 20;
+
+		private int adaptiveReadAheadRadius = ReadAheadRadiusFloor;
 
 		private void cacheUpdateTimer_Tick(object sender, EventArgs e)
 		{
@@ -3693,9 +3694,9 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 		{
 			if (blender != null && blender.Target == this && blender.Method.Name == nameof(PageCurlBlending))
 			{
-				//A fast run of wheel notches sets this just before triggering the turn, asking for a
-				//quicker fold so the run reads as pages riffling by. Consumed once so it can never
-				//linger onto some later, unrelated turn.
+				//A wheel riffle sets this in EndRiffle, once it has finished silently stepping to
+				//the landed-on page, asking for a quicker fold so the run reads as pages riffling
+				//by. Consumed once so it can never linger onto some later, unrelated turn.
 				int duration = NextPageTurnDuration;
 				NextPageTurnDuration = 0;
 				return (duration > 0) ? duration : PageCurlDuration;

@@ -60,8 +60,11 @@ namespace cYo.Projects.ComicRack.Engine.Display
 		//still turns only one page; it is simply held for a moment before it does.
 		private const int WheelCoalesceGapTicks = 80;
 
-		//A pause longer than this between one flick and the next is treated as a fresh gesture,
-		//so the fold returns to its normal speed instead of carrying on getting quicker.
+		//Measured from one hold's flush to the next, which already includes that hold's own
+		//WheelCoalesceGapTicks - so the actual silence between two flicks that still reads as
+		//one continuing gesture is a little under this. A longer pause is treated as a fresh
+		//gesture, and the fold returns to its normal speed instead of carrying on getting
+		//quicker.
 		private const int WheelRiffleGapTicks = 450;
 
 		private const int WheelRiffleMinDuration = 60;

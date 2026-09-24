@@ -1,4 +1,4 @@
-orbitdesign Build 1.41 (based on Community Edition 0.9.184):
+orbitdesign Build 1.42 (based on Community Edition 0.9.184):
 
 * 1.1 FIX: Hardware acceleration stability. Fixed OpenGL extension detection, replaced the deprecated automatic mip map generation that crashed some drivers, checked texture uploads for errors, and added a startup guard that switches hardware acceleration off for one session if ComicRack failed to start last time.
 * 1.2 NEW: Direct2D renderer for the reader. Used by default when hardware acceleration is on, with OpenGL and then software rendering as fallbacks. Handles graphics device resets, uses high quality cubic sampling for "Enable Hardware Filters", and supports paper textures. Start with -hwgl to use the old OpenGL renderer.
@@ -41,6 +41,7 @@ orbitdesign Build 1.41 (based on Community Edition 0.9.184):
 * 1.39 FIX: Scrolling the wheel turned pages backwards - down went to the previous page, up went to the next - the opposite of every other way of turning a page. The wheel-flick code from 1.38 had the direction inverted; it now matches scroll wheel down for forward, up for back, the same as everywhere else in ComicRack.
 * 1.40 CHANGE: The deep page read ahead now tunes its own reach instead of using a fixed depth. It grows a page at a time every turn the connection keeps up with, up to a much wider reach than before, and is cut sharply back the moment it falls behind. A fast local disk ends up pre-loading further than it used to; a slow connection settles to whatever depth it can actually sustain.
 * 1.41 FIX: A wheel-turned page flashed into view for an instant before the fold animation started, on every turn either direction. The page change behind a fold was forcing its own repaint before the fold got to draw anything; painting is now held back for that instant the same way the existing drag-to-turn code already does it.
+* 1.42 CHANGE: Maintenance pass over the wheel-flick and read-ahead code added the last few builds: the learned read-ahead depth now resets when a new book opens instead of carrying over from whatever book was open before, and a few stale or imprecise comments left over from earlier redesigns were corrected. No behaviour changes beyond the reset.
 
 
 Community Edition Build 0.9.184:
