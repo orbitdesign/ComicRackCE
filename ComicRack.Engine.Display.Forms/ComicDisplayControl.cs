@@ -3774,48 +3774,44 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 			set;
 		}
 
+		//The page and layout BeginRiffle remembered, purely to hand back to BlendAnimation once
+		//EndRiffle is called; never seen outside this class, so the engine layer that drives the
+		//two calls never has to know this type exists.
+		private int riffleOldPage;
+
+		private DisplayOutputConfig riffleOldConfig;
+
+		private bool riffleWasSuppressed;
+
 		/// <summary>
-		/// Moves by several pages silently, then shows one fold from the page displayed
-		/// beforehand straight to wherever that lands - used for a fast wheel flick, so the whole
-		/// flick costs one page fetch rather than one per page it passes over.
+		/// Remembers the page shown right now, and mutes the ordinary per-turn fold until EndRiffle
+		/// turns it back on - used to step through several pages one by one (each through the
+		/// engine's own DisplayNextPageOrPart/DisplayPreviousPageOrPart) without a fold appearing
+		/// after every single one of them.
 		/// </summary>
-		public void RiffleTo(int pages, int duration)
+		public void BeginRiffle()
 		{
-			if (!IsValid || pages == 0 || Book == null)
-			{
-				return;
-			}
-			int oldPage = currentPage;
-			DisplayOutputConfig oldConfig = base.DisplayConfig;
-			bool forward = pages > 0;
-			int steps = Math.Abs(pages);
-			bool wasSuppressed = suppressNavigationBlend;
+			riffleOldPage = currentPage;
+			riffleOldConfig = base.DisplayConfig;
+			riffleWasSuppressed = suppressNavigationBlend;
 			suppressNavigationBlend = true;
-			try
+		}
+
+		/// <summary>
+		/// Turns the ordinary per-turn fold back on, then - if the page actually moved since the
+		/// matching BeginRiffle - shows one fold running from the page remembered then straight to
+		/// wherever the page is now.
+		/// </summary>
+		public void EndRiffle(int duration)
+		{
+			suppressNavigationBlend = riffleWasSuppressed;
+			if (!IsValid || currentPage == riffleOldPage)
 			{
-				for (int i = 0; i < steps; i++)
-				{
-					if (forward)
-					{
-						DisplayNextPageOrPart(forceNewPage: true);
-					}
-					else
-					{
-						DisplayPreviousPageOrPart(forceNewPage: true);
-					}
-				}
-			}
-			finally
-			{
-				suppressNavigationBlend = wasSuppressed;
-			}
-			if (currentPage == oldPage)
-			{
-				//Already at the start or end of the book: nothing moved, so there is nothing to show.
+				//Already at the start or end of the book, or nothing else moved it: nothing to show.
 				return;
 			}
 			NextPageTurnDuration = duration;
-			BlendAnimation(oldPage, oldConfig);
+			BlendAnimation(riffleOldPage, riffleOldConfig);
 		}
 
 		private bool CanDragTurn()

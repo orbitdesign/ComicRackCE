@@ -1005,7 +1005,31 @@ namespace cYo.Projects.ComicRack.Engine.Display
 
 		public void RiffleTo(int pages, int duration)
 		{
-			display.RiffleTo(pages, duration);
+			if (pages == 0)
+			{
+				return;
+			}
+			bool forward = pages > 0;
+			int steps = Math.Abs(pages);
+			display.BeginRiffle();
+			try
+			{
+				for (int i = 0; i < steps; i++)
+				{
+					if (forward)
+					{
+						DisplayNextPageOrPart(forceNewPage: true);
+					}
+					else
+					{
+						DisplayPreviousPageOrPart(forceNewPage: true);
+					}
+				}
+			}
+			finally
+			{
+				display.EndRiffle(duration);
+			}
 		}
 
 		public bool SoftwareFiltering

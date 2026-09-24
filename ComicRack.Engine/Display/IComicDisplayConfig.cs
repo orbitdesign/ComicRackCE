@@ -270,13 +270,20 @@ namespace cYo.Projects.ComicRack.Engine.Display
 		}
 
 		/// <summary>
-		/// Moves by several pages at once - forward if positive, back if negative - showing only
-		/// one fold from the page displayed beforehand straight to the page landed on, instead of
-		/// one fold per page skipped. duration overrides the normal transition length for this
-		/// fold only; 0 keeps the configured length. Used for a fast flick of the mouse wheel, so
-		/// that flick costs one page fetch rather than one per page it passes over.
+		/// Remembers the page displayed right now as the far side of an upcoming fold, and turns
+		/// off the ordinary per-turn fold while the caller steps through several pages one by
+		/// one. Pair with EndRiffle once the caller has finished stepping.
 		/// </summary>
-		void RiffleTo(int pages, int duration);
+		void BeginRiffle();
+
+		/// <summary>
+		/// Turns the ordinary per-turn fold back on, and - if the page actually moved since the
+		/// matching BeginRiffle - shows one fold running from the page remembered then straight
+		/// to wherever the page is now, however many pages that turned out to be. duration
+		/// overrides the normal transition length for this one fold; 0 keeps the configured
+		/// length.
+		/// </summary>
+		void EndRiffle(int duration);
 
 		bool SoftwareFiltering
 		{
