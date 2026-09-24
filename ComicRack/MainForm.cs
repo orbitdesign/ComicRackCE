@@ -1556,7 +1556,7 @@ namespace cYo.Projects.ComicRack.Viewer
 			commands.Add(delegate
 			{
 				Program.ShowExplorer(ComicDisplay.Book.Comic.FilePath);
-			}, () => ComicDisplay.Book != null && ComicDisplay.Book.Comic.EditMode.IsLocalComic(), cmRevealInExplorer);
+			}, () => ComicDisplay.Book != null && ComicDisplay.Book.Comic.EditMode.IsLocalComic(), cmRevealInExplorer, cmPageRevealInExplorer);
 			commands.Add(() => _ = CheckForUpdateAsync(true), miCheckUpdate);
 		}
 

@@ -405,6 +405,8 @@ namespace cYo.Projects.ComicRack.Viewer
 			this.cmSyncBrowser = new System.Windows.Forms.ToolStripMenuItem();
 			this.sepBeforeRevealInBrowser = new System.Windows.Forms.ToolStripSeparator();
 			this.cmRevealInExplorer = new System.Windows.Forms.ToolStripMenuItem();
+			this.cmPageRevealInExplorer = new System.Windows.Forms.ToolStripMenuItem();
+			this.toolStripSeparator12 = new System.Windows.Forms.ToolStripSeparator();
 			this.cmCopyPath = new System.Windows.Forms.ToolStripMenuItem();
 			this.trimTimer = new System.Windows.Forms.Timer(this.components);
 			this.mainViewContainer = new cYo.Common.Windows.Forms.SizableContainer();
@@ -1998,6 +2000,8 @@ namespace cYo.Projects.ComicRack.Viewer
             this.toolStripSeparator2,
             this.cmCopyPage,
             this.cmExportPage,
+            this.toolStripSeparator12,
+            this.cmPageRevealInExplorer,
             this.toolStripMenuItem11,
             this.cmRefreshPage,
             this.toolStripMenuItem46,
@@ -3436,6 +3440,17 @@ namespace cYo.Projects.ComicRack.Viewer
 			this.cmRevealInExplorer.Size = new System.Drawing.Size(220, 22);
 			this.cmRevealInExplorer.Text = "Reveal in Explorer";
 			// 
+			// toolStripSeparator12
+			// 
+			this.toolStripSeparator12.Name = "toolStripSeparator12";
+			this.toolStripSeparator12.Size = new System.Drawing.Size(217, 6);
+			// 
+			// cmPageRevealInExplorer
+			// 
+			this.cmPageRevealInExplorer.Name = "cmPageRevealInExplorer";
+			this.cmPageRevealInExplorer.Size = new System.Drawing.Size(220, 22);
+			this.cmPageRevealInExplorer.Text = "Reveal in Explorer";
+			// 
 			// cmCopyPath
 			// 
 			this.cmCopyPath.Name = "cmCopyPath";
@@ -3693,6 +3708,10 @@ namespace cYo.Projects.ComicRack.Viewer
 		private ToolStripSeparator toolStripMenuItem35;
 		private ToolStripMenuItem cmCopyPath;
 		private ToolStripMenuItem cmRevealInExplorer;
+
+		private ToolStripMenuItem cmPageRevealInExplorer;
+
+		private ToolStripSeparator toolStripSeparator12;
 		private ToolStripMenuItem cmSyncBrowser;
 		private ToolStripMenuItem miTasks;
 		private ToolStripStatusLabel tsReadInfoActivity;
