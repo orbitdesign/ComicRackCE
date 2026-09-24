@@ -259,16 +259,24 @@ namespace cYo.Projects.ComicRack.Engine.Display
 		}
 
 		/// <summary>
-		/// One-shot override for the next Realistic Page Curl transition's duration, in
-		/// milliseconds. 0 means no override: use PageCurlDuration as normal. Set just before
-		/// triggering a page change and consumed (reset to 0) the moment that transition starts,
-		/// so it can never affect a later, unrelated page turn.
+		/// One-shot override for the next page turn transition's duration, in milliseconds. 0
+		/// means no override: use PageCurlDuration as normal. Consumed (reset to 0) the moment
+		/// that transition starts, so it can never affect a later, unrelated page turn.
 		/// </summary>
 		int NextPageTurnDuration
 		{
 			get;
 			set;
 		}
+
+		/// <summary>
+		/// Moves by several pages at once - forward if positive, back if negative - showing only
+		/// one fold from the page displayed beforehand straight to the page landed on, instead of
+		/// one fold per page skipped. duration overrides the normal transition length for this
+		/// fold only; 0 keeps the configured length. Used for a fast flick of the mouse wheel, so
+		/// that flick costs one page fetch rather than one per page it passes over.
+		/// </summary>
+		void RiffleTo(int pages, int duration);
 
 		bool SoftwareFiltering
 		{

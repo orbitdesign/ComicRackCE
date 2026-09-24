@@ -3774,6 +3774,50 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 			set;
 		}
 
+		/// <summary>
+		/// Moves by several pages silently, then shows one fold from the page displayed
+		/// beforehand straight to wherever that lands - used for a fast wheel flick, so the whole
+		/// flick costs one page fetch rather than one per page it passes over.
+		/// </summary>
+		public void RiffleTo(int pages, int duration)
+		{
+			if (!IsValid || pages == 0 || Book == null)
+			{
+				return;
+			}
+			int oldPage = currentPage;
+			DisplayOutputConfig oldConfig = base.DisplayConfig;
+			bool forward = pages > 0;
+			int steps = Math.Abs(pages);
+			bool wasSuppressed = suppressNavigationBlend;
+			suppressNavigationBlend = true;
+			try
+			{
+				for (int i = 0; i < steps; i++)
+				{
+					if (forward)
+					{
+						DisplayNextPageOrPart(forceNewPage: true);
+					}
+					else
+					{
+						DisplayPreviousPageOrPart(forceNewPage: true);
+					}
+				}
+			}
+			finally
+			{
+				suppressNavigationBlend = wasSuppressed;
+			}
+			if (currentPage == oldPage)
+			{
+				//Already at the start or end of the book: nothing moved, so there is nothing to show.
+				return;
+			}
+			NextPageTurnDuration = duration;
+			BlendAnimation(oldPage, oldConfig);
+		}
+
 		private bool CanDragTurn()
 		{
 			return DragPageTurning && renderer != null && renderer.IsHardware && Book != null && PageLayout != PageLayoutMode.Continuous && !MagnifierVisible && !inBlendAnmation && base.Display != null && base.Display.IsAllVisible;

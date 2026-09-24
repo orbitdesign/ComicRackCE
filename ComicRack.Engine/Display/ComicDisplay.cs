@@ -51,17 +51,28 @@ namespace cYo.Projects.ComicRack.Engine.Display
 
 		private long lastPaging;
 
-		//A quick flick of the wheel arrives as several separate wheel events queued one after
-		//another, each turning one page. These three fields recognise that run as it happens and
-		//make each of those page turns progressively quicker, so a fast flick reads as pages
-		//riffling past rather than as several ordinary turns queued up one behind another.
+		//A fast flick of the wheel arrives as a short burst of separate wheel events, one right
+		//after another. Each is held for a moment (wheelCoalesceTimer) to see whether more are on
+		//the way; once they stop, the whole burst is applied as a single jump straight to the
+		//page it ends on, with one fold shown for the whole jump - covering however many pages
+		//the flick passed over - rather than turning, fetching and folding every one of them. A
+		//single, deliberate click of the wheel goes through the exact same short hold, so it
+		//still turns only one page; it is simply held for a moment before it does.
+		private const int WheelCoalesceGapTicks = 80;
+
+		//A pause longer than this between one flick and the next is treated as a fresh gesture,
+		//so the fold returns to its normal speed instead of carrying on getting quicker.
 		private const int WheelRiffleGapTicks = 450;
 
 		private const int WheelRiffleMinDuration = 60;
 
-		private long wheelRiffleTicks;
+		private System.Windows.Forms.Timer wheelCoalesceTimer;
 
-		private int wheelRiffleSign;
+		private int wheelPendingNotches;
+
+		private long wheelLastFlickTicks;
+
+		private int wheelLastFlickSign;
 
 		private int wheelRiffleDuration;
 
@@ -992,6 +1003,11 @@ namespace cYo.Projects.ComicRack.Engine.Display
 			}
 		}
 
+		public void RiffleTo(int pages, int duration)
+		{
+			display.RiffleTo(pages, duration);
+		}
+
 		public bool SoftwareFiltering
 		{
 			get
@@ -1267,6 +1283,7 @@ namespace cYo.Projects.ComicRack.Engine.Display
 					mouseHWheel.MouseHWheel -= display_MouseHWheel;
 				}
 				pageKeys.Dispose();
+				wheelCoalesceTimer?.Dispose();
 			}
 			base.Dispose(disposing);
 		}
@@ -1941,28 +1958,73 @@ namespace cYo.Projects.ComicRack.Engine.Display
 			else
 			{
 				scrollLines = (float)Math.Abs(e.Delta / SystemInformation.MouseWheelScrollDelta) * MouseWheelSpeed;
-				ArmWheelRiffle(Math.Sign(e.Delta));
-				keyboardMap.HandleKey((e.Delta > 0) ? CommandKey.MouseWheelUp : CommandKey.MouseWheelDown, Control.ModifierKeys);
-				//Safe either way: consumed already if a page turn just happened, otherwise there is
-				//nothing for it to affect later.
-				display.NextPageTurnDuration = 0;
+				if (PageLayout == PageLayoutMode.Continuous || ImagePartCount != 1)
+				{
+					//Scrolling within a page you are zoomed into, or a continuous strip: every tick
+					//moves the page itself and has to react at once, with nothing held back.
+					keyboardMap.HandleKey((e.Delta > 0) ? CommandKey.MouseWheelUp : CommandKey.MouseWheelDown, Control.ModifierKeys);
+				}
+				else
+				{
+					QueueWheelPageTurn(Math.Sign(e.Delta));
+				}
 			}
 		}
 
 		/// <summary>
-		/// Decides whether this wheel notch continues a run of same-direction turns that arrived
-		/// close enough together to read as one fast flick, and if so shortens the duration a
-		/// little further each time, down to a floor where the eye reads it as pages blurring by.
-		/// The very first notch of a fresh run always keeps the normal duration.
+		/// Holds one wheel notch for a short moment to see whether more are right behind it. Every
+		/// notch goes through this same short hold, so an isolated click still turns exactly one
+		/// page; what changes is only whether the hold catches company.
 		/// </summary>
-		private void ArmWheelRiffle(int sign)
+		private void QueueWheelPageTurn(int sign)
 		{
+			if (sign == 0)
+			{
+				return;
+			}
+			if (wheelPendingNotches != 0 && Math.Sign(wheelPendingNotches) != sign)
+			{
+				//Reversed direction while a hold was already pending: that pending amount is done
+				//gathering company, so send it on its way before starting the new direction.
+				FlushWheelPageTurn();
+			}
+			wheelPendingNotches += sign;
+			if (wheelCoalesceTimer == null)
+			{
+				wheelCoalesceTimer = new System.Windows.Forms.Timer
+				{
+					Interval = WheelCoalesceGapTicks
+				};
+				wheelCoalesceTimer.Tick += delegate
+				{
+					wheelCoalesceTimer.Stop();
+					FlushWheelPageTurn();
+				};
+			}
+			wheelCoalesceTimer.Stop();
+			wheelCoalesceTimer.Start();
+		}
+
+		/// <summary>
+		/// Applies however many notches gathered during the hold as a single jump, with one fold
+		/// covering the whole thing. Successive flicks arriving close together make that fold a
+		/// little quicker each time, down to a floor; a real pause resets it to normal speed.
+		/// </summary>
+		private void FlushWheelPageTurn()
+		{
+			int pages = wheelPendingNotches;
+			wheelPendingNotches = 0;
+			if (pages == 0)
+			{
+				return;
+			}
 			long ticks = Machine.Ticks;
-			bool flag = sign != 0 && sign == wheelRiffleSign && ticks - wheelRiffleTicks < WheelRiffleGapTicks;
-			wheelRiffleTicks = ticks;
-			wheelRiffleSign = sign;
+			int sign = Math.Sign(pages);
+			bool flag = sign == wheelLastFlickSign && ticks - wheelLastFlickTicks < WheelRiffleGapTicks;
+			wheelLastFlickSign = sign;
+			wheelLastFlickTicks = ticks;
 			wheelRiffleDuration = (flag ? Math.Max(WheelRiffleMinDuration, (int)((float)((wheelRiffleDuration > 0) ? wheelRiffleDuration : PageCurlDuration) * 0.6f)) : 0);
-			display.NextPageTurnDuration = wheelRiffleDuration;
+			RiffleTo(pages, wheelRiffleDuration);
 		}
 
 		private void display_MouseHWheel(object sender, MouseEventArgs e)
