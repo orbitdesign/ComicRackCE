@@ -910,6 +910,30 @@ namespace cYo.Projects.ComicRack.Viewer.Views
             base.OnLoad(e);
             liveInstances.Add(this);
             RefreshListBackgroundTexture();
+            //Something in the rest of this control's own startup - most likely the saved view
+            //settings (sort, group, columns) being applied after this point - was silently
+            //clearing the background/shelf pictures just after they were first loaded, and
+            //nothing afterwards ever asked for them again on a plain restart, only a manual
+            //change in Book Display Settings did. Rather than chase down exactly which step of
+            //startup does that, a second check shortly after everything has settled is a
+            //simple, low-risk way to recover from it regardless of the exact cause - the
+            //RefreshListBackgroundTexture it calls only reloads anything that has actually
+            //gone missing, so this costs nothing on the far more common case where nothing
+            //cleared it in the first place.
+            System.Windows.Forms.Timer recheckTimer = new System.Windows.Forms.Timer
+            {
+                Interval = 750
+            };
+            recheckTimer.Tick += delegate
+            {
+                recheckTimer.Stop();
+                recheckTimer.Dispose();
+                if (!base.IsDisposed)
+                {
+                    RefreshListBackgroundTexture();
+                }
+            };
+            recheckTimer.Start();
             if (base.DesignMode)
             {
                 return;
@@ -1795,7 +1819,12 @@ namespace cYo.Projects.ComicRack.Viewer.Views
         {
             itemView.BackgroundTextureLayout = Program.Settings.LibraryBackgroundLayout;
             string backgroundPath = Program.Settings.LibraryBackgroundEnabled ? Program.Settings.LibraryBackgroundTexturePath : string.Empty;
-            if (backgroundPath != loadedBackgroundTexturePath)
+            //Reload not only when the path itself has changed, but also if the picture we
+            //believe should already be showing has gone missing some other way - this is
+            //what makes the control recover on its own from whatever briefly clears it during
+            //startup (see the delayed re-check this OnLoad also arms), rather than needing the
+            //setting to be touched again before it comes back.
+            if (backgroundPath != loadedBackgroundTexturePath || (!string.IsNullOrEmpty(backgroundPath) && itemView.BackgroundTexture == null))
             {
                 loadedBackgroundTexturePath = backgroundPath;
                 Image old = itemView.BackgroundTexture;
@@ -1803,14 +1832,14 @@ namespace cYo.Projects.ComicRack.Viewer.Views
                 old?.Dispose();
             }
             string shelfPath = Program.Settings.LibraryShelfEnabled ? Program.Settings.LibraryShelfTexturePath : string.Empty;
-            if (shelfPath != loadedShelfTexturePath)
+            if (shelfPath != loadedShelfTexturePath || (!string.IsNullOrEmpty(shelfPath) && itemView.ShelfImage == null))
             {
                 loadedShelfTexturePath = shelfPath;
                 Image old = itemView.ShelfImage;
                 itemView.ShelfImage = LoadImage(shelfPath);
                 old?.Dispose();
             }
-            itemView.ShelfOffset = Program.Settings.LibraryShelfOffset;
+            itemView.ShelfOffsetPercent = Program.Settings.LibraryShelfOffsetPercent;
             itemView.ShelfHeight = Program.Settings.LibraryShelfHeight;
             itemView.ShelfShadowDistance = Program.Settings.LibraryShelfShadowDistance;
             itemView.ShelfShadowAngle = Program.Settings.LibraryShelfShadowAngle;

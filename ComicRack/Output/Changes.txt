@@ -1,4 +1,4 @@
-﻿orbitdesign Build 1.50 (based on Community Edition 0.9.184):
+﻿orbitdesign Build 1.51 (based on Community Edition 0.9.184):
 
 * 1.1 FIX: Hardware acceleration stability. Fixed OpenGL extension detection, replaced the deprecated automatic mip map generation that crashed some drivers, checked texture uploads for errors, and added a startup guard that switches hardware acceleration off for one session if ComicRack failed to start last time.
 * 1.2 NEW: Direct2D renderer for the reader. Used by default when hardware acceleration is on, with OpenGL and then software rendering as fallbacks. Handles graphics device resets, uses high quality cubic sampling for "Enable Hardware Filters", and supports paper textures. Start with -hwgl to use the old OpenGL renderer.
@@ -50,6 +50,7 @@
 * 1.48 CHANGE: Library Background and Library Bookshelf moved into Book Display Settings as two separate panels (no longer a dropdown menu item, and no longer one Type choice - the two are entirely independent, so either, both or neither can be on). Bookshelf's shadow is now fully adjustable: distance, angle, blur, transparency and colour, each with its own control.
 * 1.49 NEW: "Shelf Position" slider in the Library Bookshelf panel. The bottom of a book's row includes its caption text underneath, not just the cover, so the shelf needed a way to move up into the gap between the two rather than sitting under the caption; this slider (and the shadow, which moves with it) does that.
 * 1.50 CHANGE: The three library panels (Background, Bookshelf, and a newly separated Book Cover Shadow) now sit in their own column to the right of the reader's own panels in Book Display Settings, instead of stacked below them. Bookshelf gained a Shelf Height slider - it no longer scales itself automatically with cover size. Also fixed a label that had drifted out of line with its own slider (Shadow Angle) in the previous build.
+* 1.51 FIX: Shelf Position is now a percentage of the row's own height rather than a fixed pixel count, so it stays correctly placed as cover size changes. Rows sharing a bottom edge within a few pixels of each other are now treated as one row rather than split apart. The shadow now fades on all four sides through a stacked, expanding shape instead of stopping sharply at three of them. The library background/shelf picture could silently vanish shortly after a restart; the control now rechecks itself shortly after starting up and reloads anything that has gone missing. Fixed OK/Apply/Cancel not actually landing where they were placed, caused by the buttons' own anchor moving them again after they were positioned.
 
 
 Community Edition Build 0.9.184:

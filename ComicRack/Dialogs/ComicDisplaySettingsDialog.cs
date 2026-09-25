@@ -335,7 +335,7 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 
 			//Smaller now that the shadow settings have their own panel below - just the shelf
 			//itself: whether it is on, its picture, and the two controls for lining it up
-			//against whatever cover size is set (see the class-level comment on ShelfOffset).
+			//against whatever cover size is set (see the class-level comment on ShelfOffsetPercent).
 			GroupBox grpLibShelf = new GroupBox
 			{
 				Text = "Library Bookshelf",
@@ -386,14 +386,14 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			};
 			tbLibShelfPosition = new TrackBarLite
 			{
-				Minimum = -150,
-				Maximum = 50,
+				Minimum = -60,
+				Maximum = 20,
 				Location = new Point(150, 85),
 				Size = new Size(230, 18)
 			};
 			tbLibShelfPosition.ValueChanged += delegate
 			{
-				toolTip.SetToolTip(tbLibShelfPosition, $"{tbLibShelfPosition.Value}px");
+				toolTip.SetToolTip(tbLibShelfPosition, $"{tbLibShelfPosition.Value}%");
 			};
 			Label labelLibShelfHeight = new Label
 			{
@@ -525,8 +525,13 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			flowLayoutPanel2.PerformLayout();
 			int contentRight = flowLayoutPanel2.Right;
 			int contentBottom = Math.Max(flowLayoutPanel1.Bottom, flowLayoutPanel2.Bottom);
+			//panel1's own Bottom|Right anchor would otherwise reposition it again, based on
+			//its distance from the form's edges as they stood before this resize, undoing
+			//the explicit position set below - resizing the form first, with the anchor
+			//taken out of the way, and only then placing panel1 is what actually sticks.
+			panel1.Anchor = AnchorStyles.None;
+			ClientSize = new Size(contentRight + 12, contentBottom + panel1.Height + 24);
 			panel1.Location = new Point(contentRight - panel1.Width, contentBottom + 12);
-			ClientSize = new Size(contentRight + 12, panel1.Bottom + 12);
 		}
 
 		private void UpdateLibraryPanels()
@@ -536,7 +541,7 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			cbLibBackgroundLayout.SelectedIndex = (int)Program.Settings.LibraryBackgroundLayout;
 			chkLibShelfEnabled.Checked = Program.Settings.LibraryShelfEnabled;
 			txtLibShelfPath.Text = Program.Settings.LibraryShelfTexturePath;
-			tbLibShelfPosition.Value = Program.Settings.LibraryShelfOffset;
+			tbLibShelfPosition.Value = Program.Settings.LibraryShelfOffsetPercent;
 			tbLibShelfHeight.Value = Program.Settings.LibraryShelfHeight;
 			tbLibShelfDistance.Value = Program.Settings.LibraryShelfShadowDistance;
 			tbLibShelfAngle.Value = Program.Settings.LibraryShelfShadowAngle;
@@ -552,7 +557,7 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			Program.Settings.LibraryBackgroundLayout = (ImageLayout)cbLibBackgroundLayout.SelectedIndex;
 			Program.Settings.LibraryShelfEnabled = chkLibShelfEnabled.Checked;
 			Program.Settings.LibraryShelfTexturePath = txtLibShelfPath.Text;
-			Program.Settings.LibraryShelfOffset = tbLibShelfPosition.Value;
+			Program.Settings.LibraryShelfOffsetPercent = tbLibShelfPosition.Value;
 			Program.Settings.LibraryShelfHeight = tbLibShelfHeight.Value;
 			Program.Settings.LibraryShelfShadowDistance = tbLibShelfDistance.Value;
 			Program.Settings.LibraryShelfShadowAngle = tbLibShelfAngle.Value;
