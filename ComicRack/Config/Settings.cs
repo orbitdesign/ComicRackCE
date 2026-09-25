@@ -189,6 +189,8 @@ namespace cYo.Projects.ComicRack.Viewer.Config
 
 		private int readAheadPages = 20;
 
+		private string libraryBackgroundTexturePath = string.Empty;
+
 		private bool softwareFiltering = true;
 
 		private bool hardwareFiltering;
@@ -883,6 +885,29 @@ namespace cYo.Projects.ComicRack.Viewer.Config
 				if (readAheadPages != value)
 				{
 					readAheadPages = value;
+					FireEvent(null);
+				}
+			}
+		}
+
+		/// <summary>
+		/// An image file tiled across the background of the library's book display panel.
+		/// Empty means none: the plain background colour is used, as before.
+		/// </summary>
+		[Browsable(false)]
+		[DefaultValue("")]
+		public string LibraryBackgroundTexturePath
+		{
+			get
+			{
+				return libraryBackgroundTexturePath;
+			}
+			set
+			{
+				value = value ?? string.Empty;
+				if (libraryBackgroundTexturePath != value)
+				{
+					libraryBackgroundTexturePath = value;
 					FireEvent(null);
 				}
 			}

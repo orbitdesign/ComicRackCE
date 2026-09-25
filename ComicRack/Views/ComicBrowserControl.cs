@@ -908,6 +908,7 @@ namespace cYo.Projects.ComicRack.Viewer.Views
         protected override void OnLoad(EventArgs e)
         {
             base.OnLoad(e);
+            RefreshListBackgroundTexture();
             if (base.DesignMode)
             {
                 return;
@@ -1034,6 +1035,8 @@ namespace cYo.Projects.ComicRack.Viewer.Views
             commands.Add(MarkSelectedUnchecked, ComicEditMode.CanEditProperties() && itemView.SelectedCount > 0, miMarkUnchecked);
             commands.Add(SetSelectedComicAsListBackground, AllSelectedLinked, miSetListBackground);
             commands.Add(ResetListBackgroundImage, () => itemView.BackgroundImage != ListBackgroundImage, miResetListBackground, toolStripMenuItem3);
+            commands.Add(ChooseListBackgroundTexture, miChooseBackgroundTexture);
+            commands.Add(ClearListBackgroundTexture, () => itemView.TiledBackgroundImage != null, miClearBackgroundTexture);
             commands.Add(delegate
             {
                 MoveBooks(GetBookList(ComicBookFilterType.Library | ComicBookFilterType.Selected), bottom: false);
@@ -1750,6 +1753,66 @@ namespace cYo.Projects.ComicRack.Viewer.Views
                     toolStripItem.DisplayStyle = style;
                 }
             }
+        }
+
+        /// <summary>
+        /// The path last successfully loaded, so the disk is not touched again on every new
+        /// browser window when the setting has not actually changed since.
+        /// </summary>
+        private string loadedBackgroundTexturePath = string.Empty;
+
+        /// <summary>
+        /// Reads Program.Settings.LibraryBackgroundTexturePath and, if it names a file that has
+        /// not already been loaded into this view, loads it. Called once when the view is
+        /// created, which is what lets a newly opened library window pick up a texture chosen
+        /// earlier without needing anything to actively push the change into it.
+        /// </summary>
+        private void RefreshListBackgroundTexture()
+        {
+            string path = Program.Settings.LibraryBackgroundTexturePath;
+            if (path == loadedBackgroundTexturePath)
+            {
+                return;
+            }
+            loadedBackgroundTexturePath = path;
+            Image image = itemView.TiledBackgroundImage;
+            itemView.TiledBackgroundImage = null;
+            image?.Dispose();
+            if (!string.IsNullOrEmpty(path))
+            {
+                try
+                {
+                    itemView.TiledBackgroundImage = Image.FromFile(path);
+                }
+                catch
+                {
+                    //A missing or unreadable file: fall back to no texture rather than fail to
+                    //open the library over a picture that is no longer there.
+                }
+            }
+            itemView.Invalidate();
+        }
+
+        private void ChooseListBackgroundTexture()
+        {
+            using (OpenFileDialog openFileDialog = new OpenFileDialog
+            {
+                Filter = TR.Messages["ImageFiles", "Image Files"] + "|*.jpg;*.jpeg;*.png;*.bmp;*.gif",
+                Title = TR.Messages["ChooseBackgroundTexture", "Choose Background Texture"]
+            })
+            {
+                if (openFileDialog.ShowDialog(this) == DialogResult.OK)
+                {
+                    Program.Settings.LibraryBackgroundTexturePath = openFileDialog.FileName;
+                    RefreshListBackgroundTexture();
+                }
+            }
+        }
+
+        private void ClearListBackgroundTexture()
+        {
+            Program.Settings.LibraryBackgroundTexturePath = string.Empty;
+            RefreshListBackgroundTexture();
         }
 
         private void SetSelectedComicAsListBackground()

@@ -3243,17 +3243,68 @@ namespace cYo.Common.Windows.Forms
 			OnDrawItemSelection(gr, rc, drawState & ~item.GetOwnerDrawnStates(ItemViewMode));
 		}
 
+		/// <summary>
+		/// A texture tiled across the whole background, behind everything else including the
+		/// single, aligned BackgroundImage above. Unlike BackgroundImage, this one is drawn under
+		/// the same transform as the items themselves (see DrawItems), so it pans together with
+		/// them as the view scrolls instead of staying fixed to the window.
+		/// </summary>
+		public Image TiledBackgroundImage
+		{
+			get;
+			set;
+		}
+
 		protected void DrawBackground(Graphics gr, DrawItemViewOptions drawItemsFlags = DrawItemViewOptions.Default)
 		{
 			if ((drawItemsFlags & DrawItemViewOptions.Background) != 0)
 			{
 				gr.Clear(BackColor);
 			}
+			if ((drawItemsFlags & DrawItemViewOptions.BackgroundImage) != 0 && TiledBackgroundImage != null)
+			{
+				DrawTiledBackground(gr, TiledBackgroundImage);
+			}
 			if ((drawItemsFlags & DrawItemViewOptions.BackgroundImage) != 0 && BackgroundImage != null)
 			{
 				Rectangle rectangle = new Rectangle(0, 0, BackgroundImage.Width, BackgroundImage.Height);
 				gr.DrawImage(BackgroundImage, rectangle.Align(DisplayRectangle, BackgroundImageAlignment), rectangle, GraphicsUnit.Pixel);
 			}
+		}
+
+		private void DrawTiledBackground(Graphics gr, Image image)
+		{
+			int width = image.Width;
+			int height = image.Height;
+			if (width <= 0 || height <= 0)
+			{
+				return;
+			}
+			using (gr.SaveState())
+			{
+				//The same translation DrawItems applies below, so the texture is anchored to the
+				//content's own coordinate space rather than the window: scroll the list, and the
+				//texture moves with it exactly as if it were painted once across the whole thing.
+				Point scrollPosition = base.ScrollPosition;
+				gr.TranslateTransform(-scrollPosition.X, -scrollPosition.Y);
+				Rectangle client = ClientRectangle;
+				client.Offset(scrollPosition);
+				int startX = client.Left - Modulo(client.Left, width);
+				int startY = client.Top - Modulo(client.Top, height);
+				for (int y = startY; y < client.Bottom; y += height)
+				{
+					for (int x = startX; x < client.Right; x += width)
+					{
+						gr.DrawImageUnscaled(image, x, y);
+					}
+				}
+			}
+		}
+
+		private static int Modulo(int value, int modulus)
+		{
+			int result = value % modulus;
+			return (result < 0) ? (result + modulus) : result;
 		}
 
 		protected virtual void DrawMarker(Graphics gr, Rectangle bounds)
