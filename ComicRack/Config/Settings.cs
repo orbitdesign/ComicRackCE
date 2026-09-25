@@ -202,6 +202,8 @@ namespace cYo.Projects.ComicRack.Viewer.Config
 
 		private int libraryShelfShadowDistance = 4;
 
+		private int libraryShelfOffset;
+
 		private int libraryShelfShadowAngle;
 
 		private int libraryShelfShadowBlur = 20;
@@ -1044,6 +1046,32 @@ namespace cYo.Projects.ComicRack.Viewer.Config
 				if (libraryShelfShadowDistance != value)
 				{
 					libraryShelfShadowDistance = value;
+					FireEvent(null);
+				}
+			}
+		}
+
+		/// <summary>
+		/// Shifts the shelf strip (and the shadow on it, which moves with it) up or down from
+		/// the bottom of each row's own bounds. That bottom edge includes any caption text
+		/// under the cover, not just the cover art, so this is usually negative - moving the
+		/// shelf up into the gap between the cover and its caption rather than under the
+		/// caption.
+		/// </summary>
+		[Browsable(false)]
+		[DefaultValue(0)]
+		public int LibraryShelfOffset
+		{
+			get
+			{
+				return libraryShelfOffset;
+			}
+			set
+			{
+				value = value.Clamp(-150, 50);
+				if (libraryShelfOffset != value)
+				{
+					libraryShelfOffset = value;
 					FireEvent(null);
 				}
 			}

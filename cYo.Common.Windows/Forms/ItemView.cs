@@ -3282,6 +3282,18 @@ namespace cYo.Common.Windows.Forms
 			set;
 		}
 
+		/// <summary>
+		/// Shifts the whole shelf strip up (negative) or down (positive) from the bottom of
+		/// each row's own bounds, which - since that includes any caption text below the
+		/// cover, not just the cover art itself - usually needs to be negative to land the
+		/// shelf in the gap between the two rather than under the caption.
+		/// </summary>
+		public int ShelfOffset
+		{
+			get;
+			set;
+		}
+
 		public int ShelfShadowAngle
 		{
 			get;
@@ -3449,7 +3461,7 @@ namespace cYo.Common.Windows.Forms
 				client.Offset(scrollPosition);
 				foreach (KeyValuePair<int, List<Rectangle>> row in rows)
 				{
-					int bottom = row.Key;
+					int bottom = row.Key + ShelfOffset;
 					int rowHeight = row.Value.Max((Rectangle r) => r.Height);
 					//A little thicker for a bigger cover size, so the shelf still reads as the
 					//right proportion next to the books sitting on it rather than a thin sliver.
