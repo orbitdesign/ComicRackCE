@@ -1035,7 +1035,7 @@ namespace cYo.Projects.ComicRack.Viewer.Views
             commands.Add(MarkSelectedUnchecked, ComicEditMode.CanEditProperties() && itemView.SelectedCount > 0, miMarkUnchecked);
             commands.Add(SetSelectedComicAsListBackground, AllSelectedLinked, miSetListBackground);
             commands.Add(ResetListBackgroundImage, () => itemView.BackgroundImage != ListBackgroundImage, miResetListBackground, toolStripMenuItem3);
-            commands.Add(ChooseListBackgroundTexture, miChooseBackgroundTexture);
+            commands.Add(EditListBackgroundTexture, miChooseBackgroundTexture);
             commands.Add(ClearListBackgroundTexture, () => itemView.TiledBackgroundImage != null, miClearBackgroundTexture);
             commands.Add(delegate
             {
@@ -1762,16 +1762,20 @@ namespace cYo.Projects.ComicRack.Viewer.Views
         private string loadedBackgroundTexturePath = string.Empty;
 
         /// <summary>
-        /// Reads Program.Settings.LibraryBackgroundTexturePath and, if it names a file that has
-        /// not already been loaded into this view, loads it. Called once when the view is
-        /// created, which is what lets a newly opened library window pick up a texture chosen
-        /// earlier without needing anything to actively push the change into it.
+        /// Reads the current Program.Settings.LibraryBackground* values and, if the image path
+        /// has not already been loaded into this view, (re)loads it and applies the type and
+        /// layout to itemView. Called once when the view is created, which is what lets a newly
+        /// opened library window pick up a choice made earlier without needing anything to
+        /// actively push the change into it.
         /// </summary>
         private void RefreshListBackgroundTexture()
         {
             string path = Program.Settings.LibraryBackgroundTexturePath;
+            itemView.TiledBackgroundLayout = Program.Settings.LibraryBackgroundLayout;
+            itemView.TiledBackgroundMode = (Program.Settings.LibraryBackgroundType == LibraryBackgroundType.Bookshelf) ? ItemView.BackgroundImageMode.Shelf : ItemView.BackgroundImageMode.Plain;
             if (path == loadedBackgroundTexturePath)
             {
+                itemView.Invalidate();
                 return;
             }
             loadedBackgroundTexturePath = path;
@@ -1793,17 +1797,15 @@ namespace cYo.Projects.ComicRack.Viewer.Views
             itemView.Invalidate();
         }
 
-        private void ChooseListBackgroundTexture()
+        private void EditListBackgroundTexture()
         {
-            using (OpenFileDialog openFileDialog = new OpenFileDialog
+            using (LibraryBackgroundDialog dialog = new LibraryBackgroundDialog(Program.Settings.LibraryBackgroundType, Program.Settings.LibraryBackgroundTexturePath, Program.Settings.LibraryBackgroundLayout))
             {
-                Filter = TR.Messages["ImageFiles", "Image Files"] + "|*.jpg;*.jpeg;*.png;*.bmp;*.gif",
-                Title = TR.Messages["ChooseBackgroundTexture", "Choose Background Texture"]
-            })
-            {
-                if (openFileDialog.ShowDialog(this) == DialogResult.OK)
+                if (dialog.ShowDialog(this) == DialogResult.OK)
                 {
-                    Program.Settings.LibraryBackgroundTexturePath = openFileDialog.FileName;
+                    Program.Settings.LibraryBackgroundType = dialog.SelectedType;
+                    Program.Settings.LibraryBackgroundTexturePath = dialog.SelectedPath;
+                    Program.Settings.LibraryBackgroundLayout = dialog.SelectedLayout;
                     RefreshListBackgroundTexture();
                 }
             }
@@ -1811,6 +1813,7 @@ namespace cYo.Projects.ComicRack.Viewer.Views
 
         private void ClearListBackgroundTexture()
         {
+            Program.Settings.LibraryBackgroundType = LibraryBackgroundType.None;
             Program.Settings.LibraryBackgroundTexturePath = string.Empty;
             RefreshListBackgroundTexture();
         }

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Collections.Specialized;
 using System.ComponentModel;
@@ -1271,7 +1271,7 @@ namespace cYo.Projects.ComicRack.Viewer.Views
 			// 
 			this.miChooseBackgroundTexture.Name = "miChooseBackgroundTexture";
 			this.miChooseBackgroundTexture.Size = new System.Drawing.Size(210, 22);
-			this.miChooseBackgroundTexture.Text = "Choose Background Texture...";
+			this.miChooseBackgroundTexture.Text = "Background...";
 			// 
 			// miClearBackgroundTexture
 			// 

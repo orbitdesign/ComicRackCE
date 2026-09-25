@@ -1,4 +1,4 @@
-﻿orbitdesign Build 1.46 (based on Community Edition 0.9.184):
+﻿orbitdesign Build 1.47 (based on Community Edition 0.9.184):
 
 * 1.1 FIX: Hardware acceleration stability. Fixed OpenGL extension detection, replaced the deprecated automatic mip map generation that crashed some drivers, checked texture uploads for errors, and added a startup guard that switches hardware acceleration off for one session if ComicRack failed to start last time.
 * 1.2 NEW: Direct2D renderer for the reader. Used by default when hardware acceleration is on, with OpenGL and then software rendering as fallbacks. Handles graphics device resets, uses high quality cubic sampling for "Enable Hardware Filters", and supports paper textures. Start with -hwgl to use the old OpenGL renderer.
@@ -46,6 +46,7 @@
 * 1.44 NEW: "Page Read Ahead" in Preferences > Advanced, next to Caches & Memory Usage: a ceiling (1-20) on how many pages the reader is allowed to fetch ahead in the background. Set to 1 to turn background fetching off entirely and fetch only the page being read, one at a time, for a slow network share or drive that struggles to keep up with more.
 * 1.45 CHANGE: The installer (Installer.iss, built by the Release workflow) now names this build "ComicRack CE (orbitdesign build)" with orbitdesign as the publisher, and uses its own installer identity separate from stock ComicRack Community Edition, so the two can never be confused for the same install.
 * 1.46 NEW: "Choose Background Texture..." and "Clear Background Texture" in the library's List Layout menu (the toolbar button next to the layout tools). Tiles a chosen image across the whole book display panel, and it scrolls together with the books rather than staying fixed to the window. Remembered across restarts and picked up by any newly opened library window.
+* 1.47 NEW: The library's Background... (List Layout menu) is now a proper dialog with a Type (None/Texture/Bookshelf), an image picker, and a Layout choice (Tile/Stretch/Center/Zoom) for Texture, matching the reader's own background options - renamed to "Reader Background" in Book Display Settings to keep the two apart. Bookshelf draws the chosen image as a shelf strip under each row of books, repositioning itself to the current cover size, with a soft shadow cast by each book onto the shelf beneath it.
 
 
 Community Edition Build 0.9.184:

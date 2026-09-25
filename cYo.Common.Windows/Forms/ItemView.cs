@@ -3244,12 +3244,38 @@ namespace cYo.Common.Windows.Forms
 		}
 
 		/// <summary>
-		/// A texture tiled across the whole background, behind everything else including the
-		/// single, aligned BackgroundImage above. Unlike BackgroundImage, this one is drawn under
-		/// the same transform as the items themselves (see DrawItems), so it pans together with
-		/// them as the view scrolls instead of staying fixed to the window.
+		/// How TiledBackgroundImage is used: a plain background under everything (see
+		/// TiledBackgroundLayout for how it is placed), or a shelf strip drawn under each row of
+		/// items with a soft shadow cast by each item onto it.
+		/// </summary>
+		public enum BackgroundImageMode
+		{
+			Plain,
+			Shelf
+		}
+
+		/// <summary>
+		/// An image drawn behind everything else, including the single, aligned BackgroundImage
+		/// above. In Plain mode and with Tile layout, this one is drawn under the same transform
+		/// as the items themselves (see DrawItems), so it pans together with them as the view
+		/// scrolls instead of staying fixed to the window; Stretch, Center and Zoom are fixed to
+		/// the window instead, the same as a normal background image, since repeating those
+		/// across a list that can scroll indefinitely would not mean much. In Shelf mode this
+		/// same image is used as a shelf strip - see TiledBackgroundMode.
 		/// </summary>
 		public Image TiledBackgroundImage
+		{
+			get;
+			set;
+		}
+
+		public ImageLayout TiledBackgroundLayout
+		{
+			get;
+			set;
+		} = ImageLayout.Tile;
+
+		public BackgroundImageMode TiledBackgroundMode
 		{
 			get;
 			set;
@@ -3263,7 +3289,18 @@ namespace cYo.Common.Windows.Forms
 			}
 			if ((drawItemsFlags & DrawItemViewOptions.BackgroundImage) != 0 && TiledBackgroundImage != null)
 			{
-				DrawTiledBackground(gr, TiledBackgroundImage);
+				if (TiledBackgroundMode == BackgroundImageMode.Shelf)
+				{
+					DrawShelfBackground(gr, TiledBackgroundImage);
+				}
+				else if (TiledBackgroundLayout == ImageLayout.Tile)
+				{
+					DrawTiledBackground(gr, TiledBackgroundImage);
+				}
+				else
+				{
+					DrawFixedBackground(gr, TiledBackgroundImage, TiledBackgroundLayout);
+				}
 			}
 			if ((drawItemsFlags & DrawItemViewOptions.BackgroundImage) != 0 && BackgroundImage != null)
 			{
@@ -3305,6 +3342,121 @@ namespace cYo.Common.Windows.Forms
 		{
 			int result = value % modulus;
 			return (result < 0) ? (result + modulus) : result;
+		}
+
+		/// <summary>
+		/// Stretch, Center or Zoom: fixed to the window rather than scrolling with the content,
+		/// the same as a normal background image would be. Repeating an infinitely scrollable
+		/// list is what Tile is for; these three are for a single picture instead.
+		/// </summary>
+		private void DrawFixedBackground(Graphics gr, Image image, ImageLayout layout)
+		{
+			Rectangle client = ClientRectangle;
+			if (client.Width <= 0 || client.Height <= 0)
+			{
+				return;
+			}
+			switch (layout)
+			{
+			case ImageLayout.Stretch:
+				gr.DrawImage(image, client);
+				break;
+			case ImageLayout.Center:
+				gr.DrawImageUnscaled(image, client.Left + (client.Width - image.Width) / 2, client.Top + (client.Height - image.Height) / 2);
+				break;
+			case ImageLayout.Zoom:
+			{
+				float scale = Math.Min((float)client.Width / (float)image.Width, (float)client.Height / (float)image.Height);
+				int width = (int)(image.Width * scale);
+				int height = (int)(image.Height * scale);
+				gr.DrawImage(image, client.Left + (client.Width - width) / 2, client.Top + (client.Height - height) / 2, width, height);
+				break;
+			}
+			}
+		}
+
+		/// <summary>
+		/// TiledBackgroundImage used as a shelf: one strip per row of items, aligned to the
+		/// bottom of that row exactly as the items themselves are currently laid out - not by
+		/// guessing a row height, but by asking for the real, current bounds of the items on
+		/// screen, so this keeps lining up correctly whatever the cover size, view mode or
+		/// grouping happens to be. Each item then casts a short, soft shadow down onto the shelf
+		/// beneath it.
+		/// </summary>
+		private void DrawShelfBackground(Graphics gr, Image image)
+		{
+			if (image.Height <= 0)
+			{
+				return;
+			}
+			Dictionary<int, List<Rectangle>> rows = new Dictionary<int, List<Rectangle>>();
+			using (ItemMonitor.Lock(visibleItems))
+			{
+				foreach (IViewableItem visibleItem in visibleItems)
+				{
+					Rectangle bounds = GetItemBounds(visibleItem);
+					if (bounds.IsEmpty)
+					{
+						continue;
+					}
+					if (!rows.TryGetValue(bounds.Bottom, out List<Rectangle> row))
+					{
+						row = new List<Rectangle>();
+						rows[bounds.Bottom] = row;
+					}
+					row.Add(bounds);
+				}
+			}
+			if (rows.Count == 0)
+			{
+				return;
+			}
+			using (gr.SaveState())
+			{
+				//Same transform DrawItems uses, so the shelves - and the shadows on them - pan
+				//with the books exactly as the books themselves do.
+				Point scrollPosition = base.ScrollPosition;
+				gr.TranslateTransform(-scrollPosition.X, -scrollPosition.Y);
+				Rectangle client = ClientRectangle;
+				client.Offset(scrollPosition);
+				foreach (KeyValuePair<int, List<Rectangle>> row in rows)
+				{
+					int bottom = row.Key;
+					int rowHeight = row.Value.Max((Rectangle r) => r.Height);
+					//A little thicker for a bigger cover size, so the shelf still reads as the
+					//right proportion next to the books sitting on it rather than a thin sliver.
+					int thickness = Math.Max(10, rowHeight / 6);
+					Rectangle shelfBounds = new Rectangle(client.Left, bottom, client.Width, thickness);
+					if (!gr.IsVisible(shelfBounds))
+					{
+						continue;
+					}
+					for (int x = client.Left; x < client.Right; x += image.Width)
+					{
+						gr.DrawImage(image, new Rectangle(x, bottom, image.Width, thickness), new Rectangle(0, 0, image.Width, image.Height), GraphicsUnit.Pixel);
+					}
+					foreach (Rectangle itemBounds in row.Value)
+					{
+						DrawShelfShadow(gr, itemBounds, bottom, thickness);
+					}
+				}
+			}
+		}
+
+		private void DrawShelfShadow(Graphics gr, Rectangle itemBounds, int shelfTop, int shelfThickness)
+		{
+			int width = itemBounds.Width;
+			if (width <= 0)
+			{
+				return;
+			}
+			//A soft gradient directly under the item's own footprint, darkest where it touches the
+			//shelf and fading out within a short distance, as if cast by the item sitting there.
+			Rectangle shadowBounds = new Rectangle(itemBounds.Left, shelfTop, width, shelfThickness);
+			using (LinearGradientBrush brush = new LinearGradientBrush(new Rectangle(itemBounds.Left, shelfTop, width, Math.Max(1, shelfThickness)), Color.FromArgb(90, Color.Black), Color.FromArgb(0, Color.Black), LinearGradientMode.Vertical))
+			{
+				gr.FillRectangle(brush, shadowBounds);
+			}
 		}
 
 		protected virtual void DrawMarker(Graphics gr, Rectangle bounds)

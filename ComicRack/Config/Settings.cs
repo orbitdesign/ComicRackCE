@@ -26,6 +26,27 @@ using cYo.Projects.ComicRack.Viewer.Views;
 
 namespace cYo.Projects.ComicRack.Viewer.Config
 {
+	/// <summary>
+	/// How the library's book display panel uses LibraryBackgroundTexturePath, if it names a
+	/// file at all.
+	/// </summary>
+	public enum LibraryBackgroundType
+	{
+		/// <summary>
+		/// No texture: the plain background colour, as before this was added.
+		/// </summary>
+		None,
+		/// <summary>
+		/// A plain background image, placed according to LibraryBackgroundLayout.
+		/// </summary>
+		Texture,
+		/// <summary>
+		/// The image is a shelf strip, drawn under each row of books with a soft shadow cast by
+		/// each book onto it, repositioning itself to match whatever cover size is set.
+		/// </summary>
+		Bookshelf
+	}
+
 	[Serializable]
 	public class Settings : ICacheSettings, IComicUpdateSettings, ISharesSettings, IVirtualTagSettings
     {
@@ -190,6 +211,10 @@ namespace cYo.Projects.ComicRack.Viewer.Config
 		private int readAheadPages = 20;
 
 		private string libraryBackgroundTexturePath = string.Empty;
+
+		private LibraryBackgroundType libraryBackgroundType;
+
+		private System.Windows.Forms.ImageLayout libraryBackgroundLayout = System.Windows.Forms.ImageLayout.Tile;
 
 		private bool softwareFiltering = true;
 
@@ -891,8 +916,8 @@ namespace cYo.Projects.ComicRack.Viewer.Config
 		}
 
 		/// <summary>
-		/// An image file tiled across the background of the library's book display panel.
-		/// Empty means none: the plain background colour is used, as before.
+		/// An image file used for the background of the library's book display panel, or empty
+		/// for none. What it is used for depends on LibraryBackgroundType.
 		/// </summary>
 		[Browsable(false)]
 		[DefaultValue("")]
@@ -908,6 +933,48 @@ namespace cYo.Projects.ComicRack.Viewer.Config
 				if (libraryBackgroundTexturePath != value)
 				{
 					libraryBackgroundTexturePath = value;
+					FireEvent(null);
+				}
+			}
+		}
+
+		[Browsable(false)]
+		[DefaultValue(LibraryBackgroundType.None)]
+		public LibraryBackgroundType LibraryBackgroundType
+		{
+			get
+			{
+				return libraryBackgroundType;
+			}
+			set
+			{
+				if (libraryBackgroundType != value)
+				{
+					libraryBackgroundType = value;
+					FireEvent(null);
+				}
+			}
+		}
+
+		/// <summary>
+		/// How the texture is placed when LibraryBackgroundType is Texture. Tile pans together
+		/// with the list as it scrolls; Stretch, Center and Zoom stay fixed to the window instead,
+		/// the same as a normal background picture. Not used for Bookshelf, which has its own
+		/// positioning tied to the current row height.
+		/// </summary>
+		[Browsable(false)]
+		[DefaultValue(System.Windows.Forms.ImageLayout.Tile)]
+		public System.Windows.Forms.ImageLayout LibraryBackgroundLayout
+		{
+			get
+			{
+				return libraryBackgroundLayout;
+			}
+			set
+			{
+				if (libraryBackgroundLayout != value)
+				{
+					libraryBackgroundLayout = value;
 					FireEvent(null);
 				}
 			}

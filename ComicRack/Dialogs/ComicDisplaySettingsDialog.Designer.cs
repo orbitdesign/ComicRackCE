@@ -456,7 +456,7 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
             this.grpBackground.Size = new System.Drawing.Size(395, 116);
             this.grpBackground.TabIndex = 0;
             this.grpBackground.TabStop = false;
-            this.grpBackground.Text = "Background";
+            this.grpBackground.Text = "Reader Background";
             // 
             // cbTextureLayout
             // 
