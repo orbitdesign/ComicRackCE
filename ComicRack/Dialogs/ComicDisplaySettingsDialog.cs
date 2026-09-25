@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.ComponentModel;
 using System.Drawing;
 using System.IO;
@@ -240,6 +240,8 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 
 		private CheckBox chkLibBackgroundEnabled;
 
+		private FlowLayoutPanel flowLayoutPanel2;
+
 		private TextBox txtLibBackgroundPath;
 
 		private ComboBox cbLibBackgroundLayout;
@@ -249,6 +251,8 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 		private TextBox txtLibShelfPath;
 
 		private TrackBarLite tbLibShelfPosition;
+
+		private TrackBarLite tbLibShelfHeight;
 
 		private TrackBarLite tbLibShelfDistance;
 
@@ -262,6 +266,15 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 
 		private void AddLibraryPanels()
 		{
+			flowLayoutPanel2 = new FlowLayoutPanel
+			{
+				FlowDirection = FlowDirection.TopDown,
+				AutoSize = true,
+				AutoSizeMode = AutoSizeMode.GrowAndShrink,
+				WrapContents = false,
+				Location = new Point(flowLayoutPanel1.Right + 12, flowLayoutPanel1.Top)
+			};
+
 			GroupBox grpLibBackground = new GroupBox
 			{
 				Text = "Library Background",
@@ -318,13 +331,17 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			};
 			cbLibBackgroundLayout.Items.AddRange(new object[] { "Tile", "Stretch", "Center", "Zoom" });
 			grpLibBackground.Controls.AddRange(new Control[] { chkLibBackgroundEnabled, labelLibBackgroundPath, txtLibBackgroundPath, btLibBackgroundBrowse, labelLibBackgroundLayout, cbLibBackgroundLayout });
+			grpLibBackground.PerformLayout();
 
+			//Smaller now that the shadow settings have their own panel below - just the shelf
+			//itself: whether it is on, its picture, and the two controls for lining it up
+			//against whatever cover size is set (see the class-level comment on ShelfOffset).
 			GroupBox grpLibShelf = new GroupBox
 			{
 				Text = "Library Bookshelf",
 				AutoSize = true,
 				AutoSizeMode = AutoSizeMode.GrowAndShrink,
-				Size = new Size(395, 240),
+				Size = new Size(395, 145),
 				Margin = new Padding(3, 3, 3, 3)
 			};
 			chkLibShelfEnabled = new CheckBox
@@ -378,18 +395,49 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			{
 				toolTip.SetToolTip(tbLibShelfPosition, $"{tbLibShelfPosition.Value}px");
 			};
+			Label labelLibShelfHeight = new Label
+			{
+				Text = "Shelf Height:",
+				AutoSize = true,
+				Location = new Point(15, 112),
+				TextAlign = ContentAlignment.MiddleLeft
+			};
+			tbLibShelfHeight = new TrackBarLite
+			{
+				Minimum = 2,
+				Maximum = 150,
+				Location = new Point(150, 112),
+				Size = new Size(230, 18)
+			};
+			tbLibShelfHeight.ValueChanged += delegate
+			{
+				toolTip.SetToolTip(tbLibShelfHeight, $"{tbLibShelfHeight.Value}px");
+			};
+			grpLibShelf.Controls.AddRange(new Control[] { chkLibShelfEnabled, labelLibShelfPath, txtLibShelfPath, btLibShelfBrowse, labelLibShelfPosition, tbLibShelfPosition, labelLibShelfHeight, tbLibShelfHeight });
+			grpLibShelf.PerformLayout();
+
+			//Split out from Library Bookshelf on its own: the shadow a book casts onto
+			//whichever shelf it is sitting on.
+			GroupBox grpBookCoverShadow = new GroupBox
+			{
+				Text = "Book Cover Shadow",
+				AutoSize = true,
+				AutoSizeMode = AutoSizeMode.GrowAndShrink,
+				Size = new Size(395, 165),
+				Margin = new Padding(3, 3, 3, 3)
+			};
 			Label labelLibShelfDistance = new Label
 			{
 				Text = "Shadow Distance:",
 				AutoSize = true,
-				Location = new Point(15, 112),
+				Location = new Point(15, 22),
 				TextAlign = ContentAlignment.MiddleLeft
 			};
 			tbLibShelfDistance = new TrackBarLite
 			{
 				Minimum = 0,
 				Maximum = 60,
-				Location = new Point(150, 112),
+				Location = new Point(150, 22),
 				Size = new Size(230, 18)
 			};
 			tbLibShelfDistance.ValueChanged += delegate
@@ -400,14 +448,14 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			{
 				Text = "Shadow Angle:",
 				AutoSize = true,
-				Location = new Point(15, 112),
+				Location = new Point(15, 49),
 				TextAlign = ContentAlignment.MiddleLeft
 			};
 			tbLibShelfAngle = new TrackBarLite
 			{
 				Minimum = -60,
 				Maximum = 60,
-				Location = new Point(150, 139),
+				Location = new Point(150, 49),
 				Size = new Size(230, 18)
 			};
 			tbLibShelfAngle.ValueChanged += delegate
@@ -418,14 +466,14 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			{
 				Text = "Shadow Blur:",
 				AutoSize = true,
-				Location = new Point(15, 166),
+				Location = new Point(15, 76),
 				TextAlign = ContentAlignment.MiddleLeft
 			};
 			tbLibShelfBlur = new TrackBarLite
 			{
 				Minimum = 1,
 				Maximum = 100,
-				Location = new Point(150, 166),
+				Location = new Point(150, 76),
 				Size = new Size(230, 18)
 			};
 			tbLibShelfBlur.ValueChanged += delegate
@@ -436,14 +484,14 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			{
 				Text = "Shadow Transparency:",
 				AutoSize = true,
-				Location = new Point(15, 193),
+				Location = new Point(15, 103),
 				TextAlign = ContentAlignment.MiddleLeft
 			};
 			tbLibShelfTransparency = new TrackBarLite
 			{
 				Minimum = 0,
 				Maximum = 100,
-				Location = new Point(150, 193),
+				Location = new Point(150, 103),
 				Size = new Size(230, 18)
 			};
 			tbLibShelfTransparency.ValueChanged += PercentTrackbarValueChanged;
@@ -451,20 +499,34 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			{
 				Text = "Shadow Color:",
 				AutoSize = true,
-				Location = new Point(15, 224),
+				Location = new Point(15, 134),
 				TextAlign = ContentAlignment.MiddleLeft
 			};
 			cpLibShelfColor = new SimpleColorPicker
 			{
-				Location = new Point(150, 221),
+				Location = new Point(150, 131),
 				Size = new Size(150, 21)
 			};
 			cpLibShelfColor.FillKnownColors(includingSystem: false);
-			grpLibShelf.Size = new Size(395, 267);
-			grpLibShelf.Controls.AddRange(new Control[] { chkLibShelfEnabled, labelLibShelfPath, txtLibShelfPath, btLibShelfBrowse, labelLibShelfPosition, tbLibShelfPosition, labelLibShelfDistance, tbLibShelfDistance, labelLibShelfAngle, tbLibShelfAngle, labelLibShelfBlur, tbLibShelfBlur, labelLibShelfTransparency, tbLibShelfTransparency, labelLibShelfColor, cpLibShelfColor });
+			grpBookCoverShadow.Controls.AddRange(new Control[] { labelLibShelfDistance, tbLibShelfDistance, labelLibShelfAngle, tbLibShelfAngle, labelLibShelfBlur, tbLibShelfBlur, labelLibShelfTransparency, tbLibShelfTransparency, labelLibShelfColor, cpLibShelfColor });
+			grpBookCoverShadow.PerformLayout();
 
-			flowLayoutPanel1.Controls.Add(grpLibBackground);
-			flowLayoutPanel1.Controls.Add(grpLibShelf);
+			flowLayoutPanel2.Controls.Add(grpLibBackground);
+			flowLayoutPanel2.Controls.Add(grpLibShelf);
+			flowLayoutPanel2.Controls.Add(grpBookCoverShadow);
+			Controls.Add(flowLayoutPanel2);
+
+			//flowLayoutPanel1's own AutoSize already accounts for panel1 (the OK/Apply/Cancel
+			//row, anchored to its bottom-right) and the form's own AutoSize already accounts
+			//for flowLayoutPanel1. Neither of those knows about this second, independent
+			//column, so - now that flowLayoutPanel2 has actually been given its content and
+			//had a chance to size itself to it - the space for panel1 and the form itself are
+			//worked out fresh here from whichever column turns out taller and wider.
+			flowLayoutPanel2.PerformLayout();
+			int contentRight = flowLayoutPanel2.Right;
+			int contentBottom = Math.Max(flowLayoutPanel1.Bottom, flowLayoutPanel2.Bottom);
+			panel1.Location = new Point(contentRight - panel1.Width, contentBottom + 12);
+			ClientSize = new Size(contentRight + 12, panel1.Bottom + 12);
 		}
 
 		private void UpdateLibraryPanels()
@@ -475,6 +537,7 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			chkLibShelfEnabled.Checked = Program.Settings.LibraryShelfEnabled;
 			txtLibShelfPath.Text = Program.Settings.LibraryShelfTexturePath;
 			tbLibShelfPosition.Value = Program.Settings.LibraryShelfOffset;
+			tbLibShelfHeight.Value = Program.Settings.LibraryShelfHeight;
 			tbLibShelfDistance.Value = Program.Settings.LibraryShelfShadowDistance;
 			tbLibShelfAngle.Value = Program.Settings.LibraryShelfShadowAngle;
 			tbLibShelfBlur.Value = Program.Settings.LibraryShelfShadowBlur;
@@ -490,6 +553,7 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			Program.Settings.LibraryShelfEnabled = chkLibShelfEnabled.Checked;
 			Program.Settings.LibraryShelfTexturePath = txtLibShelfPath.Text;
 			Program.Settings.LibraryShelfOffset = tbLibShelfPosition.Value;
+			Program.Settings.LibraryShelfHeight = tbLibShelfHeight.Value;
 			Program.Settings.LibraryShelfShadowDistance = tbLibShelfDistance.Value;
 			Program.Settings.LibraryShelfShadowAngle = tbLibShelfAngle.Value;
 			Program.Settings.LibraryShelfShadowBlur = tbLibShelfBlur.Value;
@@ -497,6 +561,7 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			Program.Settings.LibraryShelfShadowColor = cpLibShelfColor.SelectedColor;
 			cYo.Projects.ComicRack.Viewer.Views.ComicBrowserControl.RefreshAllListBackgrounds();
 		}
+
 
 		protected override void OnClosed(EventArgs e)
 		{

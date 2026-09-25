@@ -3294,6 +3294,15 @@ namespace cYo.Common.Windows.Forms
 			set;
 		}
 
+		/// <summary>
+		/// How thick the shelf strip is drawn, in pixels.
+		/// </summary>
+		public int ShelfHeight
+		{
+			get;
+			set;
+		} = 20;
+
 		public int ShelfShadowAngle
 		{
 			get;
@@ -3462,10 +3471,7 @@ namespace cYo.Common.Windows.Forms
 				foreach (KeyValuePair<int, List<Rectangle>> row in rows)
 				{
 					int bottom = row.Key + ShelfOffset;
-					int rowHeight = row.Value.Max((Rectangle r) => r.Height);
-					//A little thicker for a bigger cover size, so the shelf still reads as the
-					//right proportion next to the books sitting on it rather than a thin sliver.
-					int thickness = Math.Max(10, rowHeight / 6);
+					int thickness = Math.Max(1, ShelfHeight);
 					Rectangle shelfBounds = new Rectangle(client.Left, bottom, client.Width, thickness);
 					if (!gr.IsVisible(shelfBounds))
 					{

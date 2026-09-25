@@ -204,6 +204,8 @@ namespace cYo.Projects.ComicRack.Viewer.Config
 
 		private int libraryShelfOffset;
 
+		private int libraryShelfHeight = 20;
+
 		private int libraryShelfShadowAngle;
 
 		private int libraryShelfShadowBlur = 20;
@@ -1072,6 +1074,30 @@ namespace cYo.Projects.ComicRack.Viewer.Config
 				if (libraryShelfOffset != value)
 				{
 					libraryShelfOffset = value;
+					FireEvent(null);
+				}
+			}
+		}
+
+		/// <summary>
+		/// How thick the shelf strip itself is, in pixels. Previously this scaled itself to
+		/// the current cover size automatically; a fixed, adjustable height is simpler and
+		/// more predictable to line up by eye.
+		/// </summary>
+		[Browsable(false)]
+		[DefaultValue(20)]
+		public int LibraryShelfHeight
+		{
+			get
+			{
+				return libraryShelfHeight;
+			}
+			set
+			{
+				value = value.Clamp(2, 150);
+				if (libraryShelfHeight != value)
+				{
+					libraryShelfHeight = value;
 					FireEvent(null);
 				}
 			}
