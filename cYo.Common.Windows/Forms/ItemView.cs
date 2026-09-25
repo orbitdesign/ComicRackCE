@@ -3351,7 +3351,7 @@ namespace cYo.Common.Windows.Forms
 					}
 					else
 					{
-						DrawFixedBackground(gr, BackgroundTexture, BackgroundTextureLayout);
+						DrawScaledBackground(gr, BackgroundTexture, BackgroundTextureLayout);
 					}
 				}
 				if (ShelfImage != null)
@@ -3402,33 +3402,48 @@ namespace cYo.Common.Windows.Forms
 		}
 
 		/// <summary>
-		/// Stretch, Center or Zoom: fixed to the window rather than scrolling with the content,
-		/// the same as a normal background image would be. Repeating an infinitely scrollable
-		/// list is what Tile is for; these three are for a single picture instead.
+		/// Stretch, Center or Zoom: sized once to the panel's own viewport, then that whole
+		/// viewport-sized picture repeats down the list every viewport's worth of scrolling,
+		/// drawn through the same transform Tile uses above so it pans with the list rather
+		/// than staying glued to the window the way a normal background picture would. Without
+		/// repeating it, scrolling past the first screen's worth of the library would run out
+		/// into plain background colour for the rest of a long list.
 		/// </summary>
-		private void DrawFixedBackground(Graphics gr, Image image, ImageLayout layout)
+		private void DrawScaledBackground(Graphics gr, Image image, ImageLayout layout)
 		{
-			Rectangle client = ClientRectangle;
-			if (client.Width <= 0 || client.Height <= 0)
+			Size viewport = ClientRectangle.Size;
+			if (viewport.Width <= 0 || viewport.Height <= 0)
 			{
 				return;
 			}
-			switch (layout)
+			using (gr.SaveState())
 			{
-			case ImageLayout.Stretch:
-				gr.DrawImage(image, client);
-				break;
-			case ImageLayout.Center:
-				gr.DrawImageUnscaled(image, client.Left + (client.Width - image.Width) / 2, client.Top + (client.Height - image.Height) / 2);
-				break;
-			case ImageLayout.Zoom:
-			{
-				float scale = Math.Min((float)client.Width / (float)image.Width, (float)client.Height / (float)image.Height);
-				int width = (int)(image.Width * scale);
-				int height = (int)(image.Height * scale);
-				gr.DrawImage(image, client.Left + (client.Width - width) / 2, client.Top + (client.Height - height) / 2, width, height);
-				break;
-			}
+				Point scrollPosition = base.ScrollPosition;
+				gr.TranslateTransform(-scrollPosition.X, -scrollPosition.Y);
+				Rectangle client = ClientRectangle;
+				client.Offset(scrollPosition);
+				int startY = client.Top - Modulo(client.Top, viewport.Height);
+				for (int y = startY; y < client.Bottom; y += viewport.Height)
+				{
+					Rectangle target = new Rectangle(client.Left, y, viewport.Width, viewport.Height);
+					switch (layout)
+					{
+					case ImageLayout.Stretch:
+						gr.DrawImage(image, target);
+						break;
+					case ImageLayout.Center:
+						gr.DrawImageUnscaled(image, target.Left + (target.Width - image.Width) / 2, target.Top + (target.Height - image.Height) / 2);
+						break;
+					case ImageLayout.Zoom:
+					{
+						float scale = Math.Min((float)target.Width / (float)image.Width, (float)target.Height / (float)image.Height);
+						int width = (int)(image.Width * scale);
+						int height = (int)(image.Height * scale);
+						gr.DrawImage(image, target.Left + (target.Width - width) / 2, target.Top + (target.Height - height) / 2, width, height);
+						break;
+					}
+					}
+				}
 			}
 		}
 

@@ -529,6 +529,11 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			//its distance from the form's edges as they stood before this resize, undoing
 			//the explicit position set below - resizing the form first, with the anchor
 			//taken out of the way, and only then placing panel1 is what actually sticks.
+			//The form's own AutoSize (set in InitializeComponent, for the original single
+			//column) was recalculating itself again after this point and overriding the
+			//explicit size set below - it only ever knew to measure flowLayoutPanel1, so once
+			//this second column exists, sizing is taken over entirely by this method instead.
+			AutoSize = false;
 			panel1.Anchor = AnchorStyles.None;
 			ClientSize = new Size(contentRight + 12, contentBottom + panel1.Height + 24);
 			panel1.Location = new Point(contentRight - panel1.Width, contentBottom + 12);
