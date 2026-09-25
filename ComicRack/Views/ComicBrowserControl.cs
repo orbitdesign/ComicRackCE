@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Collections.Specialized;
 using System.ComponentModel;
@@ -908,6 +908,7 @@ namespace cYo.Projects.ComicRack.Viewer.Views
         protected override void OnLoad(EventArgs e)
         {
             base.OnLoad(e);
+            liveInstances.Add(this);
             RefreshListBackgroundTexture();
             if (base.DesignMode)
             {
@@ -1035,8 +1036,6 @@ namespace cYo.Projects.ComicRack.Viewer.Views
             commands.Add(MarkSelectedUnchecked, ComicEditMode.CanEditProperties() && itemView.SelectedCount > 0, miMarkUnchecked);
             commands.Add(SetSelectedComicAsListBackground, AllSelectedLinked, miSetListBackground);
             commands.Add(ResetListBackgroundImage, () => itemView.BackgroundImage != ListBackgroundImage, miResetListBackground, toolStripMenuItem3);
-            commands.Add(EditListBackgroundTexture, miChooseBackgroundTexture);
-            commands.Add(ClearListBackgroundTexture, () => itemView.TiledBackgroundImage != null, miClearBackgroundTexture);
             commands.Add(delegate
             {
                 MoveBooks(GetBookList(ComicBookFilterType.Library | ComicBookFilterType.Selected), bottom: false);
@@ -1756,66 +1755,88 @@ namespace cYo.Projects.ComicRack.Viewer.Views
         }
 
         /// <summary>
-        /// The path last successfully loaded, so the disk is not touched again on every new
-        /// browser window when the setting has not actually changed since.
+        /// Every ComicBrowserControl currently alive, including any opened with "Open in New
+        /// Window" - so that changing the library background or shelf, set once in Book
+        /// Display Settings, can be pushed out to every open library view immediately rather
+        /// than only taking effect the next time each one happens to be created.
+        /// </summary>
+        private static readonly List<ComicBrowserControl> liveInstances = new List<ComicBrowserControl>();
+
+        /// <summary>
+        /// Applies the current Program.Settings.Library* values to every ComicBrowserControl
+        /// that exists right now. Called once, right after Book Display Settings closes with
+        /// OK - each instance's own RefreshListBackgroundTexture then decides for itself
+        /// whether anything it is holding actually needs to change.
+        /// </summary>
+        public static void RefreshAllListBackgrounds()
+        {
+            foreach (ComicBrowserControl liveInstance in liveInstances.ToArray())
+            {
+                liveInstance.RefreshListBackgroundTexture();
+            }
+        }
+
+        /// <summary>
+        /// The background and shelf image paths last successfully loaded, so the disk is not
+        /// touched again on every call when neither setting has actually changed since.
         /// </summary>
         private string loadedBackgroundTexturePath = string.Empty;
 
+        private string loadedShelfTexturePath = string.Empty;
+
         /// <summary>
-        /// Reads the current Program.Settings.LibraryBackground* values and, if the image path
-        /// has not already been loaded into this view, (re)loads it and applies the type and
-        /// layout to itemView. Called once when the view is created, which is what lets a newly
-        /// opened library window pick up a choice made earlier without needing anything to
-        /// actively push the change into it.
+        /// Reads the current Program.Settings.Library* values - background and shelf are
+        /// entirely independent of one another - and, for whichever of the two image paths
+        /// has actually changed, (re)loads it. Called once when the view is created, which is
+        /// what lets a newly opened library window pick up settings chosen earlier, and again
+        /// by RefreshAllListBackgrounds whenever Book Display Settings closes with OK.
         /// </summary>
         private void RefreshListBackgroundTexture()
         {
-            string path = Program.Settings.LibraryBackgroundTexturePath;
-            itemView.TiledBackgroundLayout = Program.Settings.LibraryBackgroundLayout;
-            itemView.TiledBackgroundMode = (Program.Settings.LibraryBackgroundType == LibraryBackgroundType.Bookshelf) ? ItemView.BackgroundImageMode.Shelf : ItemView.BackgroundImageMode.Plain;
-            if (path == loadedBackgroundTexturePath)
+            itemView.BackgroundTextureLayout = Program.Settings.LibraryBackgroundLayout;
+            string backgroundPath = Program.Settings.LibraryBackgroundEnabled ? Program.Settings.LibraryBackgroundTexturePath : string.Empty;
+            if (backgroundPath != loadedBackgroundTexturePath)
             {
-                itemView.Invalidate();
-                return;
+                loadedBackgroundTexturePath = backgroundPath;
+                Image old = itemView.BackgroundTexture;
+                itemView.BackgroundTexture = LoadImage(backgroundPath);
+                old?.Dispose();
             }
-            loadedBackgroundTexturePath = path;
-            Image image = itemView.TiledBackgroundImage;
-            itemView.TiledBackgroundImage = null;
-            image?.Dispose();
-            if (!string.IsNullOrEmpty(path))
+            string shelfPath = Program.Settings.LibraryShelfEnabled ? Program.Settings.LibraryShelfTexturePath : string.Empty;
+            if (shelfPath != loadedShelfTexturePath)
             {
-                try
-                {
-                    itemView.TiledBackgroundImage = Image.FromFile(path);
-                }
-                catch
-                {
-                    //A missing or unreadable file: fall back to no texture rather than fail to
-                    //open the library over a picture that is no longer there.
-                }
+                loadedShelfTexturePath = shelfPath;
+                Image old = itemView.ShelfImage;
+                itemView.ShelfImage = LoadImage(shelfPath);
+                old?.Dispose();
             }
+            itemView.ShelfShadowDistance = Program.Settings.LibraryShelfShadowDistance;
+            itemView.ShelfShadowAngle = Program.Settings.LibraryShelfShadowAngle;
+            itemView.ShelfShadowBlur = Program.Settings.LibraryShelfShadowBlur;
+            itemView.ShelfShadowAlpha = (int)(255 * (100 - Program.Settings.LibraryShelfShadowTransparency) / 100.0);
+            itemView.ShelfShadowColor = Program.Settings.LibraryShelfShadowColor;
             itemView.Invalidate();
         }
 
-        private void EditListBackgroundTexture()
+        /// <summary>
+        /// Loads path as an image, or returns null for an empty, missing or unreadable path -
+        /// the last of those left as simply no picture rather than failing to open the
+        /// library over one that is no longer there.
+        /// </summary>
+        private static Image LoadImage(string path)
         {
-            using (LibraryBackgroundDialog dialog = new LibraryBackgroundDialog(Program.Settings.LibraryBackgroundType, Program.Settings.LibraryBackgroundTexturePath, Program.Settings.LibraryBackgroundLayout))
+            if (string.IsNullOrEmpty(path))
             {
-                if (dialog.ShowDialog(this) == DialogResult.OK)
-                {
-                    Program.Settings.LibraryBackgroundType = dialog.SelectedType;
-                    Program.Settings.LibraryBackgroundTexturePath = dialog.SelectedPath;
-                    Program.Settings.LibraryBackgroundLayout = dialog.SelectedLayout;
-                    RefreshListBackgroundTexture();
-                }
+                return null;
             }
-        }
-
-        private void ClearListBackgroundTexture()
-        {
-            Program.Settings.LibraryBackgroundType = LibraryBackgroundType.None;
-            Program.Settings.LibraryBackgroundTexturePath = string.Empty;
-            RefreshListBackgroundTexture();
+            try
+            {
+                return Image.FromFile(path);
+            }
+            catch
+            {
+                return null;
+            }
         }
 
         private void SetSelectedComicAsListBackground()

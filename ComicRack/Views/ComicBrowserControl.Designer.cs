@@ -46,8 +46,11 @@ namespace cYo.Projects.ComicRack.Viewer.Views
 		{
 			if (disposing)
 			{
-				itemView.TiledBackgroundImage?.Dispose();
-				itemView.TiledBackgroundImage = null;
+				liveInstances.Remove(this);
+				itemView.BackgroundTexture?.Dispose();
+				itemView.BackgroundTexture = null;
+				itemView.ShelfImage?.Dispose();
+				itemView.ShelfImage = null;
 				UnregisterBookList();
 				bookList = null;
 				if (base.Main != null)
@@ -189,8 +192,7 @@ namespace cYo.Projects.ComicRack.Viewer.Views
 			this.tsEditListLayout = new System.Windows.Forms.ToolStripMenuItem();
 			this.tsSaveListLayout = new System.Windows.Forms.ToolStripMenuItem();
 			this.miResetListBackground = new System.Windows.Forms.ToolStripMenuItem();
-			this.miChooseBackgroundTexture = new System.Windows.Forms.ToolStripMenuItem();
-			this.miClearBackgroundTexture = new System.Windows.Forms.ToolStripMenuItem();
+
 			this.toolStripMenuItem23 = new System.Windows.Forms.ToolStripSeparator();
 			this.tsEditLayouts = new System.Windows.Forms.ToolStripMenuItem();
 			this.separatorListLayout = new System.Windows.Forms.ToolStripSeparator();
@@ -1234,8 +1236,6 @@ namespace cYo.Projects.ComicRack.Viewer.Views
             this.tsEditListLayout,
             this.tsSaveListLayout,
             this.miResetListBackground,
-            this.miChooseBackgroundTexture,
-            this.miClearBackgroundTexture,
             this.toolStripMenuItem23,
             this.tsEditLayouts,
             this.separatorListLayout});
@@ -1266,18 +1266,6 @@ namespace cYo.Projects.ComicRack.Viewer.Views
 			this.miResetListBackground.Name = "miResetListBackground";
 			this.miResetListBackground.Size = new System.Drawing.Size(210, 22);
 			this.miResetListBackground.Text = "Reset List Background";
-			// 
-			// miChooseBackgroundTexture
-			// 
-			this.miChooseBackgroundTexture.Name = "miChooseBackgroundTexture";
-			this.miChooseBackgroundTexture.Size = new System.Drawing.Size(210, 22);
-			this.miChooseBackgroundTexture.Text = "Background...";
-			// 
-			// miClearBackgroundTexture
-			// 
-			this.miClearBackgroundTexture.Name = "miClearBackgroundTexture";
-			this.miClearBackgroundTexture.Size = new System.Drawing.Size(210, 22);
-			this.miClearBackgroundTexture.Text = "Clear Background Texture";
 			// 
 			// toolStripMenuItem23
 			// 
@@ -1523,9 +1511,6 @@ namespace cYo.Projects.ComicRack.Viewer.Views
 		private Button btNextStack;
 		private ToolStripMenuItem miResetListBackground;
 
-		private ToolStripMenuItem miChooseBackgroundTexture;
-
-		private ToolStripMenuItem miClearBackgroundTexture;
 		private ToolStripSeparator separatorListLayout;
 		private ContextMenuStrip contextExport;
 		private ToolStripMenuItem miExportComicsAs;

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
@@ -3243,43 +3243,68 @@ namespace cYo.Common.Windows.Forms
 			OnDrawItemSelection(gr, rc, drawState & ~item.GetOwnerDrawnStates(ItemViewMode));
 		}
 
-		/// <summary>
-		/// How TiledBackgroundImage is used: a plain background under everything (see
-		/// TiledBackgroundLayout for how it is placed), or a shelf strip drawn under each row of
-		/// items with a soft shadow cast by each item onto it.
-		/// </summary>
-		public enum BackgroundImageMode
-		{
-			Plain,
-			Shelf
-		}
-
-		/// <summary>
-		/// An image drawn behind everything else, including the single, aligned BackgroundImage
-		/// above. In Plain mode and with Tile layout, this one is drawn under the same transform
-		/// as the items themselves (see DrawItems), so it pans together with them as the view
+/// <summary>
+		/// A plain picture behind everything else, including the single, aligned BackgroundImage
+		/// above and the shelf below. With Tile layout it is drawn under the same transform as
+		/// the items themselves (see DrawItems), so it pans together with them as the view
 		/// scrolls instead of staying fixed to the window; Stretch, Center and Zoom are fixed to
 		/// the window instead, the same as a normal background image, since repeating those
-		/// across a list that can scroll indefinitely would not mean much. In Shelf mode this
-		/// same image is used as a shelf strip - see TiledBackgroundMode.
+		/// across a list that can scroll indefinitely would not mean much. Entirely independent
+		/// of ShelfImage below - either, both, or neither can be set.
 		/// </summary>
-		public Image TiledBackgroundImage
+		public Image BackgroundTexture
 		{
 			get;
 			set;
 		}
 
-		public ImageLayout TiledBackgroundLayout
+		public ImageLayout BackgroundTextureLayout
 		{
 			get;
 			set;
 		} = ImageLayout.Tile;
 
-		public BackgroundImageMode TiledBackgroundMode
+		/// <summary>
+		/// A shelf strip drawn under each row of items, sized to the panel's width and to a
+		/// thickness that scales with the current row height, with a shadow (see the Shadow*
+		/// properties) cast by each item onto it. Drawn on top of BackgroundTexture, so a plain
+		/// background picture and a shelf can both be showing at once if both are set.
+		/// </summary>
+		public Image ShelfImage
 		{
 			get;
 			set;
 		}
+
+		public int ShelfShadowDistance
+		{
+			get;
+			set;
+		}
+
+		public int ShelfShadowAngle
+		{
+			get;
+			set;
+		}
+
+		public int ShelfShadowBlur
+		{
+			get;
+			set;
+		} = 20;
+
+		public int ShelfShadowAlpha
+		{
+			get;
+			set;
+		} = 90;
+
+		public Color ShelfShadowColor
+		{
+			get;
+			set;
+		} = Color.Black;
 
 		protected void DrawBackground(Graphics gr, DrawItemViewOptions drawItemsFlags = DrawItemViewOptions.Default)
 		{
@@ -3287,19 +3312,22 @@ namespace cYo.Common.Windows.Forms
 			{
 				gr.Clear(BackColor);
 			}
-			if ((drawItemsFlags & DrawItemViewOptions.BackgroundImage) != 0 && TiledBackgroundImage != null)
+			if ((drawItemsFlags & DrawItemViewOptions.BackgroundImage) != 0)
 			{
-				if (TiledBackgroundMode == BackgroundImageMode.Shelf)
+				if (BackgroundTexture != null)
 				{
-					DrawShelfBackground(gr, TiledBackgroundImage);
+					if (BackgroundTextureLayout == ImageLayout.Tile)
+					{
+						DrawTiledBackground(gr, BackgroundTexture);
+					}
+					else
+					{
+						DrawFixedBackground(gr, BackgroundTexture, BackgroundTextureLayout);
+					}
 				}
-				else if (TiledBackgroundLayout == ImageLayout.Tile)
+				if (ShelfImage != null)
 				{
-					DrawTiledBackground(gr, TiledBackgroundImage);
-				}
-				else
-				{
-					DrawFixedBackground(gr, TiledBackgroundImage, TiledBackgroundLayout);
+					DrawShelfBackground(gr, ShelfImage);
 				}
 			}
 			if ((drawItemsFlags & DrawItemViewOptions.BackgroundImage) != 0 && BackgroundImage != null)
@@ -3376,11 +3404,11 @@ namespace cYo.Common.Windows.Forms
 		}
 
 		/// <summary>
-		/// TiledBackgroundImage used as a shelf: one strip per row of items, aligned to the
-		/// bottom of that row exactly as the items themselves are currently laid out - not by
-		/// guessing a row height, but by asking for the real, current bounds of the items on
-		/// screen, so this keeps lining up correctly whatever the cover size, view mode or
-		/// grouping happens to be. Each item then casts a short, soft shadow down onto the shelf
+		/// ShelfImage drawn as one strip per row of items, aligned to the bottom of that row
+		/// exactly as the items themselves are currently laid out - not by guessing a row
+		/// height, but by asking for the real, current bounds of the items on screen, so this
+		/// keeps lining up correctly whatever the cover size, view mode or grouping happens to
+		/// be. Each item then casts a shadow (see the Shadow* properties) down onto the shelf
 		/// beneath it.
 		/// </summary>
 		private void DrawShelfBackground(Graphics gr, Image image)
@@ -3437,23 +3465,37 @@ namespace cYo.Common.Windows.Forms
 					}
 					foreach (Rectangle itemBounds in row.Value)
 					{
-						DrawShelfShadow(gr, itemBounds, bottom, thickness);
+						DrawShelfShadow(gr, itemBounds, bottom);
 					}
 				}
 			}
 		}
 
-		private void DrawShelfShadow(Graphics gr, Rectangle itemBounds, int shelfTop, int shelfThickness)
+		/// <summary>
+		/// A soft gradient cast by one item onto the shelf beneath it, positioned and shaped by
+		/// ShelfShadowDistance/Angle/Blur/Alpha/Color. Distance and angle move where the shadow
+		/// starts (down, and sideways, from the item's own footprint); blur is how many pixels
+		/// it takes to fade away; alpha and colour are its strength and tint at that starting
+		/// point.
+		/// </summary>
+		private void DrawShelfShadow(Graphics gr, Rectangle itemBounds, int shelfTop)
 		{
 			int width = itemBounds.Width;
-			if (width <= 0)
+			int blur = Math.Max(1, ShelfShadowBlur);
+			if (width <= 0 || ShelfShadowAlpha <= 0)
 			{
 				return;
 			}
-			//A soft gradient directly under the item's own footprint, darkest where it touches the
-			//shelf and fading out within a short distance, as if cast by the item sitting there.
-			Rectangle shadowBounds = new Rectangle(itemBounds.Left, shelfTop, width, shelfThickness);
-			using (LinearGradientBrush brush = new LinearGradientBrush(new Rectangle(itemBounds.Left, shelfTop, width, Math.Max(1, shelfThickness)), Color.FromArgb(90, Color.Black), Color.FromArgb(0, Color.Black), LinearGradientMode.Vertical))
+			//The angle leans the shadow sideways rather than rotating the gradient itself, which
+			//would need a filled, rotated shape instead of a plain rectangle - simpler, and reads
+			//just as well for a shadow sitting on a flat, horizontal shelf.
+			double radians = ShelfShadowAngle * Math.PI / 180.0;
+			int horizontalShift = (int)(blur * Math.Tan(radians));
+			int top = shelfTop + ShelfShadowDistance;
+			Rectangle shadowBounds = new Rectangle(itemBounds.Left + horizontalShift, top, width, blur);
+			Color startColor = Color.FromArgb(ShelfShadowAlpha, ShelfShadowColor);
+			Color endColor = Color.FromArgb(0, ShelfShadowColor);
+			using (LinearGradientBrush brush = new LinearGradientBrush(new Rectangle(shadowBounds.Left, top, width, blur), startColor, endColor, LinearGradientMode.Vertical))
 			{
 				gr.FillRectangle(brush, shadowBounds);
 			}

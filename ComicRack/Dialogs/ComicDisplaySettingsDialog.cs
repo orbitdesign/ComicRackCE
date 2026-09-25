@@ -227,6 +227,252 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			LocalizeUtility.Localize(TR.Load(base.Name), cbBackgroundType);
 			LocalizeUtility.Localize(TR.Load(base.Name), cbPaperLayout);
 			LocalizeUtility.Localize(TR.Load(base.Name), cbTextureLayout);
+			AddLibraryPanels();
+		}
+
+		//The two groups below are built directly in code rather than as Designer.cs markup:
+		//simpler and safer for a one-off addition than hand-writing generated-style markup
+		//with no way to see it rendered before it ships. They are their own two panels,
+		//entirely independent of one another and of the Reader Background group above -
+		//unlike that one, they apply to the library, not to the page while reading, and are
+		//read and written straight from Program.Settings rather than through the workspace
+		//(ws) that the rest of this dialog uses, since the library is not workspace-specific.
+
+		private CheckBox chkLibBackgroundEnabled;
+
+		private TextBox txtLibBackgroundPath;
+
+		private ComboBox cbLibBackgroundLayout;
+
+		private CheckBox chkLibShelfEnabled;
+
+		private TextBox txtLibShelfPath;
+
+		private TrackBarLite tbLibShelfDistance;
+
+		private TrackBarLite tbLibShelfAngle;
+
+		private TrackBarLite tbLibShelfBlur;
+
+		private TrackBarLite tbLibShelfTransparency;
+
+		private SimpleColorPicker cpLibShelfColor;
+
+		private void AddLibraryPanels()
+		{
+			GroupBox grpLibBackground = new GroupBox
+			{
+				Text = "Library Background",
+				AutoSize = true,
+				AutoSizeMode = AutoSizeMode.GrowAndShrink,
+				Size = new Size(395, 115),
+				Margin = new Padding(3, 3, 3, 3)
+			};
+			chkLibBackgroundEnabled = new CheckBox
+			{
+				Text = "Enable",
+				AutoSize = true,
+				Location = new Point(15, 22)
+			};
+			Label labelLibBackgroundPath = new Label
+			{
+				Text = "Image:",
+				AutoSize = true,
+				Location = new Point(15, 53),
+				TextAlign = ContentAlignment.MiddleLeft
+			};
+			txtLibBackgroundPath = new TextBox
+			{
+				ReadOnly = true,
+				Location = new Point(103, 50),
+				Size = new Size(195, 20)
+			};
+			Button btLibBackgroundBrowse = new Button
+			{
+				Text = "Browse...",
+				Location = new Point(304, 49),
+				Size = new Size(76, 23)
+			};
+			btLibBackgroundBrowse.Click += delegate
+			{
+				string texture = GetTexture();
+				if (!string.IsNullOrEmpty(texture))
+				{
+					txtLibBackgroundPath.Text = texture;
+				}
+			};
+			Label labelLibBackgroundLayout = new Label
+			{
+				Text = "Layout:",
+				AutoSize = true,
+				Location = new Point(15, 82),
+				TextAlign = ContentAlignment.MiddleLeft
+			};
+			cbLibBackgroundLayout = new ComboBox
+			{
+				DropDownStyle = ComboBoxStyle.DropDownList,
+				Location = new Point(103, 79),
+				Size = new Size(120, 21)
+			};
+			cbLibBackgroundLayout.Items.AddRange(new object[] { "Tile", "Stretch", "Center", "Zoom" });
+			grpLibBackground.Controls.AddRange(new Control[] { chkLibBackgroundEnabled, labelLibBackgroundPath, txtLibBackgroundPath, btLibBackgroundBrowse, labelLibBackgroundLayout, cbLibBackgroundLayout });
+
+			GroupBox grpLibShelf = new GroupBox
+			{
+				Text = "Library Bookshelf",
+				AutoSize = true,
+				AutoSizeMode = AutoSizeMode.GrowAndShrink,
+				Size = new Size(395, 240),
+				Margin = new Padding(3, 3, 3, 3)
+			};
+			chkLibShelfEnabled = new CheckBox
+			{
+				Text = "Enable",
+				AutoSize = true,
+				Location = new Point(15, 22)
+			};
+			Label labelLibShelfPath = new Label
+			{
+				Text = "Image:",
+				AutoSize = true,
+				Location = new Point(15, 53),
+				TextAlign = ContentAlignment.MiddleLeft
+			};
+			txtLibShelfPath = new TextBox
+			{
+				ReadOnly = true,
+				Location = new Point(103, 50),
+				Size = new Size(195, 20)
+			};
+			Button btLibShelfBrowse = new Button
+			{
+				Text = "Browse...",
+				Location = new Point(304, 49),
+				Size = new Size(76, 23)
+			};
+			btLibShelfBrowse.Click += delegate
+			{
+				string texture = GetTexture();
+				if (!string.IsNullOrEmpty(texture))
+				{
+					txtLibShelfPath.Text = texture;
+				}
+			};
+			Label labelLibShelfDistance = new Label
+			{
+				Text = "Shadow Distance:",
+				AutoSize = true,
+				Location = new Point(15, 85),
+				TextAlign = ContentAlignment.MiddleLeft
+			};
+			tbLibShelfDistance = new TrackBarLite
+			{
+				Minimum = 0,
+				Maximum = 60,
+				Location = new Point(150, 85),
+				Size = new Size(230, 18)
+			};
+			tbLibShelfDistance.ValueChanged += delegate
+			{
+				toolTip.SetToolTip(tbLibShelfDistance, $"{tbLibShelfDistance.Value}px");
+			};
+			Label labelLibShelfAngle = new Label
+			{
+				Text = "Shadow Angle:",
+				AutoSize = true,
+				Location = new Point(15, 112),
+				TextAlign = ContentAlignment.MiddleLeft
+			};
+			tbLibShelfAngle = new TrackBarLite
+			{
+				Minimum = -60,
+				Maximum = 60,
+				Location = new Point(150, 112),
+				Size = new Size(230, 18)
+			};
+			tbLibShelfAngle.ValueChanged += delegate
+			{
+				toolTip.SetToolTip(tbLibShelfAngle, $"{tbLibShelfAngle.Value}\u00b0");
+			};
+			Label labelLibShelfBlur = new Label
+			{
+				Text = "Shadow Blur:",
+				AutoSize = true,
+				Location = new Point(15, 139),
+				TextAlign = ContentAlignment.MiddleLeft
+			};
+			tbLibShelfBlur = new TrackBarLite
+			{
+				Minimum = 1,
+				Maximum = 100,
+				Location = new Point(150, 139),
+				Size = new Size(230, 18)
+			};
+			tbLibShelfBlur.ValueChanged += delegate
+			{
+				toolTip.SetToolTip(tbLibShelfBlur, $"{tbLibShelfBlur.Value}px");
+			};
+			Label labelLibShelfTransparency = new Label
+			{
+				Text = "Shadow Transparency:",
+				AutoSize = true,
+				Location = new Point(15, 166),
+				TextAlign = ContentAlignment.MiddleLeft
+			};
+			tbLibShelfTransparency = new TrackBarLite
+			{
+				Minimum = 0,
+				Maximum = 100,
+				Location = new Point(150, 166),
+				Size = new Size(230, 18)
+			};
+			tbLibShelfTransparency.ValueChanged += PercentTrackbarValueChanged;
+			Label labelLibShelfColor = new Label
+			{
+				Text = "Shadow Color:",
+				AutoSize = true,
+				Location = new Point(15, 197),
+				TextAlign = ContentAlignment.MiddleLeft
+			};
+			cpLibShelfColor = new SimpleColorPicker
+			{
+				Location = new Point(150, 194),
+				Size = new Size(150, 21)
+			};
+			cpLibShelfColor.FillKnownColors(includingSystem: false);
+			grpLibShelf.Controls.AddRange(new Control[] { chkLibShelfEnabled, labelLibShelfPath, txtLibShelfPath, btLibShelfBrowse, labelLibShelfDistance, tbLibShelfDistance, labelLibShelfAngle, tbLibShelfAngle, labelLibShelfBlur, tbLibShelfBlur, labelLibShelfTransparency, tbLibShelfTransparency, labelLibShelfColor, cpLibShelfColor });
+
+			flowLayoutPanel1.Controls.Add(grpLibBackground);
+			flowLayoutPanel1.Controls.Add(grpLibShelf);
+		}
+
+		private void UpdateLibraryPanels()
+		{
+			chkLibBackgroundEnabled.Checked = Program.Settings.LibraryBackgroundEnabled;
+			txtLibBackgroundPath.Text = Program.Settings.LibraryBackgroundTexturePath;
+			cbLibBackgroundLayout.SelectedIndex = (int)Program.Settings.LibraryBackgroundLayout;
+			chkLibShelfEnabled.Checked = Program.Settings.LibraryShelfEnabled;
+			txtLibShelfPath.Text = Program.Settings.LibraryShelfTexturePath;
+			tbLibShelfDistance.Value = Program.Settings.LibraryShelfShadowDistance;
+			tbLibShelfAngle.Value = Program.Settings.LibraryShelfShadowAngle;
+			tbLibShelfBlur.Value = Program.Settings.LibraryShelfShadowBlur;
+			tbLibShelfTransparency.Value = Program.Settings.LibraryShelfShadowTransparency;
+			cpLibShelfColor.SelectedColor = Program.Settings.LibraryShelfShadowColor;
+		}
+
+		private void ApplyLibraryPanels()
+		{
+			Program.Settings.LibraryBackgroundEnabled = chkLibBackgroundEnabled.Checked;
+			Program.Settings.LibraryBackgroundTexturePath = txtLibBackgroundPath.Text;
+			Program.Settings.LibraryBackgroundLayout = (ImageLayout)cbLibBackgroundLayout.SelectedIndex;
+			Program.Settings.LibraryShelfEnabled = chkLibShelfEnabled.Checked;
+			Program.Settings.LibraryShelfTexturePath = txtLibShelfPath.Text;
+			Program.Settings.LibraryShelfShadowDistance = tbLibShelfDistance.Value;
+			Program.Settings.LibraryShelfShadowAngle = tbLibShelfAngle.Value;
+			Program.Settings.LibraryShelfShadowBlur = tbLibShelfBlur.Value;
+			Program.Settings.LibraryShelfShadowTransparency = tbLibShelfTransparency.Value;
+			Program.Settings.LibraryShelfShadowColor = cpLibShelfColor.SelectedColor;
+			cYo.Projects.ComicRack.Viewer.Views.ComicBrowserControl.RefreshAllListBackgrounds();
 		}
 
 		protected override void OnClosed(EventArgs e)
@@ -332,6 +578,7 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			ws.PageCurlShadowStrength = (float)tbShadowStrength.Value / 100f;
 			ws.PageCurlGrabArea = (float)tbGrabArea.Value / 100f;
 			ws.PageCurlDuration = (int)nudTurnDuration.Value;
+			ApplyLibraryPanels();
 		}
 
 		private void Update(DisplayWorkspace ws)
@@ -352,6 +599,7 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			tbShadowStrength.Value = (int)(ws.PageCurlShadowStrength * 100f);
 			tbGrabArea.Value = (int)(ws.PageCurlGrabArea * 100f);
 			nudTurnDuration.Value = ws.PageCurlDuration;
+			UpdateLibraryPanels();
 		}
 
 		private void SelectTextureFile(ComboBox cb, string texture)

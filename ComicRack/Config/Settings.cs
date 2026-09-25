@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Drawing;
@@ -26,26 +26,6 @@ using cYo.Projects.ComicRack.Viewer.Views;
 
 namespace cYo.Projects.ComicRack.Viewer.Config
 {
-	/// <summary>
-	/// How the library's book display panel uses LibraryBackgroundTexturePath, if it names a
-	/// file at all.
-	/// </summary>
-	public enum LibraryBackgroundType
-	{
-		/// <summary>
-		/// No texture: the plain background colour, as before this was added.
-		/// </summary>
-		None,
-		/// <summary>
-		/// A plain background image, placed according to LibraryBackgroundLayout.
-		/// </summary>
-		Texture,
-		/// <summary>
-		/// The image is a shelf strip, drawn under each row of books with a soft shadow cast by
-		/// each book onto it, repositioning itself to match whatever cover size is set.
-		/// </summary>
-		Bookshelf
-	}
 
 	[Serializable]
 	public class Settings : ICacheSettings, IComicUpdateSettings, ISharesSettings, IVirtualTagSettings
@@ -210,11 +190,25 @@ namespace cYo.Projects.ComicRack.Viewer.Config
 
 		private int readAheadPages = 20;
 
+		private bool libraryBackgroundEnabled;
+
 		private string libraryBackgroundTexturePath = string.Empty;
 
-		private LibraryBackgroundType libraryBackgroundType;
-
 		private System.Windows.Forms.ImageLayout libraryBackgroundLayout = System.Windows.Forms.ImageLayout.Tile;
+
+		private bool libraryShelfEnabled;
+
+		private string libraryShelfTexturePath = string.Empty;
+
+		private int libraryShelfShadowDistance = 4;
+
+		private int libraryShelfShadowAngle;
+
+		private int libraryShelfShadowBlur = 20;
+
+		private int libraryShelfShadowTransparency = 65;
+
+		private Color libraryShelfShadowColor = Color.Black;
 
 		private bool softwareFiltering = true;
 
@@ -915,9 +909,33 @@ namespace cYo.Projects.ComicRack.Viewer.Config
 			}
 		}
 
+/// <summary>
+		/// Two entirely independent things can sit behind the library's books: a plain
+		/// background picture (this one), and separately, a shelf strip drawn under each row
+		/// (see the Shelf properties below). Either, both, or neither can be on at once.
+		/// </summary>
+		[Browsable(false)]
+		[DefaultValue(false)]
+		public bool LibraryBackgroundEnabled
+		{
+			get
+			{
+				return libraryBackgroundEnabled;
+			}
+			set
+			{
+				if (libraryBackgroundEnabled != value)
+				{
+					libraryBackgroundEnabled = value;
+					FireEvent(null);
+				}
+			}
+		}
+
 		/// <summary>
-		/// An image file used for the background of the library's book display panel, or empty
-		/// for none. What it is used for depends on LibraryBackgroundType.
+		/// The image file for the plain library background, placed according to
+		/// LibraryBackgroundLayout. Kept even while LibraryBackgroundEnabled is off, so switching
+		/// it back on remembers the last picture chosen.
 		/// </summary>
 		[Browsable(false)]
 		[DefaultValue("")]
@@ -938,29 +956,10 @@ namespace cYo.Projects.ComicRack.Viewer.Config
 			}
 		}
 
-		[Browsable(false)]
-		[DefaultValue(LibraryBackgroundType.None)]
-		public LibraryBackgroundType LibraryBackgroundType
-		{
-			get
-			{
-				return libraryBackgroundType;
-			}
-			set
-			{
-				if (libraryBackgroundType != value)
-				{
-					libraryBackgroundType = value;
-					FireEvent(null);
-				}
-			}
-		}
-
 		/// <summary>
-		/// How the texture is placed when LibraryBackgroundType is Texture. Tile pans together
-		/// with the list as it scrolls; Stretch, Center and Zoom stay fixed to the window instead,
-		/// the same as a normal background picture. Not used for Bookshelf, which has its own
-		/// positioning tied to the current row height.
+		/// How the picture is placed. Tile pans together with the list as it scrolls; Stretch,
+		/// Center and Zoom stay fixed to the window instead, the same as a normal background
+		/// picture.
 		/// </summary>
 		[Browsable(false)]
 		[DefaultValue(System.Windows.Forms.ImageLayout.Tile)]
@@ -975,6 +974,163 @@ namespace cYo.Projects.ComicRack.Viewer.Config
 				if (libraryBackgroundLayout != value)
 				{
 					libraryBackgroundLayout = value;
+					FireEvent(null);
+				}
+			}
+		}
+
+		/// <summary>
+		/// A shelf strip drawn under each row of books in the library, repositioning itself to
+		/// match whatever cover size is set, with a soft shadow cast by each book onto it (see
+		/// the Shadow properties below). Entirely independent of LibraryBackgroundEnabled above.
+		/// </summary>
+		[Browsable(false)]
+		[DefaultValue(false)]
+		public bool LibraryShelfEnabled
+		{
+			get
+			{
+				return libraryShelfEnabled;
+			}
+			set
+			{
+				if (libraryShelfEnabled != value)
+				{
+					libraryShelfEnabled = value;
+					FireEvent(null);
+				}
+			}
+		}
+
+		/// <summary>
+		/// The image used as the shelf strip. A plain wood or shelf-edge picture works best,
+		/// since it is stretched to whatever width the panel is and to a thickness that scales
+		/// a little with the current cover size.
+		/// </summary>
+		[Browsable(false)]
+		[DefaultValue("")]
+		public string LibraryShelfTexturePath
+		{
+			get
+			{
+				return libraryShelfTexturePath;
+			}
+			set
+			{
+				value = value ?? string.Empty;
+				if (libraryShelfTexturePath != value)
+				{
+					libraryShelfTexturePath = value;
+					FireEvent(null);
+				}
+			}
+		}
+
+		/// <summary>
+		/// How far below each book's own bottom edge its shadow begins, in pixels. 0 means the
+		/// shadow starts right where the book meets the shelf.
+		/// </summary>
+		[Browsable(false)]
+		[DefaultValue(4)]
+		public int LibraryShelfShadowDistance
+		{
+			get
+			{
+				return libraryShelfShadowDistance;
+			}
+			set
+			{
+				value = value.Clamp(0, 60);
+				if (libraryShelfShadowDistance != value)
+				{
+					libraryShelfShadowDistance = value;
+					FireEvent(null);
+				}
+			}
+		}
+
+		/// <summary>
+		/// Which way the shadow leans, in degrees either side of straight down - as if the light
+		/// falls from a little to one side rather than from directly overhead. 0 is straight
+		/// down; negative leans the shadow left, positive leans it right.
+		/// </summary>
+		[Browsable(false)]
+		[DefaultValue(0)]
+		public int LibraryShelfShadowAngle
+		{
+			get
+			{
+				return libraryShelfShadowAngle;
+			}
+			set
+			{
+				value = value.Clamp(-60, 60);
+				if (libraryShelfShadowAngle != value)
+				{
+					libraryShelfShadowAngle = value;
+					FireEvent(null);
+				}
+			}
+		}
+
+		/// <summary>
+		/// How many pixels the shadow takes to fade from its full strength down to nothing.
+		/// Larger reads as softer and more spread out; smaller reads as a crisper edge.
+		/// </summary>
+		[Browsable(false)]
+		[DefaultValue(20)]
+		public int LibraryShelfShadowBlur
+		{
+			get
+			{
+				return libraryShelfShadowBlur;
+			}
+			set
+			{
+				value = value.Clamp(1, 100);
+				if (libraryShelfShadowBlur != value)
+				{
+					libraryShelfShadowBlur = value;
+					FireEvent(null);
+				}
+			}
+		}
+
+		/// <summary>
+		/// How see-through the shadow is at its darkest point, as a percentage. Higher is more
+		/// transparent and therefore fainter; lower is more solid and therefore stronger.
+		/// </summary>
+		[Browsable(false)]
+		[DefaultValue(65)]
+		public int LibraryShelfShadowTransparency
+		{
+			get
+			{
+				return libraryShelfShadowTransparency;
+			}
+			set
+			{
+				value = value.Clamp(0, 100);
+				if (libraryShelfShadowTransparency != value)
+				{
+					libraryShelfShadowTransparency = value;
+					FireEvent(null);
+				}
+			}
+		}
+
+		[Browsable(false)]
+		public Color LibraryShelfShadowColor
+		{
+			get
+			{
+				return libraryShelfShadowColor;
+			}
+			set
+			{
+				if (libraryShelfShadowColor != value)
+				{
+					libraryShelfShadowColor = value;
 					FireEvent(null);
 				}
 			}
