@@ -523,14 +523,24 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 		/// AddLibraryPanels which builds the controls themselves: at construction time the
 		/// form has never actually been shown, and an AutoSize container's own preferred size
 		/// is not reliably settled until it has actually appeared on screen - reading
-		/// flowLayoutPanel2.Right/Bottom before that point was giving stale figures, which is
-		/// what was placing panel1 wrongly and leaving a gap of unused space below it. Called
+		/// flowLayoutPanel2.Right/Bottom before that point was giving stale figures. Called
 		/// from OnShown rather than OnLoad for the same reason: OnShown only fires once the
 		/// form is genuinely visible, which is a stronger guarantee that layout has actually
 		/// settled than the slightly earlier point OnLoad fires at.
+		///
+		/// panel1 (the OK/Apply/Cancel row) turned out to be a flowed child of
+		/// flowLayoutPanel1 itself, not a sibling of it sitting independently on the form as
+		/// it appeared to be - so its Anchor and Location were never in panel1's own hands to
+		/// begin with; flowLayoutPanel1's own TopDown flow was placing it right under that
+		/// column regardless of anything set on panel1, and flowLayoutPanel1's own height
+		/// already counted panel1 once, before this method's own height calculation added it
+		/// a second time on top. Moving panel1 out to be a direct child of the form - a true
+		/// sibling of both columns - is what actually lets it be positioned independently.
 		/// </summary>
 		private void FinalizeLibraryPanelsLayout()
 		{
+			flowLayoutPanel1.Controls.Remove(panel1);
+			Controls.Add(panel1);
 			flowLayoutPanel1.PerformLayout();
 			flowLayoutPanel2.PerformLayout();
 			int contentRight = flowLayoutPanel2.Right;
