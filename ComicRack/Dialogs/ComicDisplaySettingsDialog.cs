@@ -515,28 +515,36 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			flowLayoutPanel2.Controls.Add(grpLibShelf);
 			flowLayoutPanel2.Controls.Add(grpBookCoverShadow);
 			Controls.Add(flowLayoutPanel2);
+		}
 
-			//flowLayoutPanel1's own AutoSize already accounts for panel1 (the OK/Apply/Cancel
-			//row, anchored to its bottom-right) and the form's own AutoSize already accounts
-			//for flowLayoutPanel1. Neither of those knows about this second, independent
-			//column, so - now that flowLayoutPanel2 has actually been given its content and
-			//had a chance to size itself to it - the space for panel1 and the form itself are
-			//worked out fresh here from whichever column turns out taller and wider.
+		/// <summary>
+		/// Positions the second column and resizes the form and the OK/Apply/Cancel row to
+		/// fit both columns. Deliberately not done from the constructor, alongside
+		/// AddLibraryPanels which builds the controls themselves: at construction time the
+		/// form has never actually been shown, and an AutoSize container's own preferred size
+		/// is not reliably settled until it has actually appeared on screen - reading
+		/// flowLayoutPanel2.Right/Bottom before that point was giving stale figures, which is
+		/// what was placing panel1 wrongly and leaving a gap of unused space below it. Called
+		/// from OnShown rather than OnLoad for the same reason: OnShown only fires once the
+		/// form is genuinely visible, which is a stronger guarantee that layout has actually
+		/// settled than the slightly earlier point OnLoad fires at.
+		/// </summary>
+		private void FinalizeLibraryPanelsLayout()
+		{
+			flowLayoutPanel1.PerformLayout();
 			flowLayoutPanel2.PerformLayout();
 			int contentRight = flowLayoutPanel2.Right;
 			int contentBottom = Math.Max(flowLayoutPanel1.Bottom, flowLayoutPanel2.Bottom);
-			//panel1's own Bottom|Right anchor would otherwise reposition it again, based on
-			//its distance from the form's edges as they stood before this resize, undoing
-			//the explicit position set below - resizing the form first, with the anchor
-			//taken out of the way, and only then placing panel1 is what actually sticks.
-			//The form's own AutoSize (set in InitializeComponent, for the original single
-			//column) was recalculating itself again after this point and overriding the
-			//explicit size set below - it only ever knew to measure flowLayoutPanel1, so once
-			//this second column exists, sizing is taken over entirely by this method instead.
 			AutoSize = false;
-			panel1.Anchor = AnchorStyles.None;
+			panel1.Anchor = AnchorStyles.Top | AnchorStyles.Left;
 			ClientSize = new Size(contentRight + 12, contentBottom + panel1.Height + 24);
 			panel1.Location = new Point(contentRight - panel1.Width, contentBottom + 12);
+		}
+
+		protected override void OnShown(EventArgs e)
+		{
+			base.OnShown(e);
+			FinalizeLibraryPanelsLayout();
 		}
 
 		private void UpdateLibraryPanels()
