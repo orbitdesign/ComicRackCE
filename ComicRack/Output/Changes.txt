@@ -1,4 +1,4 @@
-﻿orbitdesign Build 1.59 (based on Community Edition 0.9.184):
+﻿orbitdesign Build 1.60 (based on Community Edition 0.9.184):
 
 * 1.1 FIX: Hardware acceleration stability. Fixed OpenGL extension detection, replaced the deprecated automatic mip map generation that crashed some drivers, checked texture uploads for errors, and added a startup guard that switches hardware acceleration off for one session if ComicRack failed to start last time.
 * 1.2 NEW: Direct2D renderer for the reader. Used by default when hardware acceleration is on, with OpenGL and then software rendering as fallbacks. Handles graphics device resets, uses high quality cubic sampling for "Enable Hardware Filters", and supports paper textures. Start with -hwgl to use the old OpenGL renderer.
@@ -59,6 +59,7 @@
 * 1.57 FIX: Book shadows now really do follow each cover's own width. The earlier claim that they already did was wrong: the grid measures a tile per book, but the cover art is then aspect-fitted inside that tile when drawn, so a narrow cover sits in a wider tile and the shadow was following the tile. Each item can now report the rectangle its artwork actually occupies, and the shadow uses that.
 * 1.58 FIX: The previous fix for shadow width introduced a coordinate-space bug that made shadows only line up in the leftmost column and vanish or misplace everywhere else. Each item draws itself with its own top-left corner temporarily treated as the graphics origin, so the artwork rectangle it reports is relative to itself, not to the view - it now gets re-anchored to the item's real position before use.
 * 1.59 FIX: The shelf texture briefly appearing then disappearing on launch, staying gone until scrolled, was not fully fixed by the single delayed recheck added earlier - a single check was evidently the wrong hedge for whatever the real timing window turns out to be. Replaced with several rechecks spread over the first couple of seconds after launch instead of just one.
+* 1.60 FIX: Shelf Position no longer estimates where the cover art ends and the caption begins with a percentage - the same fix that made book shadows follow each cover's own width gives access to each cover's own actually-measured artwork rectangle, and the shelf now lines up with that directly instead of guessing. Shelf Position is now a small pixel fine-tune on top of that measured position rather than a rough percentage trying to bridge the whole gap itself.
 
 
 Community Edition Build 0.9.184:

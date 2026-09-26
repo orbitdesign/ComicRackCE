@@ -3283,20 +3283,14 @@ namespace cYo.Common.Windows.Forms
 		}
 
 		/// <summary>
-		/// Shifts the whole shelf strip up (negative) or down (positive) from the bottom of
-		/// each row's own bounds, which - since that includes any caption text below the
-		/// cover, not just the cover art itself - usually needs to be negative to land the
-		/// shelf in the gap between the two rather than under the caption.
+		/// Fine-tunes the shelf strip (and the shadow on it, which moves with it) up
+		/// (negative) or down (positive) from where it is otherwise placed: right at the
+		/// bottom of the row's own cover artwork, read from each item's own measured artwork
+		/// rect (see DrawShelfBackground) rather than estimated, so this only needs to cover
+		/// small adjustments of taste - a little breathing room above the caption, say -
+		/// rather than bridging the gap between the cover and the caption itself.
 		/// </summary>
-		/// <summary>
-		/// Shifts the whole shelf strip up (negative) or down (positive), as a percentage of
-		/// the current row's own height - not a fixed number of pixels, since the row's
-		/// bottom edge includes any caption text under the cover, and how tall that caption
-		/// area is scales with the row height far more reliably than it stays a fixed pixel
-		/// count as cover size changes. Usually negative, moving the shelf up into the gap
-		/// between the cover and its caption rather than under the caption.
-		/// </summary>
-		public int ShelfOffsetPercent
+		public int ShelfOffset
 		{
 			get;
 			set;
@@ -3454,12 +3448,12 @@ namespace cYo.Common.Windows.Forms
 		}
 
 		/// <summary>
-		/// ShelfImage drawn as one strip per row of items, aligned to the bottom of that row
-		/// (offset by ShelfOffsetPercent) exactly as the items themselves are currently laid
-		/// out - asking for the real, current bounds of the items on screen rather than
-		/// guessing at the grid's own spacing, so this keeps lining up correctly whatever the
-		/// cover size, view mode or grouping happens to be. Each item then casts a shadow
-		/// (see the Shadow* properties) down onto the shelf beneath it.
+		/// ShelfImage drawn as one strip per row of items, aligned to the bottom of that
+		/// row's own cover artwork (offset by ShelfOffset) exactly as the items themselves are
+		/// currently laid out - asking for the real, current bounds of the items on screen
+		/// rather than guessing at the grid's own spacing, so this keeps lining up correctly
+		/// whatever the cover size, view mode or grouping happens to be. Each item then casts
+		/// a shadow (see the Shadow* properties) down onto the shelf beneath it.
 		/// </summary>
 		private void DrawShelfBackground(Graphics gr, Image image)
 		{
@@ -3556,16 +3550,18 @@ namespace cYo.Common.Windows.Forms
 				client.Offset(scrollPosition);
 				foreach (KeyValuePair<int, List<Rectangle>> row in rows)
 				{
-					int rowHeight = row.Value.Max((Rectangle r) => r.Height);
-					//A percentage of the row's own height rather than a fixed number of
-					//pixels: the row's bottom edge is the bottom of the caption text under
-					//the cover, not the cover art itself, and how tall that caption area is
-					//scales with the row height (a bigger cover usually still wraps to a
-					//similar couple of lines, so the caption keeps roughly the same share of
-					//the total height) far more reliably than it stays a fixed pixel count as
-					//the cover size changes.
-					int offset = (int)(rowHeight * ShelfOffsetPercent / 100.0);
-					int bottom = row.Key + offset;
+					//Previously guessed at with a fixed percentage of the row's own height,
+					//standing in for wherever the cover art ends and the caption underneath
+					//begins - since that boundary isn't a fixed proportion of the row (it
+					//depends on how many lines the caption's own text wraps to, which doesn't
+					//scale smoothly with cover size), that guess kept drifting out of step as
+					//cover size changed. rowCovers holds each item's own measured artwork
+					//rect now (added for the shadow's own width), so the actual boundary can
+					//be read directly instead of estimated - the largest Bottom among this
+					//row's covers, since by the time every item's artwork rect is known they
+					//should share the same one (thumbnails are fit to a shared height budget)
+					//and the largest is the safest to build on if that ever isn't quite true.
+					int bottom = rowCovers[row.Key].Max((Rectangle r) => r.Bottom) + ShelfOffset;
 					int thickness = Math.Max(1, ShelfHeight);
 					Rectangle shelfBounds = new Rectangle(client.Left, bottom, client.Width, thickness);
 					if (!gr.IsVisible(shelfBounds))

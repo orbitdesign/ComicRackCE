@@ -202,7 +202,7 @@ namespace cYo.Projects.ComicRack.Viewer.Config
 
 		private int libraryShelfShadowDistance = 4;
 
-		private int libraryShelfOffsetPercent = -15;
+		private int libraryShelfOffset = -6;
 
 		private int libraryShelfHeight = 20;
 
@@ -1054,28 +1054,26 @@ namespace cYo.Projects.ComicRack.Viewer.Config
 		}
 
 		/// <summary>
-		/// Shifts the shelf strip (and the shadow on it, which moves with it) up or down from
-		/// the bottom of each row's own bounds, as a percentage of that row's own height. That
-		/// bottom edge includes any caption text under the cover, not just the cover art, and
-		/// a percentage of the row height tracks how tall that caption area actually is across
-		/// different cover sizes far better than a fixed number of pixels would - usually
-		/// negative, moving the shelf up into the gap between the cover and its caption rather
-		/// than under the caption.
+		/// Fine-tunes the shelf strip (and the shadow on it, which moves with it) up
+		/// (negative) or down (positive) from where it is otherwise placed: right at the
+		/// bottom of each row's own cover artwork, measured directly rather than estimated -
+		/// so this is a small adjustment of taste, not something that needs to bridge the gap
+		/// between the cover and its caption by itself.
 		/// </summary>
 		[Browsable(false)]
-		[DefaultValue(-15)]
-		public int LibraryShelfOffsetPercent
+		[DefaultValue(-6)]
+		public int LibraryShelfOffset
 		{
 			get
 			{
-				return libraryShelfOffsetPercent;
+				return libraryShelfOffset;
 			}
 			set
 			{
-				value = value.Clamp(-60, 20);
-				if (libraryShelfOffsetPercent != value)
+				value = value.Clamp(-30, 30);
+				if (libraryShelfOffset != value)
 				{
-					libraryShelfOffsetPercent = value;
+					libraryShelfOffset = value;
 					FireEvent(null);
 				}
 			}

@@ -1849,7 +1849,7 @@ namespace cYo.Projects.ComicRack.Viewer.Views
                 itemView.ShelfImage = LoadImage(shelfPath);
                 old?.Dispose();
             }
-            itemView.ShelfOffsetPercent = Program.Settings.LibraryShelfOffsetPercent;
+            itemView.ShelfOffset = Program.Settings.LibraryShelfOffset;
             itemView.ShelfHeight = Program.Settings.LibraryShelfHeight;
             itemView.ShelfShadowDistance = Program.Settings.LibraryShelfShadowDistance;
             itemView.ShelfShadowAngle = Program.Settings.LibraryShelfShadowAngle;

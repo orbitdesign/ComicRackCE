@@ -335,7 +335,7 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 
 			//Smaller now that the shadow settings have their own panel below - just the shelf
 			//itself: whether it is on, its picture, and the two controls for lining it up
-			//against whatever cover size is set (see the class-level comment on ShelfOffsetPercent).
+			//against whatever cover size is set (see the class-level comment on ShelfOffset).
 			GroupBox grpLibShelf = new GroupBox
 			{
 				Text = "Library Bookshelf",
@@ -386,14 +386,14 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			};
 			tbLibShelfPosition = new TrackBarLite
 			{
-				Minimum = -60,
-				Maximum = 20,
+				Minimum = -30,
+				Maximum = 30,
 				Location = new Point(150, 85),
 				Size = new Size(230, 18)
 			};
 			tbLibShelfPosition.ValueChanged += delegate
 			{
-				toolTip.SetToolTip(tbLibShelfPosition, $"{tbLibShelfPosition.Value}%");
+				toolTip.SetToolTip(tbLibShelfPosition, $"{tbLibShelfPosition.Value}px");
 			};
 			Label labelLibShelfHeight = new Label
 			{
@@ -564,7 +564,7 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			cbLibBackgroundLayout.SelectedIndex = (int)Program.Settings.LibraryBackgroundLayout;
 			chkLibShelfEnabled.Checked = Program.Settings.LibraryShelfEnabled;
 			txtLibShelfPath.Text = Program.Settings.LibraryShelfTexturePath;
-			tbLibShelfPosition.Value = Program.Settings.LibraryShelfOffsetPercent;
+			tbLibShelfPosition.Value = Program.Settings.LibraryShelfOffset;
 			tbLibShelfHeight.Value = Program.Settings.LibraryShelfHeight;
 			tbLibShelfDistance.Value = Program.Settings.LibraryShelfShadowDistance;
 			tbLibShelfAngle.Value = Program.Settings.LibraryShelfShadowAngle;
@@ -580,7 +580,7 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			Program.Settings.LibraryBackgroundLayout = (ImageLayout)cbLibBackgroundLayout.SelectedIndex;
 			Program.Settings.LibraryShelfEnabled = chkLibShelfEnabled.Checked;
 			Program.Settings.LibraryShelfTexturePath = txtLibShelfPath.Text;
-			Program.Settings.LibraryShelfOffsetPercent = tbLibShelfPosition.Value;
+			Program.Settings.LibraryShelfOffset = tbLibShelfPosition.Value;
 			Program.Settings.LibraryShelfHeight = tbLibShelfHeight.Value;
 			Program.Settings.LibraryShelfShadowDistance = tbLibShelfDistance.Value;
 			Program.Settings.LibraryShelfShadowAngle = tbLibShelfAngle.Value;
