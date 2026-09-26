@@ -3311,6 +3311,18 @@ namespace cYo.Common.Windows.Forms
 		/// </summary>
 		private int lastPendingCoverRects = -1;
 
+		/// <summary>
+		/// Reused across paints by DrawShelfBackground rather than allocated fresh each time,
+		/// since a background repaints on every scroll frame while actively scrolling -
+		/// cleared at the start of each call rather than replaced, so nothing from a previous
+		/// paint's set of visible rows lingers.
+		/// </summary>
+		private readonly List<int> shelfRowKeys = new List<int>();
+
+		private readonly Dictionary<int, List<Rectangle>> shelfRows = new Dictionary<int, List<Rectangle>>();
+
+		private readonly Dictionary<int, List<Rectangle>> shelfRowCovers = new Dictionary<int, List<Rectangle>>();
+
 		public int ShelfShadowAngle
 		{
 			get;
@@ -3468,9 +3480,9 @@ namespace cYo.Common.Windows.Forms
 			//the full width regardless, but this keeps them as the one row they visually are.
 			const int rowTolerance = 3;
 			int pendingCoverRects = 0;
-			List<int> rowKeys = new List<int>();
-			Dictionary<int, List<Rectangle>> rows = new Dictionary<int, List<Rectangle>>();
-			Dictionary<int, List<Rectangle>> rowCovers = new Dictionary<int, List<Rectangle>>();
+			shelfRowKeys.Clear();
+			shelfRows.Clear();
+			shelfRowCovers.Clear();
 			using (ItemMonitor.Lock(visibleItems))
 			{
 				foreach (IViewableItem visibleItem in visibleItems)
@@ -3481,7 +3493,7 @@ namespace cYo.Common.Windows.Forms
 						continue;
 					}
 					int key = -1;
-					foreach (int candidate in rowKeys)
+					foreach (int candidate in shelfRowKeys)
 					{
 						if (Math.Abs(candidate - bounds.Bottom) <= rowTolerance)
 						{
@@ -3492,13 +3504,13 @@ namespace cYo.Common.Windows.Forms
 					if (key == -1)
 					{
 						key = bounds.Bottom;
-						rowKeys.Add(key);
+						shelfRowKeys.Add(key);
 					}
-					if (!rows.TryGetValue(key, out List<Rectangle> row))
+					if (!shelfRows.TryGetValue(key, out List<Rectangle> row))
 					{
 						row = new List<Rectangle>();
-						rows[key] = row;
-						rowCovers[key] = new List<Rectangle>();
+						shelfRows[key] = row;
+						shelfRowCovers[key] = new List<Rectangle>();
 					}
 					row.Add(bounds);
 					//The shelf strip itself is positioned from the tile (above), but the
@@ -3512,7 +3524,7 @@ namespace cYo.Common.Windows.Forms
 						pendingCoverRects++;
 						coverBounds = bounds;
 					}
-					rowCovers[key].Add(coverBounds);
+					shelfRowCovers[key].Add(coverBounds);
 				}
 			}
 			//The shelf is painted as part of the background, before the covers themselves are
@@ -3536,10 +3548,11 @@ namespace cYo.Common.Windows.Forms
 			{
 				lastPendingCoverRects = 0;
 			}
-			if (rows.Count == 0)
+			if (shelfRows.Count == 0)
 			{
 				return;
 			}
+			using (SolidBrush shadowBrush = new SolidBrush(ShelfShadowColor))
 			using (gr.SaveState())
 			{
 				//Same transform DrawItems uses, so the shelves - and the shadows on them - pan
@@ -3548,20 +3561,20 @@ namespace cYo.Common.Windows.Forms
 				gr.TranslateTransform(-scrollPosition.X, -scrollPosition.Y);
 				Rectangle client = ClientRectangle;
 				client.Offset(scrollPosition);
-				foreach (KeyValuePair<int, List<Rectangle>> row in rows)
+				foreach (KeyValuePair<int, List<Rectangle>> row in shelfRows)
 				{
 					//Previously guessed at with a fixed percentage of the row's own height,
 					//standing in for wherever the cover art ends and the caption underneath
 					//begins - since that boundary isn't a fixed proportion of the row (it
 					//depends on how many lines the caption's own text wraps to, which doesn't
 					//scale smoothly with cover size), that guess kept drifting out of step as
-					//cover size changed. rowCovers holds each item's own measured artwork
+					//cover size changed. shelfRowCovers holds each item's own measured artwork
 					//rect now (added for the shadow's own width), so the actual boundary can
 					//be read directly instead of estimated - the largest Bottom among this
 					//row's covers, since by the time every item's artwork rect is known they
 					//should share the same one (thumbnails are fit to a shared height budget)
 					//and the largest is the safest to build on if that ever isn't quite true.
-					int bottom = rowCovers[row.Key].Max((Rectangle r) => r.Bottom) + ShelfOffset;
+					int bottom = shelfRowCovers[row.Key].Max((Rectangle r) => r.Bottom) + ShelfOffset;
 					int thickness = Math.Max(1, ShelfHeight);
 					Rectangle shelfBounds = new Rectangle(client.Left, bottom, client.Width, thickness);
 					if (!gr.IsVisible(shelfBounds))
@@ -3577,13 +3590,13 @@ namespace cYo.Common.Windows.Forms
 					//enough blur setting spreads far enough to reach into a neighbour's own
 					//space, and adjacent shadows read as one continuous band rather than
 					//staying visually separate per item the way they would on a real shelf.
-					List<Rectangle> sortedRow = rowCovers[row.Key].OrderBy((Rectangle r) => r.Left).ToList();
+					List<Rectangle> sortedRow = shelfRowCovers[row.Key].OrderBy((Rectangle r) => r.Left).ToList();
 					for (int i = 0; i < sortedRow.Count; i++)
 					{
 						Rectangle itemBounds = sortedRow[i];
 						int leftLimit = (i > 0) ? ((itemBounds.Left + sortedRow[i - 1].Right) / 2) : int.MinValue;
 						int rightLimit = (i < sortedRow.Count - 1) ? ((itemBounds.Right + sortedRow[i + 1].Left) / 2) : int.MaxValue;
-						DrawShelfShadow(gr, itemBounds, bottom, leftLimit, rightLimit);
+						DrawShelfShadow(gr, itemBounds, bottom, leftLimit, rightLimit, shadowBrush);
 					}
 				}
 			}
@@ -3615,8 +3628,12 @@ namespace cYo.Common.Windows.Forms
 		/// setting can soften this item's own shadow without spreading into a neighbour's own
 		/// space and reading as one continuous band rather than staying visually separate per
 		/// item, the way books sitting apart on a real shelf would.
+		///
+		/// brush is owned by the caller and shared across every item in the row (see
+		/// DrawShelfBackground) - only its Color changes here, so one brush does the work
+		/// that would otherwise mean a fresh one for every one of up to 8 steps per item.
 		/// </summary>
-		private void DrawShelfShadow(Graphics gr, Rectangle itemBounds, int shelfTop, int leftLimit, int rightLimit)
+		private void DrawShelfShadow(Graphics gr, Rectangle itemBounds, int shelfTop, int leftLimit, int rightLimit, SolidBrush brush)
 		{
 			int width = itemBounds.Width;
 			if (width <= 0 || ShelfShadowAlpha <= 0)
@@ -3646,10 +3663,13 @@ namespace cYo.Common.Windows.Forms
 					continue;
 				}
 				stepBounds = new Rectangle(clampedLeft, stepBounds.Top, clampedRight - clampedLeft, stepBounds.Height);
-				using (SolidBrush brush = new SolidBrush(Color.FromArgb(alpha, ShelfShadowColor)))
-				{
-					gr.FillRectangle(brush, stepBounds);
-				}
+				//One brush, reused for every step of every item's shadow in the whole row -
+				//up to 8 steps per item, times every visible item, times every repaint while
+				//scrolling adds up to a lot of short-lived brushes a frame for what is only
+				//ever one solid colour at a time; changing its Color and reusing it costs
+				//nothing by comparison.
+				brush.Color = Color.FromArgb(alpha, ShelfShadowColor);
+				gr.FillRectangle(brush, stepBounds);
 			}
 		}
 
