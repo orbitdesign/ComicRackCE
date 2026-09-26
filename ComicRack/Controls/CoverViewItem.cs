@@ -94,6 +94,17 @@ namespace cYo.Projects.ComicRack.Viewer.Controls
 		/// </summary>
 		private Rectangle? drawnCoverRect;
 
+		/// <summary>
+		/// The tile size drawnCoverRect was captured for. The shelf is painted before the
+		/// covers themselves, one frame behind at the best of times (see GetContentBounds),
+		/// but while the cover size is actively being changed - dragging the size slider, or
+		/// Ctrl+scrolling it - every frame's tile is a different size, so last frame's cached
+		/// rect is not just briefly out of date but never correct for whatever size is
+		/// current. Comparing against the size it was captured for is what tells those two
+		/// situations apart.
+		/// </summary>
+		private Size drawnCoverRectTileSize;
+
 		private bool refreshed;
 
 		public int StackReadPercent
@@ -607,6 +618,7 @@ namespace cYo.Projects.ComicRack.Viewer.Controls
 							}
 							drawnRect = thumbIconRenderer2.Draw(drawInfo.Graphics, rectangle);
 							drawnCoverRect = thumbIconRenderer2.ThumbnailBounds;
+							drawnCoverRectTileSize = rectangle.Size;
 							thumbIconRenderer2.DisposeTextLines();
 							OnDrawCustomThumbnailOverlay(drawInfo.Graphics, thumbIconRenderer2.ThumbnailBounds);
 							DrawFrontCoverButton(drawInfo.Graphics, thumbIconRenderer2.ThumbnailBounds);
@@ -1616,8 +1628,13 @@ namespace cYo.Projects.ComicRack.Viewer.Controls
 		/// The cover artwork's own rectangle within itemBounds, as captured on the last draw
 		/// (see drawnCoverRect) - narrower than the tile for a cover kept at its own aspect
 		/// ratio, since the tile also has to fit the row's widest cover and the caption text
-		/// underneath. Falls back to Rectangle.Empty until the cover has been drawn once and
-		/// its real aspect ratio is therefore known.
+		/// underneath. Falls back to Rectangle.Empty until the cover has been drawn once at
+		/// itemBounds' own size and its real aspect ratio at that size is therefore known -
+		/// itemBounds.Size is compared against the tile size the cached rect was captured
+		/// for, not just checked for presence, because while the cover size is actively being
+		/// changed the cached rect is stale for every size it is asked about along the way,
+		/// not only briefly out of date the way it is the rest of the time (see
+		/// drawnCoverRectTileSize).
 		///
 		/// drawnCoverRect is captured while OnDraw's own graphics transform is translated to
 		/// this item's own position, with its bounds passed to it already shifted to (0,0) -
@@ -1628,7 +1645,7 @@ namespace cYo.Projects.ComicRack.Viewer.Controls
 		/// </summary>
 		public override Rectangle GetContentBounds(Rectangle itemBounds)
 		{
-			if (drawnCoverRect.HasValue && !drawnCoverRect.Value.IsEmpty)
+			if (drawnCoverRect.HasValue && !drawnCoverRect.Value.IsEmpty && drawnCoverRectTileSize == itemBounds.Size)
 			{
 				Rectangle relative = drawnCoverRect.Value;
 				return new Rectangle(itemBounds.Left + relative.Left, itemBounds.Top + relative.Top, relative.Width, relative.Height);
