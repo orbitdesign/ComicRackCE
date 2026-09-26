@@ -1,19 +1,22 @@
-; Define version and setup filename with iscc.exe /DMyAppVersion=v1.0 /DMyAppSetupFile=ComicRackSetup_v1.0 Installer.iss
-#define MyAppName "ComicRack Community Edition"
+﻿; Define version and setup filename with iscc.exe /DMyAppVersion=v1.0 /DMyAppSetupFile=ComicRackSetup_v1.0 Installer.iss
+#define MyAppName "ComicRack CE (orbitdesign build)"
 #ifndef MyAppVersion
 #define MyAppVersion "v0.9.184"
 #endif
 #ifndef MyAppSetupFile
 #define MyAppSetupFile "ComicRackSetup"
 #endif
-#define MyAppPublisher "ComicRack Community"
+#define MyAppPublisher "orbitdesign"
 #define MyAppURL "https://github.com/maforget/ComicRackCE"
 #define MyAppExeName "ComicRack.exe"
 
 [Setup]
 ; NOTE: The value of AppId uniquely identifies this application. Do not use the same AppId value in installers for other applications.
 ; (To generate a new GUID, click Tools | Generate GUID inside the IDE.)
-AppId={{0FA63C63-846C-49B7-9A4B-553EF8EBEF0B}
+; A separate identity from stock ComicRack Community Edition's own installer, so Windows
+; never treats this custom build as an upgrade of - or gets confused alongside - a stock
+; install of ComicRack CE on the same machine. Generated fresh, not reused from anywhere.
+AppId={{8ADBD2BA-0B19-4C72-9D0B-E11EC11F733E}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
 ;AppVerName={#MyAppName} {#MyAppVersion}
@@ -58,7 +61,7 @@ Name: "custom";  Description: "Custom installation"; Flags: iscustom
 
 ; The compotent definition
 [Components]
-Name: "app";       Description: "ComicRack Community Edition (Required)";   Types: full typical compact custom; Flags: fixed
+Name: "app";       Description: "{#MyAppName} (Required)";                    Types: full typical compact custom; Flags: fixed
 Name: "start_menu";Description: "Start Menu";                               Types: full typical
 Name: "desktop";   Description: "Desktop Shortcut";                         Types: full typical
 Name: "associate"; Description: "Associate eComic extensions";              Types: full typical

@@ -228,6 +228,69 @@ namespace cYo.Projects.ComicRack.Engine.Display
 			set;
 		}
 
+		bool DragPageTurning
+		{
+			get;
+			set;
+		}
+
+		int ReadAheadPages
+		{
+			get;
+			set;
+		}
+
+		float PageCurlAmount
+		{
+			get;
+			set;
+		}
+
+		float PageCurlShadowStrength
+		{
+			get;
+			set;
+		}
+
+		float PageCurlGrabArea
+		{
+			get;
+			set;
+		}
+
+		int PageCurlDuration
+		{
+			get;
+			set;
+		}
+
+		/// <summary>
+		/// One-shot override for the next page turn transition's duration, in milliseconds. 0
+		/// means no override: use PageCurlDuration as normal. Consumed (reset to 0) the moment
+		/// that transition starts, so it can never affect a later, unrelated page turn.
+		/// </summary>
+		int NextPageTurnDuration
+		{
+			get;
+			set;
+		}
+
+		/// <summary>
+		/// Remembers the page displayed right now as the far side of an upcoming fold, and turns
+		/// off the ordinary per-turn fold while the caller steps through several pages one by
+		/// one. Pair with EndRiffle once the caller has finished stepping.
+		/// </summary>
+		void BeginRiffle();
+
+		/// <summary>
+		/// Turns the ordinary per-turn fold back on, and - if the page actually moved since the
+		/// matching BeginRiffle - shows one fold running from the page remembered then straight
+		/// to wherever the page is now, however many pages that turned out to be. duration
+		/// overrides the normal transition length for this one fold; 0 keeps the configured
+		/// length.
+		/// </summary>
+		void EndRiffle(int duration);
+
 		bool SoftwareFiltering
 		{
 			get;

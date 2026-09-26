@@ -123,6 +123,43 @@ namespace cYo.Projects.ComicRack.Viewer
 
 		private static readonly string defaultSettingsFile = Path.Combine(Paths.ApplicationDataPath, "Config.xml");
 
+		/// <summary>
+		/// Marker written while hardware accelerated startup is in progress. It only
+		/// survives a run that died before the main window was up.
+		/// </summary>
+		private static string HardwareGuardFile => Path.Combine(Paths.ApplicationDataPath, "HardwareStartup.tmp");
+
+		private static bool hardwareStartupFailed;
+
+		/// <summary>
+		/// The theme this session is running with. Changing it needs a restart.
+		/// </summary>
+		public static Themes Theme
+		{
+			get;
+			private set;
+		} = Themes.Default;
+
+		private static void SetHardwareGuard(bool set)
+		{
+			try
+			{
+				if (set)
+				{
+					Directory.CreateDirectory(Paths.ApplicationDataPath);
+					File.WriteAllText(HardwareGuardFile, DateTime.Now.ToString("s"));
+				}
+				else if (File.Exists(HardwareGuardFile))
+				{
+					File.Delete(HardwareGuardFile);
+				}
+			}
+			catch (Exception)
+			{
+				//A missing or read only settings folder must not stop ComicRack from starting.
+			}
+		}
+
 		private static readonly string defaultNewsFile = Path.Combine(Paths.ApplicationDataPath, "NewsFeeds.xml");
 
 		private const string DefaultBackgroundTexturesPath = "Resources\\Textures\\Backgrounds";
@@ -747,9 +784,16 @@ namespace cYo.Projects.ComicRack.Viewer
 			CommandLineParser.Parse(EngineConfiguration.Default);
 			Application.EnableVisualStyles();
 			Application.SetCompatibleTextRenderingDefault(defaultValue: false);
-            ThemeManager.Initialize(ExtendedSettings.Theme); // if using dark mode, replace SystemColors and initialize native Windows theming
-			ResourceManagerEx.InitResourceManager(ExtendedSettings.Theme);
-			ThemePlugin.Register(ExtendedSettings.Theme); // Register the current theme for the IThemePlugin interface for plugins
+			//The ini file and command line win when they ask for a theme; otherwise use the choice
+			//made in Preferences. Config.xml has just been loaded above, so it is available here.
+			Theme = ExtendedSettings.Theme;
+			if (Theme == Themes.Default && Settings.DarkMode)
+			{
+				Theme = Themes.Dark;
+			}
+            ThemeManager.Initialize(Theme); // if using dark mode, replace SystemColors and initialize native Windows theming
+			ResourceManagerEx.InitResourceManager(Theme);
+			ThemePlugin.Register(Theme); // Register the current theme for the IThemePlugin interface for plugins
             ShellFile.DeleteAPI = ExtendedSettings.DeleteAPI;
 			DatabaseManager.FirstDatabaseAccess += delegate
 			{
@@ -841,7 +885,7 @@ namespace cYo.Projects.ComicRack.Viewer
 				ComicBook.FormatIcons.AddRange(ZipFileFolder.CreateFromFiles(defaultLocations, "Formats*.zip"), SplitIconKeys);
 				ComicBook.SpecialIcons.AddRange(ZipFileFolder.CreateFromFiles(defaultLocations, "Special*.zip"), SplitIconKeys);
 				ComicBook.GenericIcons = CreateGenericsIcons(defaultLocations, "*.zip", "_", SplitIconKeys);
-                if (ExtendedSettings.UseDarkMode)
+                if (Theme == Themes.Dark)
                 {
                     ToolStripManager.Renderer = new ThemeToolStripProRenderer();
                 }
@@ -865,13 +909,20 @@ namespace cYo.Projects.ComicRack.Viewer
                     }
                     ToolStripManager.Renderer = renderer;
                 }
-				if (ExtendedSettings.DisableHardware)
+				//If the marker from the previous run is still there, that run never finished
+				//starting up. A driver fault while creating the GL context or uploading a
+				//texture kills the process outright and cannot be caught, so the only way out
+				//is to start without hardware acceleration this time.
+				hardwareStartupFailed = File.Exists(HardwareGuardFile);
+				if (ExtendedSettings.DisableHardware || hardwareStartupFailed)
 				{
 					ImageDisplayControl.HardwareAcceleration = ImageDisplayControl.HardwareAccelerationType.Disabled;
 				}
 				else
 				{
 					ImageDisplayControl.HardwareAcceleration = ((!ExtendedSettings.ForceHardware) ? ImageDisplayControl.HardwareAccelerationType.Enabled : ImageDisplayControl.HardwareAccelerationType.Forced);
+					ImageDisplayControl.HardwareBackend = ExtendedSettings.UseOpenGL ? ImageDisplayControl.HardwareBackendType.OpenGL : ImageDisplayControl.HardwareBackendType.Direct2D;
+					SetHardwareGuard(set: true);
 				}
 				if (ExtendedSettings.DisableMipMapping)
 				{
@@ -954,6 +1005,13 @@ namespace cYo.Projects.ComicRack.Viewer
 			if (splash != null)
 			{
 				splash.Invoke(splash.Close);
+			}
+			//The window is up and the first page has been rendered, so whatever the
+			//graphics driver was going to do, it survived it.
+			SetHardwareGuard(set: false);
+			if (hardwareStartupFailed)
+			{
+				MessageBox.Show(MainForm, TR.Messages["HardwareStartupFailed", "ComicRack did not finish starting the last time it ran, so hardware acceleration has been switched off for this session.\n\nTo turn it back on, use Preferences, Reader, Hardware Acceleration. If starting fails again, leave Enable Hardware Filters off."], TR.Messages["Attention", "Attention"], MessageBoxButtons.OK, MessageBoxIcon.Information);
 			}
 			ThreadUtility.RunInBackground("Starting Network", NetworkManager.Start);
 			ThreadUtility.RunInBackground("Generate Language Pack Info", delegate

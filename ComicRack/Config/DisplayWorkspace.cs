@@ -23,6 +23,14 @@ namespace cYo.Projects.ComicRack.Viewer.Config
 
 		private float paperTextureStrength = 1f;
 
+		private float pageCurlAmount = 0.12f;
+
+		private float pageCurlShadowStrength = 1f;
+
+		private float pageCurlGrabArea = 0.6f;
+
+		private int pageCurlDuration = 600;
+
 		private ImageLayout paperTextureLayout = ImageLayout.Tile;
 
 		private ImageLayout backgroundImageLayout = ImageLayout.Tile;
@@ -320,6 +328,72 @@ namespace cYo.Projects.ComicRack.Viewer.Config
 			set
 			{
 				paperTextureStrength = value.Clamp(0f, 1f);
+			}
+		}
+
+		/// <summary>
+		/// How much of the page width the roll of a bent page consumes: tighter curls at low
+		/// values, a broader bend at high ones.
+		/// </summary>
+		[DefaultValue(0.12f)]
+		public float PageCurlAmount
+		{
+			get
+			{
+				return pageCurlAmount;
+			}
+			set
+			{
+				pageCurlAmount = value.Clamp(0.04f, 0.3f);
+			}
+		}
+
+		/// <summary>
+		/// Strength of the shadow a bent page casts, as a multiplier (1 is normal, 0 turns it off).
+		/// </summary>
+		[DefaultValue(1f)]
+		public float PageCurlShadowStrength
+		{
+			get
+			{
+				return pageCurlShadowStrength;
+			}
+			set
+			{
+				pageCurlShadowStrength = value.Clamp(0f, 2f);
+			}
+		}
+
+		/// <summary>
+		/// How much of the page's outer edge can be grabbed to drag it, as a fraction of a single
+		/// page's width.
+		/// </summary>
+		[DefaultValue(0.6f)]
+		public float PageCurlGrabArea
+		{
+			get
+			{
+				return pageCurlGrabArea;
+			}
+			set
+			{
+				pageCurlGrabArea = value.Clamp(0.2f, 1f);
+			}
+		}
+
+		/// <summary>
+		/// Length of the Realistic Page Curl transition and of a released drag, in milliseconds.
+		/// </summary>
+		[DefaultValue(600)]
+		public int PageCurlDuration
+		{
+			get
+			{
+				return pageCurlDuration;
+			}
+			set
+			{
+				pageCurlDuration = value.Clamp(100, 2000);
 			}
 		}
 

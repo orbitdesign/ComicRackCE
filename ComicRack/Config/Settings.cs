@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Drawing;
@@ -26,6 +26,7 @@ using cYo.Projects.ComicRack.Viewer.Views;
 
 namespace cYo.Projects.ComicRack.Viewer.Config
 {
+
 	[Serializable]
 	public class Settings : ICacheSettings, IComicUpdateSettings, ISharesSettings, IVirtualTagSettings
     {
@@ -184,6 +185,34 @@ namespace cYo.Projects.ComicRack.Viewer.Config
 		private bool displayChangeAnimation = true;
 
 		private bool flowingMouseScrolling = true;
+
+		private bool dragPageTurning = true;
+
+		private int readAheadPages = 20;
+
+		private bool libraryBackgroundEnabled;
+
+		private string libraryBackgroundTexturePath = string.Empty;
+
+		private System.Windows.Forms.ImageLayout libraryBackgroundLayout = System.Windows.Forms.ImageLayout.Tile;
+
+		private bool libraryShelfEnabled;
+
+		private string libraryShelfTexturePath = string.Empty;
+
+		private int libraryShelfShadowDistance = 4;
+
+		private int libraryShelfOffset = -6;
+
+		private int libraryShelfHeight = 20;
+
+		private int libraryShelfShadowAngle;
+
+		private int libraryShelfShadowBlur = 20;
+
+		private int libraryShelfShadowTransparency = 65;
+
+		private Color libraryShelfShadowColor = Color.Black;
 
 		private bool softwareFiltering = true;
 
@@ -538,6 +567,17 @@ namespace cYo.Projects.ComicRack.Viewer.Config
 			set;
 		}
 
+		/// <summary>
+		/// Dark theme chosen in Preferences. Read once at startup; the UseDarkMode ini value and the
+		/// -dark / -theme switches still take precedence when set.
+		/// </summary>
+		[DefaultValue(false)]
+		public bool DarkMode
+		{
+			get;
+			set;
+		}
+
 		[Browsable(false)]
 		[DefaultValue(false)]
 		public bool AlsoRemoveFromLibrary
@@ -841,6 +881,332 @@ namespace cYo.Projects.ComicRack.Viewer.Config
 				{
 					displayChangeAnimation = value;
 					FireEvent(this.DisplayChangeAnimationChanged);
+				}
+			}
+		}
+
+		/// <summary>
+		/// How many pages ahead the reader is allowed to fetch in the background while reading.
+		/// The reader only ever grows toward this on its own, and pulls back well short of it
+		/// the moment a fetch falls behind, so it mainly matters as a ceiling on how far that
+		/// growth is allowed to go. 1 turns background fetching off: only the page being shown
+		/// (and its double-page partner) is ever requested, one at a time, the same as ComicRack
+		/// has always done without any read ahead at all - the setting to fall back on if a
+		/// slow source (a network share, say) is struggling to keep up with more than that.
+		/// </summary>
+		[Browsable(false)]
+		[DefaultValue(20)]
+		public int ReadAheadPages
+		{
+			get
+			{
+				return readAheadPages;
+			}
+			set
+			{
+				value = value.Clamp(1, 20);
+				if (readAheadPages != value)
+				{
+					readAheadPages = value;
+					FireEvent(null);
+				}
+			}
+		}
+
+/// <summary>
+		/// Two entirely independent things can sit behind the library's books: a plain
+		/// background picture (this one), and separately, a shelf strip drawn under each row
+		/// (see the Shelf properties below). Either, both, or neither can be on at once.
+		/// </summary>
+		[Browsable(false)]
+		[DefaultValue(false)]
+		public bool LibraryBackgroundEnabled
+		{
+			get
+			{
+				return libraryBackgroundEnabled;
+			}
+			set
+			{
+				if (libraryBackgroundEnabled != value)
+				{
+					libraryBackgroundEnabled = value;
+					FireEvent(null);
+				}
+			}
+		}
+
+		/// <summary>
+		/// The image file for the plain library background, placed according to
+		/// LibraryBackgroundLayout. Kept even while LibraryBackgroundEnabled is off, so switching
+		/// it back on remembers the last picture chosen.
+		/// </summary>
+		[Browsable(false)]
+		[DefaultValue("")]
+		public string LibraryBackgroundTexturePath
+		{
+			get
+			{
+				return libraryBackgroundTexturePath;
+			}
+			set
+			{
+				value = value ?? string.Empty;
+				if (libraryBackgroundTexturePath != value)
+				{
+					libraryBackgroundTexturePath = value;
+					FireEvent(null);
+				}
+			}
+		}
+
+		/// <summary>
+		/// How the picture is placed. Tile pans together with the list as it scrolls; Stretch,
+		/// Center and Zoom stay fixed to the window instead, the same as a normal background
+		/// picture.
+		/// </summary>
+		[Browsable(false)]
+		[DefaultValue(System.Windows.Forms.ImageLayout.Tile)]
+		public System.Windows.Forms.ImageLayout LibraryBackgroundLayout
+		{
+			get
+			{
+				return libraryBackgroundLayout;
+			}
+			set
+			{
+				if (libraryBackgroundLayout != value)
+				{
+					libraryBackgroundLayout = value;
+					FireEvent(null);
+				}
+			}
+		}
+
+		/// <summary>
+		/// A shelf strip drawn under each row of books in the library, repositioning itself to
+		/// match whatever cover size is set, with a soft shadow cast by each book onto it (see
+		/// the Shadow properties below). Entirely independent of LibraryBackgroundEnabled above.
+		/// </summary>
+		[Browsable(false)]
+		[DefaultValue(false)]
+		public bool LibraryShelfEnabled
+		{
+			get
+			{
+				return libraryShelfEnabled;
+			}
+			set
+			{
+				if (libraryShelfEnabled != value)
+				{
+					libraryShelfEnabled = value;
+					FireEvent(null);
+				}
+			}
+		}
+
+		/// <summary>
+		/// The image used as the shelf strip. A plain wood or shelf-edge picture works best,
+		/// since it is stretched to whatever width the panel is and to a thickness that scales
+		/// a little with the current cover size.
+		/// </summary>
+		[Browsable(false)]
+		[DefaultValue("")]
+		public string LibraryShelfTexturePath
+		{
+			get
+			{
+				return libraryShelfTexturePath;
+			}
+			set
+			{
+				value = value ?? string.Empty;
+				if (libraryShelfTexturePath != value)
+				{
+					libraryShelfTexturePath = value;
+					FireEvent(null);
+				}
+			}
+		}
+
+		/// <summary>
+		/// How far below each book's own bottom edge its shadow begins, in pixels. 0 means the
+		/// shadow starts right where the book meets the shelf.
+		/// </summary>
+		[Browsable(false)]
+		[DefaultValue(4)]
+		public int LibraryShelfShadowDistance
+		{
+			get
+			{
+				return libraryShelfShadowDistance;
+			}
+			set
+			{
+				value = value.Clamp(0, 60);
+				if (libraryShelfShadowDistance != value)
+				{
+					libraryShelfShadowDistance = value;
+					FireEvent(null);
+				}
+			}
+		}
+
+		/// <summary>
+		/// Fine-tunes the shelf strip (and the shadow on it, which moves with it) up
+		/// (negative) or down (positive) from where it is otherwise placed: right at the
+		/// bottom of each row's own cover artwork, measured directly rather than estimated -
+		/// so this is a small adjustment of taste, not something that needs to bridge the gap
+		/// between the cover and its caption by itself.
+		/// </summary>
+		[Browsable(false)]
+		[DefaultValue(-6)]
+		public int LibraryShelfOffset
+		{
+			get
+			{
+				return libraryShelfOffset;
+			}
+			set
+			{
+				value = value.Clamp(-30, 30);
+				if (libraryShelfOffset != value)
+				{
+					libraryShelfOffset = value;
+					FireEvent(null);
+				}
+			}
+		}
+
+		/// <summary>
+		/// How thick the shelf strip itself is, in pixels. Previously this scaled itself to
+		/// the current cover size automatically; a fixed, adjustable height is simpler and
+		/// more predictable to line up by eye.
+		/// </summary>
+		[Browsable(false)]
+		[DefaultValue(20)]
+		public int LibraryShelfHeight
+		{
+			get
+			{
+				return libraryShelfHeight;
+			}
+			set
+			{
+				value = value.Clamp(2, 150);
+				if (libraryShelfHeight != value)
+				{
+					libraryShelfHeight = value;
+					FireEvent(null);
+				}
+			}
+		}
+
+		/// <summary>
+		/// Which way the shadow leans, in degrees either side of straight down - as if the light
+		/// falls from a little to one side rather than from directly overhead. 0 is straight
+		/// down; negative leans the shadow left, positive leans it right.
+		/// </summary>
+		[Browsable(false)]
+		[DefaultValue(0)]
+		public int LibraryShelfShadowAngle
+		{
+			get
+			{
+				return libraryShelfShadowAngle;
+			}
+			set
+			{
+				value = value.Clamp(-60, 60);
+				if (libraryShelfShadowAngle != value)
+				{
+					libraryShelfShadowAngle = value;
+					FireEvent(null);
+				}
+			}
+		}
+
+		/// <summary>
+		/// How many pixels the shadow takes to fade from its full strength down to nothing.
+		/// Larger reads as softer and more spread out; smaller reads as a crisper edge.
+		/// </summary>
+		[Browsable(false)]
+		[DefaultValue(20)]
+		public int LibraryShelfShadowBlur
+		{
+			get
+			{
+				return libraryShelfShadowBlur;
+			}
+			set
+			{
+				value = value.Clamp(1, 100);
+				if (libraryShelfShadowBlur != value)
+				{
+					libraryShelfShadowBlur = value;
+					FireEvent(null);
+				}
+			}
+		}
+
+		/// <summary>
+		/// How see-through the shadow is at its darkest point, as a percentage. Higher is more
+		/// transparent and therefore fainter; lower is more solid and therefore stronger.
+		/// </summary>
+		[Browsable(false)]
+		[DefaultValue(65)]
+		public int LibraryShelfShadowTransparency
+		{
+			get
+			{
+				return libraryShelfShadowTransparency;
+			}
+			set
+			{
+				value = value.Clamp(0, 100);
+				if (libraryShelfShadowTransparency != value)
+				{
+					libraryShelfShadowTransparency = value;
+					FireEvent(null);
+				}
+			}
+		}
+
+		[Browsable(false)]
+		public Color LibraryShelfShadowColor
+		{
+			get
+			{
+				return libraryShelfShadowColor;
+			}
+			set
+			{
+				if (libraryShelfShadowColor != value)
+				{
+					libraryShelfShadowColor = value;
+					FireEvent(null);
+				}
+			}
+		}
+
+		/// <summary>
+		/// Turn pages in the reader by dragging them at their outer edge.
+		/// </summary>
+		[Browsable(false)]
+		[DefaultValue(true)]
+		public bool DragPageTurning
+		{
+			get
+			{
+				return dragPageTurning;
+			}
+			set
+			{
+				if (dragPageTurning != value)
+				{
+					dragPageTurning = value;
+					FireEvent(null);
 				}
 			}
 		}

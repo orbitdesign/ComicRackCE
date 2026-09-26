@@ -94,6 +94,10 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
             this.btResetMessages = new System.Windows.Forms.Button();
             this.labelReshowHidden = new System.Windows.Forms.Label();
             this.groupMemory = new cYo.Common.Windows.Forms.CollapsibleGroupBox();
+            this.grpReadAhead = new cYo.Common.Windows.Forms.CollapsibleGroupBox();
+            this.labelReadAhead = new System.Windows.Forms.Label();
+            this.numReadAheadPages = new System.Windows.Forms.NumericUpDown();
+            this.labelReadAheadHint = new System.Windows.Forms.Label();
             this.grpMaximumMemoryUsage = new System.Windows.Forms.GroupBox();
             this.lblMaximumMemoryUsageValue = new System.Windows.Forms.Label();
             this.tbMaximumMemoryUsage = new cYo.Common.Windows.Forms.TrackBarLite();
@@ -140,6 +144,10 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
             this.chkAutoUpdateComicFiles = new System.Windows.Forms.CheckBox();
             this.txCoverFilter = new System.Windows.Forms.TextBox();
             this.grpLanguages = new cYo.Common.Windows.Forms.CollapsibleGroupBox();
+            this.grpAppearance = new cYo.Common.Windows.Forms.CollapsibleGroupBox();
+            this.chkDragPageTurning = new System.Windows.Forms.CheckBox();
+            this.chkDarkMode = new System.Windows.Forms.CheckBox();
+            this.labelDarkMode = new System.Windows.Forms.Label();
             this.btTranslate = new System.Windows.Forms.Button();
             this.labelLanguage = new System.Windows.Forms.Label();
             this.lbLanguages = new System.Windows.Forms.ListBox();
@@ -234,6 +242,8 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
             this.grpIntegration.SuspendLayout();
             this.groupMessagesAndSocial.SuspendLayout();
             this.groupMemory.SuspendLayout();
+            this.grpReadAhead.SuspendLayout();
+            ((System.ComponentModel.ISupportInitialize)(this.numReadAheadPages)).BeginInit();
             this.grpMaximumMemoryUsage.SuspendLayout();
             this.grpMemoryCache.SuspendLayout();
             ((System.ComponentModel.ISupportInitialize)(this.numMemPageCount)).BeginInit();
@@ -247,6 +257,7 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
             this.grpDatabaseBackup.SuspendLayout();
             this.groupOtherComics.SuspendLayout();
             this.grpLanguages.SuspendLayout();
+            this.grpAppearance.SuspendLayout();
             this.pageLibrary.SuspendLayout();
             this.grpVirtualTags.SuspendLayout();
             this.grpVtagConfig.SuspendLayout();
@@ -405,6 +416,7 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
             // 
             // grpMouse
             // 
+            this.grpMouse.Controls.Add(this.chkDragPageTurning);
             this.grpMouse.Controls.Add(this.chkSmoothAutoScrolling);
             this.grpMouse.Controls.Add(this.lblFast);
             this.grpMouse.Controls.Add(this.lblMouseWheel);
@@ -414,7 +426,7 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
             this.grpMouse.Dock = System.Windows.Forms.DockStyle.Top;
             this.grpMouse.Location = new System.Drawing.Point(0, 1046);
             this.grpMouse.Name = "grpMouse";
-            this.grpMouse.Size = new System.Drawing.Size(498, 134);
+            this.grpMouse.Size = new System.Drawing.Size(498, 157);
             this.grpMouse.TabIndex = 5;
             this.grpMouse.Text = "Mouse & Scrolling";
             // 
@@ -431,7 +443,7 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
             // lblFast
             // 
             this.lblFast.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Right)));
-            this.lblFast.Location = new System.Drawing.Point(426, 96);
+            this.lblFast.Location = new System.Drawing.Point(426, 119);
             this.lblFast.Name = "lblFast";
             this.lblFast.Size = new System.Drawing.Size(56, 19);
             this.lblFast.TabIndex = 4;
@@ -440,7 +452,7 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
             // lblMouseWheel
             // 
             this.lblMouseWheel.AutoSize = true;
-            this.lblMouseWheel.Location = new System.Drawing.Point(9, 97);
+            this.lblMouseWheel.Location = new System.Drawing.Point(9, 120);
             this.lblMouseWheel.Name = "lblMouseWheel";
             this.lblMouseWheel.Size = new System.Drawing.Size(117, 13);
             this.lblMouseWheel.TabIndex = 0;
@@ -458,7 +470,7 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
             // 
             // lblSlow
             // 
-            this.lblSlow.Location = new System.Drawing.Point(186, 97);
+            this.lblSlow.Location = new System.Drawing.Point(186, 120);
             this.lblSlow.Name = "lblSlow";
             this.lblSlow.Size = new System.Drawing.Size(55, 19);
             this.lblSlow.TabIndex = 2;
@@ -469,7 +481,7 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
             // 
             this.tbMouseWheel.Anchor = ((System.Windows.Forms.AnchorStyles)(((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Left) 
             | System.Windows.Forms.AnchorStyles.Right)));
-            this.tbMouseWheel.Location = new System.Drawing.Point(247, 97);
+            this.tbMouseWheel.Location = new System.Drawing.Point(247, 120);
             this.tbMouseWheel.Maximum = 50;
             this.tbMouseWheel.Minimum = 5;
             this.tbMouseWheel.Name = "tbMouseWheel";
@@ -937,10 +949,12 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
             this.pageAdvanced.Controls.Add(this.grpIntegration);
             this.pageAdvanced.Controls.Add(this.groupMessagesAndSocial);
             this.pageAdvanced.Controls.Add(this.groupMemory);
+            this.pageAdvanced.Controls.Add(this.grpReadAhead);
             this.pageAdvanced.Controls.Add(this.grpBackupManager);
             this.pageAdvanced.Controls.Add(this.grpDatabaseBackup);
             this.pageAdvanced.Controls.Add(this.groupOtherComics);
             this.pageAdvanced.Controls.Add(this.grpLanguages);
+            this.pageAdvanced.Controls.Add(this.grpAppearance);
             this.pageAdvanced.Location = new System.Drawing.Point(84, 8);
             this.pageAdvanced.Name = "pageAdvanced";
             this.pageAdvanced.Size = new System.Drawing.Size(517, 408);
@@ -1094,6 +1108,63 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
             this.groupMemory.Size = new System.Drawing.Size(498, 355);
             this.groupMemory.TabIndex = 1;
             this.groupMemory.Text = "Caches & Memory Usage";
+            // 
+            // grpReadAhead
+            // 
+            this.grpReadAhead.Controls.Add(this.labelReadAhead);
+            this.grpReadAhead.Controls.Add(this.numReadAheadPages);
+            this.grpReadAhead.Controls.Add(this.labelReadAheadHint);
+            this.grpReadAhead.Dock = System.Windows.Forms.DockStyle.Top;
+            this.grpReadAhead.Location = new System.Drawing.Point(0, 355);
+            this.grpReadAhead.Name = "grpReadAhead";
+            this.grpReadAhead.Padding = new System.Windows.Forms.Padding(3, 3, 3, 0);
+            this.grpReadAhead.Size = new System.Drawing.Size(498, 105);
+            this.grpReadAhead.TabIndex = 14;
+            this.grpReadAhead.Text = "Page Read Ahead";
+            // 
+            // labelReadAhead
+            // 
+            this.labelReadAhead.AutoSize = true;
+            this.labelReadAhead.Location = new System.Drawing.Point(12, 38);
+            this.labelReadAhead.Name = "labelReadAhead";
+            this.labelReadAhead.Size = new System.Drawing.Size(140, 13);
+            this.labelReadAhead.TabIndex = 0;
+            this.labelReadAhead.Text = "Fetch up to this many pages ahead:";
+            this.labelReadAhead.TextAlign = System.Drawing.ContentAlignment.MiddleLeft;
+            // 
+            // numReadAheadPages
+            // 
+            this.numReadAheadPages.Location = new System.Drawing.Point(258, 36);
+            this.numReadAheadPages.Maximum = new decimal(new int[] {
+            20,
+            0,
+            0,
+            0});
+            this.numReadAheadPages.Minimum = new decimal(new int[] {
+            1,
+            0,
+            0,
+            0});
+            this.numReadAheadPages.Name = "numReadAheadPages";
+            this.numReadAheadPages.Size = new System.Drawing.Size(50, 20);
+            this.numReadAheadPages.TabIndex = 1;
+            this.numReadAheadPages.TextAlign = System.Windows.Forms.HorizontalAlignment.Right;
+            this.numReadAheadPages.Value = new decimal(new int[] {
+            20,
+            0,
+            0,
+            0});
+            // 
+            // labelReadAheadHint
+            // 
+            this.labelReadAheadHint.AutoSize = true;
+            this.labelReadAheadHint.Location = new System.Drawing.Point(12, 65);
+            this.labelReadAheadHint.MaximumSize = new System.Drawing.Size(460, 0);
+            this.labelReadAheadHint.Name = "labelReadAheadHint";
+            this.labelReadAheadHint.Size = new System.Drawing.Size(420, 13);
+            this.labelReadAheadHint.TabIndex = 2;
+            this.labelReadAheadHint.Text = "Set to 1 to fetch only the page being read, one at a time - use this if a networ" +
+    "k share or slow drive is struggling to keep up.";
             // 
             // grpMaximumMemoryUsage
             // 
@@ -1699,6 +1770,46 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
             this.txCoverFilter.Name = "txCoverFilter";
             this.txCoverFilter.Size = new System.Drawing.Size(482, 54);
             this.txCoverFilter.TabIndex = 3;
+            // 
+            // chkDragPageTurning
+            // 
+            this.chkDragPageTurning.AutoSize = true;
+            this.chkDragPageTurning.Location = new System.Drawing.Point(9, 85);
+            this.chkDragPageTurning.Name = "chkDragPageTurning";
+            this.chkDragPageTurning.Size = new System.Drawing.Size(300, 17);
+            this.chkDragPageTurning.TabIndex = 3;
+            this.chkDragPageTurning.Text = "Turn pages by dragging the page edge";
+            this.chkDragPageTurning.UseVisualStyleBackColor = true;
+            // 
+            // grpAppearance
+            // 
+            this.grpAppearance.Controls.Add(this.labelDarkMode);
+            this.grpAppearance.Controls.Add(this.chkDarkMode);
+            this.grpAppearance.Dock = System.Windows.Forms.DockStyle.Top;
+            this.grpAppearance.Location = new System.Drawing.Point(0, 0);
+            this.grpAppearance.Name = "grpAppearance";
+            this.grpAppearance.Size = new System.Drawing.Size(498, 90);
+            this.grpAppearance.TabIndex = 8;
+            this.grpAppearance.Text = "Appearance";
+            // 
+            // chkDarkMode
+            // 
+            this.chkDarkMode.AutoSize = true;
+            this.chkDarkMode.Location = new System.Drawing.Point(12, 38);
+            this.chkDarkMode.Name = "chkDarkMode";
+            this.chkDarkMode.Size = new System.Drawing.Size(107, 17);
+            this.chkDarkMode.TabIndex = 0;
+            this.chkDarkMode.Text = "Use dark theme";
+            this.chkDarkMode.UseVisualStyleBackColor = true;
+            // 
+            // labelDarkMode
+            // 
+            this.labelDarkMode.AutoSize = true;
+            this.labelDarkMode.Location = new System.Drawing.Point(30, 60);
+            this.labelDarkMode.Name = "labelDarkMode";
+            this.labelDarkMode.Size = new System.Drawing.Size(300, 13);
+            this.labelDarkMode.TabIndex = 1;
+            this.labelDarkMode.Text = "Takes effect after ComicRack is restarted.";
             // 
             // grpLanguages
             // 
@@ -2689,6 +2800,9 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
             this.grpIntegration.PerformLayout();
             this.groupMessagesAndSocial.ResumeLayout(false);
             this.groupMemory.ResumeLayout(false);
+            this.grpReadAhead.ResumeLayout(false);
+            this.grpReadAhead.PerformLayout();
+            ((System.ComponentModel.ISupportInitialize)(this.numReadAheadPages)).EndInit();
             this.grpMaximumMemoryUsage.ResumeLayout(false);
             this.grpMaximumMemoryUsage.PerformLayout();
             this.grpMemoryCache.ResumeLayout(false);
@@ -2708,6 +2822,8 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
             this.groupOtherComics.ResumeLayout(false);
             this.groupOtherComics.PerformLayout();
             this.grpLanguages.ResumeLayout(false);
+            this.grpAppearance.ResumeLayout(false);
+            this.grpAppearance.PerformLayout();
             this.pageLibrary.ResumeLayout(false);
             this.grpVirtualTags.ResumeLayout(false);
             this.grpVirtualTags.PerformLayout();
@@ -2826,11 +2942,27 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 		private CollapsibleGroupBox groupHardwareAcceleration;
 		private Panel pageAdvanced;
 		private CollapsibleGroupBox grpLanguages;
+
+		private CollapsibleGroupBox grpAppearance;
+
+		private CheckBox chkDarkMode;
+
+		private CheckBox chkDragPageTurning;
+
+		private Label labelDarkMode;
 		private CollapsibleGroupBox groupMessagesAndSocial;
 		private CollapsibleGroupBox groupOtherComics;
 		private CollapsibleGroupBox grpDatabaseBackup;
 		private CollapsibleGroupBox grpBackupManager;
 		private CollapsibleGroupBox groupMemory;
+
+		private CollapsibleGroupBox grpReadAhead;
+
+		private Label labelReadAhead;
+
+		private NumericUpDown numReadAheadPages;
+
+		private Label labelReadAheadHint;
 		private CollapsibleGroupBox grpIntegration;
 		private Panel pageLibrary;
 		private CollapsibleGroupBox grpSharing;

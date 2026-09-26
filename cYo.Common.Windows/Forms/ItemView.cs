@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
@@ -3243,16 +3243,433 @@ namespace cYo.Common.Windows.Forms
 			OnDrawItemSelection(gr, rc, drawState & ~item.GetOwnerDrawnStates(ItemViewMode));
 		}
 
+/// <summary>
+		/// A plain picture behind everything else, including the single, aligned BackgroundImage
+		/// above and the shelf below. With Tile layout it is drawn under the same transform as
+		/// the items themselves (see DrawItems), so it pans together with them as the view
+		/// scrolls instead of staying fixed to the window; Stretch, Center and Zoom are fixed to
+		/// the window instead, the same as a normal background image, since repeating those
+		/// across a list that can scroll indefinitely would not mean much. Entirely independent
+		/// of ShelfImage below - either, both, or neither can be set.
+		/// </summary>
+		public Image BackgroundTexture
+		{
+			get;
+			set;
+		}
+
+		public ImageLayout BackgroundTextureLayout
+		{
+			get;
+			set;
+		} = ImageLayout.Tile;
+
+		/// <summary>
+		/// A shelf strip drawn under each row of items, sized to the panel's width and to a
+		/// thickness that scales with the current row height, with a shadow (see the Shadow*
+		/// properties) cast by each item onto it. Drawn on top of BackgroundTexture, so a plain
+		/// background picture and a shelf can both be showing at once if both are set.
+		/// </summary>
+		public Image ShelfImage
+		{
+			get;
+			set;
+		}
+
+		public int ShelfShadowDistance
+		{
+			get;
+			set;
+		}
+
+		/// <summary>
+		/// Fine-tunes the shelf strip (and the shadow on it, which moves with it) up
+		/// (negative) or down (positive) from where it is otherwise placed: right at the
+		/// bottom of the row's own cover artwork, read from each item's own measured artwork
+		/// rect (see DrawShelfBackground) rather than estimated, so this only needs to cover
+		/// small adjustments of taste - a little breathing room above the caption, say -
+		/// rather than bridging the gap between the cover and the caption itself.
+		/// </summary>
+		public int ShelfOffset
+		{
+			get;
+			set;
+		}
+
+		/// <summary>
+		/// How thick the shelf strip is drawn, in pixels.
+		/// </summary>
+		public int ShelfHeight
+		{
+			get;
+			set;
+		} = 20;
+
+		/// <summary>
+		/// How many visible covers had not yet been drawn - and so could not report their own
+		/// artwork rect - the last time the shelf was painted. See DrawShelfBackground.
+		/// </summary>
+		private int lastPendingCoverRects = -1;
+
+		/// <summary>
+		/// Reused across paints by DrawShelfBackground rather than allocated fresh each time,
+		/// since a background repaints on every scroll frame while actively scrolling -
+		/// cleared at the start of each call rather than replaced, so nothing from a previous
+		/// paint's set of visible rows lingers.
+		/// </summary>
+		private readonly List<int> shelfRowKeys = new List<int>();
+
+		private readonly Dictionary<int, List<Rectangle>> shelfRows = new Dictionary<int, List<Rectangle>>();
+
+		private readonly Dictionary<int, List<Rectangle>> shelfRowCovers = new Dictionary<int, List<Rectangle>>();
+
+		public int ShelfShadowAngle
+		{
+			get;
+			set;
+		}
+
+		public int ShelfShadowBlur
+		{
+			get;
+			set;
+		} = 20;
+
+		public int ShelfShadowAlpha
+		{
+			get;
+			set;
+		} = 90;
+
+		public Color ShelfShadowColor
+		{
+			get;
+			set;
+		} = Color.Black;
+
 		protected void DrawBackground(Graphics gr, DrawItemViewOptions drawItemsFlags = DrawItemViewOptions.Default)
 		{
 			if ((drawItemsFlags & DrawItemViewOptions.Background) != 0)
 			{
 				gr.Clear(BackColor);
 			}
+			if ((drawItemsFlags & DrawItemViewOptions.BackgroundImage) != 0)
+			{
+				if (BackgroundTexture != null)
+				{
+					if (BackgroundTextureLayout == ImageLayout.Tile)
+					{
+						DrawTiledBackground(gr, BackgroundTexture);
+					}
+					else
+					{
+						DrawScaledBackground(gr, BackgroundTexture, BackgroundTextureLayout);
+					}
+				}
+				if (ShelfImage != null)
+				{
+					DrawShelfBackground(gr, ShelfImage);
+				}
+			}
 			if ((drawItemsFlags & DrawItemViewOptions.BackgroundImage) != 0 && BackgroundImage != null)
 			{
 				Rectangle rectangle = new Rectangle(0, 0, BackgroundImage.Width, BackgroundImage.Height);
 				gr.DrawImage(BackgroundImage, rectangle.Align(DisplayRectangle, BackgroundImageAlignment), rectangle, GraphicsUnit.Pixel);
+			}
+		}
+
+		private void DrawTiledBackground(Graphics gr, Image image)
+		{
+			int width = image.Width;
+			int height = image.Height;
+			if (width <= 0 || height <= 0)
+			{
+				return;
+			}
+			using (gr.SaveState())
+			{
+				//The same translation DrawItems applies below, so the texture is anchored to the
+				//content's own coordinate space rather than the window: scroll the list, and the
+				//texture moves with it exactly as if it were painted once across the whole thing.
+				Point scrollPosition = base.ScrollPosition;
+				gr.TranslateTransform(-scrollPosition.X, -scrollPosition.Y);
+				Rectangle client = ClientRectangle;
+				client.Offset(scrollPosition);
+				int startX = client.Left - Modulo(client.Left, width);
+				int startY = client.Top - Modulo(client.Top, height);
+				for (int y = startY; y < client.Bottom; y += height)
+				{
+					for (int x = startX; x < client.Right; x += width)
+					{
+						gr.DrawImageUnscaled(image, x, y);
+					}
+				}
+			}
+		}
+
+		private static int Modulo(int value, int modulus)
+		{
+			int result = value % modulus;
+			return (result < 0) ? (result + modulus) : result;
+		}
+
+		/// <summary>
+		/// Stretch, Center or Zoom: sized once to the panel's own viewport, then that whole
+		/// viewport-sized picture repeats down the list every viewport's worth of scrolling,
+		/// drawn through the same transform Tile uses above so it pans with the list rather
+		/// than staying glued to the window the way a normal background picture would. Without
+		/// repeating it, scrolling past the first screen's worth of the library would run out
+		/// into plain background colour for the rest of a long list.
+		/// </summary>
+		private void DrawScaledBackground(Graphics gr, Image image, ImageLayout layout)
+		{
+			Size viewport = ClientRectangle.Size;
+			if (viewport.Width <= 0 || viewport.Height <= 0)
+			{
+				return;
+			}
+			using (gr.SaveState())
+			{
+				Point scrollPosition = base.ScrollPosition;
+				gr.TranslateTransform(-scrollPosition.X, -scrollPosition.Y);
+				Rectangle client = ClientRectangle;
+				client.Offset(scrollPosition);
+				int startY = client.Top - Modulo(client.Top, viewport.Height);
+				for (int y = startY; y < client.Bottom; y += viewport.Height)
+				{
+					Rectangle target = new Rectangle(client.Left, y, viewport.Width, viewport.Height);
+					switch (layout)
+					{
+					case ImageLayout.Stretch:
+						gr.DrawImage(image, target);
+						break;
+					case ImageLayout.Center:
+						gr.DrawImageUnscaled(image, target.Left + (target.Width - image.Width) / 2, target.Top + (target.Height - image.Height) / 2);
+						break;
+					case ImageLayout.Zoom:
+					{
+						float scale = Math.Min((float)target.Width / (float)image.Width, (float)target.Height / (float)image.Height);
+						int width = (int)(image.Width * scale);
+						int height = (int)(image.Height * scale);
+						gr.DrawImage(image, target.Left + (target.Width - width) / 2, target.Top + (target.Height - height) / 2, width, height);
+						break;
+					}
+					}
+				}
+			}
+		}
+
+		/// <summary>
+		/// ShelfImage drawn as one strip per row of items, aligned to the bottom of that
+		/// row's own cover artwork (offset by ShelfOffset) exactly as the items themselves are
+		/// currently laid out - asking for the real, current bounds of the items on screen
+		/// rather than guessing at the grid's own spacing, so this keeps lining up correctly
+		/// whatever the cover size, view mode or grouping happens to be. Each item then casts
+		/// a shadow (see the Shadow* properties) down onto the shelf beneath it.
+		/// </summary>
+		private void DrawShelfBackground(Graphics gr, Image image)
+		{
+			if (image.Height <= 0)
+			{
+				return;
+			}
+			//Grouped with a little tolerance rather than requiring an exact pixel match: two
+			//items meant to be in the same visual row can still end up a pixel or two apart
+			//in their reported bottom edge, and without this a row like that would be split
+			//into two, each holding only part of it - the strip for either half still spans
+			//the full width regardless, but this keeps them as the one row they visually are.
+			const int rowTolerance = 3;
+			int pendingCoverRects = 0;
+			shelfRowKeys.Clear();
+			shelfRows.Clear();
+			shelfRowCovers.Clear();
+			using (ItemMonitor.Lock(visibleItems))
+			{
+				foreach (IViewableItem visibleItem in visibleItems)
+				{
+					Rectangle bounds = GetItemBounds(visibleItem);
+					if (bounds.IsEmpty)
+					{
+						continue;
+					}
+					int key = -1;
+					foreach (int candidate in shelfRowKeys)
+					{
+						if (Math.Abs(candidate - bounds.Bottom) <= rowTolerance)
+						{
+							key = candidate;
+							break;
+						}
+					}
+					if (key == -1)
+					{
+						key = bounds.Bottom;
+						shelfRowKeys.Add(key);
+					}
+					if (!shelfRows.TryGetValue(key, out List<Rectangle> row))
+					{
+						row = new List<Rectangle>();
+						shelfRows[key] = row;
+						shelfRowCovers[key] = new List<Rectangle>();
+					}
+					row.Add(bounds);
+					//The shelf strip itself is positioned from the tile (above), but the
+					//shadow is cast by the artwork the viewer actually sees, which for a
+					//cover kept at its own aspect ratio is narrower than its tile - so each
+					//item is asked for its own artwork rect here rather than assuming the
+					//two are the same.
+					Rectangle coverBounds = (visibleItem as ItemViewItem)?.GetContentBounds(bounds) ?? bounds;
+					if (coverBounds.IsEmpty)
+					{
+						pendingCoverRects++;
+						coverBounds = bounds;
+					}
+					shelfRowCovers[key].Add(coverBounds);
+				}
+			}
+			//The shelf is painted as part of the background, before the covers themselves are
+			//drawn, so on the very first paint of a given cover its artwork rect is not known
+			//yet and the tile is used instead. Asking for one more repaint once that count
+			//changes lets the shadows settle onto the real widths; the count only falls as
+			//covers get drawn, so this stops on its own rather than repainting forever, and
+			//a cover that can never be drawn leaves the count stable and so asks only once.
+			if (pendingCoverRects > 0 && pendingCoverRects != lastPendingCoverRects && base.IsHandleCreated)
+			{
+				lastPendingCoverRects = pendingCoverRects;
+				BeginInvoke((Action)delegate
+				{
+					if (!base.IsDisposed)
+					{
+						Invalidate();
+					}
+				});
+			}
+			else if (pendingCoverRects == 0)
+			{
+				lastPendingCoverRects = 0;
+			}
+			if (shelfRows.Count == 0)
+			{
+				return;
+			}
+			using (SolidBrush shadowBrush = new SolidBrush(ShelfShadowColor))
+			using (gr.SaveState())
+			{
+				//Same transform DrawItems uses, so the shelves - and the shadows on them - pan
+				//with the books exactly as the books themselves do.
+				Point scrollPosition = base.ScrollPosition;
+				gr.TranslateTransform(-scrollPosition.X, -scrollPosition.Y);
+				Rectangle client = ClientRectangle;
+				client.Offset(scrollPosition);
+				foreach (KeyValuePair<int, List<Rectangle>> row in shelfRows)
+				{
+					//Previously guessed at with a fixed percentage of the row's own height,
+					//standing in for wherever the cover art ends and the caption underneath
+					//begins - since that boundary isn't a fixed proportion of the row (it
+					//depends on how many lines the caption's own text wraps to, which doesn't
+					//scale smoothly with cover size), that guess kept drifting out of step as
+					//cover size changed. shelfRowCovers holds each item's own measured artwork
+					//rect now (added for the shadow's own width), so the actual boundary can
+					//be read directly instead of estimated - the largest Bottom among this
+					//row's covers, since by the time every item's artwork rect is known they
+					//should share the same one (thumbnails are fit to a shared height budget)
+					//and the largest is the safest to build on if that ever isn't quite true.
+					int bottom = shelfRowCovers[row.Key].Max((Rectangle r) => r.Bottom) + ShelfOffset;
+					int thickness = Math.Max(1, ShelfHeight);
+					Rectangle shelfBounds = new Rectangle(client.Left, bottom, client.Width, thickness);
+					if (!gr.IsVisible(shelfBounds))
+					{
+						continue;
+					}
+					for (int x = client.Left; x < client.Right; x += image.Width)
+					{
+						gr.DrawImage(image, new Rectangle(x, bottom, image.Width, thickness), new Rectangle(0, 0, image.Width, image.Height), GraphicsUnit.Pixel);
+					}
+					//Sorted left to right so each item's shadow can be clipped to the midpoint
+					//between it and whichever item sits next to it - without this, a wide
+					//enough blur setting spreads far enough to reach into a neighbour's own
+					//space, and adjacent shadows read as one continuous band rather than
+					//staying visually separate per item the way they would on a real shelf.
+					List<Rectangle> sortedRow = shelfRowCovers[row.Key].OrderBy((Rectangle r) => r.Left).ToList();
+					for (int i = 0; i < sortedRow.Count; i++)
+					{
+						Rectangle itemBounds = sortedRow[i];
+						int leftLimit = (i > 0) ? ((itemBounds.Left + sortedRow[i - 1].Right) / 2) : int.MinValue;
+						int rightLimit = (i < sortedRow.Count - 1) ? ((itemBounds.Right + sortedRow[i + 1].Left) / 2) : int.MaxValue;
+						DrawShelfShadow(gr, itemBounds, bottom, leftLimit, rightLimit, shadowBrush);
+					}
+				}
+			}
+		}
+
+		/// <summary>
+		/// A soft shadow cast by one item onto the shelf beneath it, shaped by
+		/// ShelfShadowDistance/Angle/Blur/Alpha/Color. Distance and angle move where the
+		/// shadow starts (down, and sideways, from the item's own footprint); blur is how many
+		/// pixels it takes to fade away, on every side rather than only downward; alpha and
+		/// colour are its strength and tint at its darkest, central point.
+		///
+		/// Built by stacking the same rectangle, expanded a little further outward each time
+		/// and each a little fainter, rather than one hard-edged rectangle with a single
+		/// vertical gradient - the same stepping technique already used for the page fold's
+		/// own shadow, just growing outward on all four sides here instead of offsetting a
+		/// fixed shape in one direction. Where the steps overlap most - right under the item -
+		/// the shadow reads darkest; further out, fewer steps reach and it fades smoothly away
+		/// on every side instead of stopping abruptly at a rectangle's edge.
+		///
+		/// itemBounds.Width, unlike an assumption made about it earlier, does already follow
+		/// each item's own rendered cover width rather than a uniform tile width: the layout
+		/// pass that produces it measures each item individually before positioning it, and
+		/// that per-item measurement is what decides its width here - it is only uniform across
+		/// items when the covers themselves are configured to render at a uniform size.
+		///
+		/// leftLimit/rightLimit are the midpoints to this item's left and right neighbours (or
+		/// unbounded, at either end of a row) - each step is clamped to them so a wide blur
+		/// setting can soften this item's own shadow without spreading into a neighbour's own
+		/// space and reading as one continuous band rather than staying visually separate per
+		/// item, the way books sitting apart on a real shelf would.
+		///
+		/// brush is owned by the caller and shared across every item in the row (see
+		/// DrawShelfBackground) - only its Color changes here, so one brush does the work
+		/// that would otherwise mean a fresh one for every one of up to 8 steps per item.
+		/// </summary>
+		private void DrawShelfShadow(Graphics gr, Rectangle itemBounds, int shelfTop, int leftLimit, int rightLimit, SolidBrush brush)
+		{
+			int width = itemBounds.Width;
+			if (width <= 0 || ShelfShadowAlpha <= 0)
+			{
+				return;
+			}
+			int blur = Math.Max(1, ShelfShadowBlur);
+			double radians = ShelfShadowAngle * Math.PI / 180.0;
+			int horizontalShift = (int)(blur * Math.Tan(radians));
+			int top = shelfTop + ShelfShadowDistance;
+			int left = itemBounds.Left + horizontalShift;
+			const int steps = 8;
+			for (int i = 0; i < steps; i++)
+			{
+				float t = (float)i / (steps - 1);
+				int grow = (int)(blur * t);
+				int alpha = (int)(ShelfShadowAlpha * (1f - t) / steps);
+				if (alpha < 1)
+				{
+					continue;
+				}
+				Rectangle stepBounds = new Rectangle(left - grow, top - grow, width + grow * 2, blur + grow);
+				int clampedLeft = Math.Max(stepBounds.Left, leftLimit);
+				int clampedRight = Math.Min(stepBounds.Right, rightLimit);
+				if (clampedRight <= clampedLeft)
+				{
+					continue;
+				}
+				stepBounds = new Rectangle(clampedLeft, stepBounds.Top, clampedRight - clampedLeft, stepBounds.Height);
+				//One brush, reused for every step of every item's shadow in the whole row -
+				//up to 8 steps per item, times every visible item, times every repaint while
+				//scrolling adds up to a lot of short-lived brushes a frame for what is only
+				//ever one solid colour at a time; changing its Color and reusing it costs
+				//nothing by comparison.
+				brush.Color = Color.FromArgb(alpha, ShelfShadowColor);
+				gr.FillRectangle(brush, stepBounds);
 			}
 		}
 

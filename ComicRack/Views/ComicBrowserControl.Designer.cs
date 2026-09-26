@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Collections.Specialized;
 using System.ComponentModel;
@@ -46,6 +46,11 @@ namespace cYo.Projects.ComicRack.Viewer.Views
 		{
 			if (disposing)
 			{
+				liveInstances.Remove(this);
+				itemView.BackgroundTexture?.Dispose();
+				itemView.BackgroundTexture = null;
+				itemView.ShelfImage?.Dispose();
+				itemView.ShelfImage = null;
 				UnregisterBookList();
 				bookList = null;
 				if (base.Main != null)
@@ -187,6 +192,7 @@ namespace cYo.Projects.ComicRack.Viewer.Views
 			this.tsEditListLayout = new System.Windows.Forms.ToolStripMenuItem();
 			this.tsSaveListLayout = new System.Windows.Forms.ToolStripMenuItem();
 			this.miResetListBackground = new System.Windows.Forms.ToolStripMenuItem();
+
 			this.toolStripMenuItem23 = new System.Windows.Forms.ToolStripSeparator();
 			this.tsEditLayouts = new System.Windows.Forms.ToolStripMenuItem();
 			this.separatorListLayout = new System.Windows.Forms.ToolStripSeparator();
@@ -1504,6 +1510,7 @@ namespace cYo.Projects.ComicRack.Viewer.Views
 		private Button btPrevStack;
 		private Button btNextStack;
 		private ToolStripMenuItem miResetListBackground;
+
 		private ToolStripSeparator separatorListLayout;
 		private ContextMenuStrip contextExport;
 		private ToolStripMenuItem miExportComicsAs;

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Collections.Specialized;
 using System.ComponentModel;
@@ -908,6 +908,42 @@ namespace cYo.Projects.ComicRack.Viewer.Views
         protected override void OnLoad(EventArgs e)
         {
             base.OnLoad(e);
+            liveInstances.Add(this);
+            RefreshListBackgroundTexture();
+            //Something in the rest of this control's own startup - most likely the saved view
+            //settings (sort, group, columns) being applied after this point - was silently
+            //clearing the background/shelf pictures just after they were first loaded, and
+            //nothing afterwards ever asked for them again on a plain restart, only a manual
+            //change in Book Display Settings did. Scrolling brought them back, which points to
+            //this being about the picture not actually being repainted for a while rather than
+            //genuinely being lost - RefreshListBackgroundTexture unconditionally repaints every
+            //time it runs regardless of what it decides needs reloading, which is why a single
+            //check some time after load helps at all. A single check turned out not to be
+            //enough, and without being able to reproduce the exact timing this depends on,
+            //several spread over the first couple of seconds is a more robust hedge than
+            //trying to guess the one right moment for a single check.
+            int recheckTicksRemaining = 6;
+            System.Windows.Forms.Timer recheckTimer = new System.Windows.Forms.Timer
+            {
+                Interval = 400
+            };
+            recheckTimer.Tick += delegate
+            {
+                if (base.IsDisposed)
+                {
+                    recheckTimer.Stop();
+                    recheckTimer.Dispose();
+                    return;
+                }
+                RefreshListBackgroundTexture();
+                recheckTicksRemaining--;
+                if (recheckTicksRemaining <= 0)
+                {
+                    recheckTimer.Stop();
+                    recheckTimer.Dispose();
+                }
+            };
+            recheckTimer.Start();
             if (base.DesignMode)
             {
                 return;
@@ -1749,6 +1785,98 @@ namespace cYo.Projects.ComicRack.Viewer.Views
                 {
                     toolStripItem.DisplayStyle = style;
                 }
+            }
+        }
+
+        /// <summary>
+        /// Every ComicBrowserControl currently alive, including any opened with "Open in New
+        /// Window" - so that changing the library background or shelf, set once in Book
+        /// Display Settings, can be pushed out to every open library view immediately rather
+        /// than only taking effect the next time each one happens to be created.
+        /// </summary>
+        private static readonly List<ComicBrowserControl> liveInstances = new List<ComicBrowserControl>();
+
+        /// <summary>
+        /// Applies the current Program.Settings.Library* values to every ComicBrowserControl
+        /// that exists right now. Called once, right after Book Display Settings closes with
+        /// OK - each instance's own RefreshListBackgroundTexture then decides for itself
+        /// whether anything it is holding actually needs to change.
+        /// </summary>
+        public static void RefreshAllListBackgrounds()
+        {
+            foreach (ComicBrowserControl liveInstance in liveInstances.ToArray())
+            {
+                liveInstance.RefreshListBackgroundTexture();
+            }
+        }
+
+        /// <summary>
+        /// The background and shelf image paths last successfully loaded, so the disk is not
+        /// touched again on every call when neither setting has actually changed since.
+        /// </summary>
+        private string loadedBackgroundTexturePath = string.Empty;
+
+        private string loadedShelfTexturePath = string.Empty;
+
+        /// <summary>
+        /// Reads the current Program.Settings.Library* values - background and shelf are
+        /// entirely independent of one another - and, for whichever of the two image paths
+        /// has actually changed, (re)loads it. Called once when the view is created, which is
+        /// what lets a newly opened library window pick up settings chosen earlier, and again
+        /// by RefreshAllListBackgrounds whenever Book Display Settings closes with OK.
+        /// </summary>
+        private void RefreshListBackgroundTexture()
+        {
+            itemView.BackgroundTextureLayout = Program.Settings.LibraryBackgroundLayout;
+            string backgroundPath = Program.Settings.LibraryBackgroundEnabled ? Program.Settings.LibraryBackgroundTexturePath : string.Empty;
+            //Reload not only when the path itself has changed, but also if the picture we
+            //believe should already be showing has gone missing some other way - this is
+            //what makes the control recover on its own from whatever briefly clears it during
+            //startup (see the delayed re-check this OnLoad also arms), rather than needing the
+            //setting to be touched again before it comes back.
+            if (backgroundPath != loadedBackgroundTexturePath || (!string.IsNullOrEmpty(backgroundPath) && itemView.BackgroundTexture == null))
+            {
+                loadedBackgroundTexturePath = backgroundPath;
+                Image old = itemView.BackgroundTexture;
+                itemView.BackgroundTexture = LoadImage(backgroundPath);
+                old?.Dispose();
+            }
+            string shelfPath = Program.Settings.LibraryShelfEnabled ? Program.Settings.LibraryShelfTexturePath : string.Empty;
+            if (shelfPath != loadedShelfTexturePath || (!string.IsNullOrEmpty(shelfPath) && itemView.ShelfImage == null))
+            {
+                loadedShelfTexturePath = shelfPath;
+                Image old = itemView.ShelfImage;
+                itemView.ShelfImage = LoadImage(shelfPath);
+                old?.Dispose();
+            }
+            itemView.ShelfOffset = Program.Settings.LibraryShelfOffset;
+            itemView.ShelfHeight = Program.Settings.LibraryShelfHeight;
+            itemView.ShelfShadowDistance = Program.Settings.LibraryShelfShadowDistance;
+            itemView.ShelfShadowAngle = Program.Settings.LibraryShelfShadowAngle;
+            itemView.ShelfShadowBlur = Program.Settings.LibraryShelfShadowBlur;
+            itemView.ShelfShadowAlpha = (int)(255 * (100 - Program.Settings.LibraryShelfShadowTransparency) / 100.0);
+            itemView.ShelfShadowColor = Program.Settings.LibraryShelfShadowColor;
+            itemView.Invalidate();
+        }
+
+        /// <summary>
+        /// Loads path as an image, or returns null for an empty, missing or unreadable path -
+        /// the last of those left as simply no picture rather than failing to open the
+        /// library over one that is no longer there.
+        /// </summary>
+        private static Image LoadImage(string path)
+        {
+            if (string.IsNullOrEmpty(path))
+            {
+                return null;
+            }
+            try
+            {
+                return Image.FromFile(path);
+            }
+            catch
+            {
+                return null;
             }
         }
 

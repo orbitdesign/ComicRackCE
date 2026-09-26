@@ -831,6 +831,8 @@ namespace cYo.Projects.ComicRack.Viewer
 			ComicDisplay.LeftRightMovementReversed = Program.Settings.LeftRightMovementReversed;
 			ComicDisplay.DisplayChangeAnimation = Program.Settings.DisplayChangeAnimation;
 			ComicDisplay.FlowingMouseScrolling = Program.Settings.FlowingMouseScrolling;
+			ComicDisplay.DragPageTurning = Program.Settings.DragPageTurning;
+			ComicDisplay.ReadAheadPages = Program.Settings.ReadAheadPages;
 			ComicDisplay.SoftwareFiltering = Program.Settings.SoftwareFiltering;
 			ComicDisplay.HardwareFiltering = Program.Settings.HardwareFiltering;
 			ComicDisplay.SetRenderer(Program.Settings.HardwareAcceleration);
@@ -1444,6 +1446,7 @@ namespace cYo.Projects.ComicRack.Viewer
 				ComicDisplay.ImageAutoRotate = !ComicDisplay.ImageAutoRotate;
 			}, notContinuousLayout, () => ComicDisplay.ImageAutoRotate, miAutoRotate, tbAutoRotate);
 			commands.Add(ComicDisplay.ToggleMagnifier, true, () => ComicDisplay.MagnifierVisible, miMagnify, tbMagnify, cmMagnify);
+			commands.Add(ComicDisplay.TogglePaperTexture, true, () => !string.IsNullOrEmpty(ComicDisplay.PaperTexture), miPaperTexture);
 			commands.Add(delegate
 			{
 				ShowPortableDevices();
@@ -1554,7 +1557,7 @@ namespace cYo.Projects.ComicRack.Viewer
 			commands.Add(delegate
 			{
 				Program.ShowExplorer(ComicDisplay.Book.Comic.FilePath);
-			}, () => ComicDisplay.Book != null && ComicDisplay.Book.Comic.EditMode.IsLocalComic(), cmRevealInExplorer);
+			}, () => ComicDisplay.Book != null && ComicDisplay.Book.Comic.EditMode.IsLocalComic(), cmRevealInExplorer, cmPageRevealInExplorer);
 			commands.Add(() => _ = CheckForUpdateAsync(true), miCheckUpdate);
 		}
 
@@ -1664,6 +1667,7 @@ namespace cYo.Projects.ComicRack.Viewer
 			ComicDisplay.KeyboardMap.Commands.Add(new KeyboardCommand(miFullScreen.Image, "ToggleFullScreen", group, "Toggle Full Screen", ComicDisplay.ToggleFullScreen, CommandKey.F, CommandKey.MouseDoubleLeft, CommandKey.Gesture2));
 			ComicDisplay.KeyboardMap.Commands.Add(new KeyboardCommand(miTwoPages.Image, "ToggleTwoPages", group, "Toggle Two Pages", ComicDisplay.TogglePageLayout, CommandKey.T));
 			ComicDisplay.KeyboardMap.Commands.Add(new KeyboardCommand("ToggleRealisticPages", group, "Toggle Realistic Display", ComicDisplay.ToogleRealisticPages, CommandKey.D | CommandKey.Shift));
+			ComicDisplay.KeyboardMap.Commands.Add(new KeyboardCommand("TogglePaperTexture", group, "Toggle Paper Texture", ComicDisplay.TogglePaperTexture));
 			ComicDisplay.KeyboardMap.Commands.Add(new KeyboardCommand(miMagnify.Image, "ToggleMagnify", group, "Toggle Magnifier", (Action)delegate
 			{
 				ComicDisplay.MagnifierVisible = !ComicDisplay.MagnifierVisible;
@@ -2722,6 +2726,10 @@ namespace cYo.Projects.ComicRack.Viewer
 				ComicDisplay.BackgroundTexture = workspace.BackgroundTexture;
 				ComicDisplay.PaperTexture = workspace.PaperTexture;
 				ComicDisplay.PaperTextureStrength = workspace.PaperTextureStrength;
+				ComicDisplay.PageCurlAmount = workspace.PageCurlAmount;
+				ComicDisplay.PageCurlShadowStrength = workspace.PageCurlShadowStrength;
+				ComicDisplay.PageCurlGrabArea = workspace.PageCurlGrabArea;
+				ComicDisplay.PageCurlDuration = workspace.PageCurlDuration;
 				ComicDisplay.ImageBackgroundMode = workspace.PageImageBackgroundMode;
 				ComicDisplay.PaperTextureLayout = workspace.PaperTextureLayout;
 				ComicDisplay.BackgroundImageLayout = workspace.BackgroundImageLayout;
@@ -2754,6 +2762,10 @@ namespace cYo.Projects.ComicRack.Viewer
 			workspace.BackgroundTexture = ComicDisplay.BackgroundTexture;
 			workspace.PaperTexture = ComicDisplay.PaperTexture;
 			workspace.PaperTextureStrength = ComicDisplay.PaperTextureStrength;
+			workspace.PageCurlAmount = ComicDisplay.PageCurlAmount;
+			workspace.PageCurlShadowStrength = ComicDisplay.PageCurlShadowStrength;
+			workspace.PageCurlGrabArea = ComicDisplay.PageCurlGrabArea;
+			workspace.PageCurlDuration = ComicDisplay.PageCurlDuration;
 			workspace.PageImageBackgroundMode = ComicDisplay.ImageBackgroundMode;
 			workspace.PaperTextureLayout = ComicDisplay.PaperTextureLayout;
 			workspace.BackgroundImageLayout = ComicDisplay.BackgroundImageLayout;

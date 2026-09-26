@@ -948,11 +948,18 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			Program.Settings.NavigationOverlayOnTop = cbNavigationOverlayPosition.SelectedIndex == 1;
 			Program.Settings.CurrentPageShowsName = chkShowPageNames.Checked;
 			Program.Settings.HardwareAcceleration = chkEnableHardware.Checked;
+			if (chkDarkMode.Enabled && chkDarkMode.Checked != Program.Settings.DarkMode)
+			{
+				Program.Settings.DarkMode = chkDarkMode.Checked;
+				NeedsRestart = true;
+			}
 			Program.Settings.SmoothScrolling = chkSmoothAutoScrolling.Checked;
 			Program.Settings.DisplayChangeAnimation = chkEnableDisplayChangeAnimation.Checked;
 			Program.Settings.SoftwareFiltering = chkEnableSoftwareFiltering.Checked;
 			Program.Settings.HardwareFiltering = chkEnableHardwareFiltering.Checked;
 			Program.Settings.FlowingMouseScrolling = chkEnableInertialMouseScrolling.Checked;
+			Program.Settings.DragPageTurning = chkDragPageTurning.Checked;
+			Program.Settings.ReadAheadPages = (int)numReadAheadPages.Value;
 			Program.Settings.OverlayScaling = tbOverlayScaling.Value;
 			Program.Settings.RemoveMissingFilesOnFullScan = chkAutoRemoveMissing.Checked;
 			Program.Settings.DontAddRemoveFiles = chkDontAddRemovedFiles.Checked;
@@ -1059,11 +1066,24 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			cbNavigationOverlayPosition.SelectedIndex = (Program.Settings.NavigationOverlayOnTop ? 1 : 0);
 			chkShowPageNames.Checked = Program.Settings.CurrentPageShowsName;
 			chkEnableHardware.Checked = Program.Settings.HardwareAcceleration;
+			if (Program.ExtendedSettings.Theme == Themes.Dark)
+			{
+				//Forced by UseDarkMode in ComicRack.ini or the -dark / -theme switch, which win anyway.
+				chkDarkMode.Checked = true;
+				chkDarkMode.Enabled = false;
+				labelDarkMode.Text = TR.Messages["DarkModeForced", "Currently set by ComicRack.ini or a command line switch."];
+			}
+			else
+			{
+				chkDarkMode.Checked = Program.Settings.DarkMode;
+			}
 			chkSmoothAutoScrolling.Checked = Program.Settings.SmoothScrolling;
 			chkEnableDisplayChangeAnimation.Checked = Program.Settings.DisplayChangeAnimation;
 			chkEnableSoftwareFiltering.Checked = Program.Settings.SoftwareFiltering;
 			chkEnableHardwareFiltering.Checked = Program.Settings.HardwareFiltering;
 			chkEnableInertialMouseScrolling.Checked = Program.Settings.FlowingMouseScrolling;
+			chkDragPageTurning.Checked = Program.Settings.DragPageTurning;
+			numReadAheadPages.Value = numReadAheadPages.Clamp(Program.Settings.ReadAheadPages);
 			chkEnableInternetCache.Checked = Program.Settings.InternetCacheEnabled;
 			numInternetCacheSize.Value = numInternetCacheSize.Clamp(Program.Settings.InternetCacheSizeMB);
 			chkEnableThumbnailCache.Checked = Program.Settings.ThumbCacheEnabled;
