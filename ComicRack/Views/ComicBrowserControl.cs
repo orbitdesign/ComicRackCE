@@ -909,6 +909,7 @@ namespace cYo.Projects.ComicRack.Viewer.Views
         {
             base.OnLoad(e);
             liveInstances.Add(this);
+            ShelfDebugLog(string.Format("OnLoad: before first RefreshListBackgroundTexture. this.Visible={0} itemView.Visible={1} itemView.ClientSize={2}", Visible, itemView.Visible, itemView.ClientSize));
             RefreshListBackgroundTexture();
             //Something in the rest of this control's own startup - most likely the saved view
             //settings (sort, group, columns) being applied after this point - was silently
@@ -935,6 +936,7 @@ namespace cYo.Projects.ComicRack.Viewer.Views
                     recheckTimer.Dispose();
                     return;
                 }
+                ShelfDebugLog(string.Format("Recheck timer tick, {0} remaining. this.Visible={1} itemView.Visible={2} itemView.ClientSize={3}", recheckTicksRemaining, Visible, itemView.Visible, itemView.ClientSize));
                 RefreshListBackgroundTexture();
                 recheckTicksRemaining--;
                 if (recheckTicksRemaining <= 0)
@@ -1796,6 +1798,28 @@ namespace cYo.Projects.ComicRack.Viewer.Views
         /// </summary>
         private static readonly List<ComicBrowserControl> liveInstances = new List<ComicBrowserControl>();
 
+        //TEMPORARY DIAGNOSTIC - remove once the startup shelf/background disappearing bug
+        //is actually root-caused. Shares ShelfPaintDebug.log with ItemView's own logging so
+        //both sides of the sequence read back in one place.
+        private static readonly object shelfDebugLogLock2 = new object();
+
+        private static void ShelfDebugLog(string message)
+        {
+            try
+            {
+                lock (shelfDebugLogLock2)
+                {
+                    string folder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "cYo", "ComicRack");
+                    Directory.CreateDirectory(folder);
+                    string path = Path.Combine(folder, "ShelfPaintDebug.log");
+                    File.AppendAllText(path, string.Format("{0:HH:mm:ss.fff} [ComicBrowserControl] {1}\r\n", DateTime.Now, message));
+                }
+            }
+            catch
+            {
+            }
+        }
+
         /// <summary>
         /// Applies the current Program.Settings.Library* values to every ComicBrowserControl
         /// that exists right now. Called once, right after Book Display Settings closes with
@@ -1834,20 +1858,28 @@ namespace cYo.Projects.ComicRack.Viewer.Views
             //what makes the control recover on its own from whatever briefly clears it during
             //startup (see the delayed re-check this OnLoad also arms), rather than needing the
             //setting to be touched again before it comes back.
-            if (backgroundPath != loadedBackgroundTexturePath || (!string.IsNullOrEmpty(backgroundPath) && itemView.BackgroundTexture == null))
+            bool willReloadBg = backgroundPath != loadedBackgroundTexturePath || (!string.IsNullOrEmpty(backgroundPath) && itemView.BackgroundTexture == null);
+            ShelfDebugLog(string.Format("RefreshListBackgroundTexture: backgroundPath='{0}' loadedBackgroundTexturePath='{1}' currentBackgroundTextureIsNull={2} willReloadBg={3}",
+                backgroundPath, loadedBackgroundTexturePath, itemView.BackgroundTexture == null, willReloadBg));
+            if (willReloadBg)
             {
                 loadedBackgroundTexturePath = backgroundPath;
                 Image old = itemView.BackgroundTexture;
                 itemView.BackgroundTexture = LoadImage(backgroundPath);
                 old?.Dispose();
+                ShelfDebugLog(string.Format("RefreshListBackgroundTexture: reloaded background, result is {0}", (itemView.BackgroundTexture != null) ? "set" : "NULL"));
             }
             string shelfPath = Program.Settings.LibraryShelfEnabled ? Program.Settings.LibraryShelfTexturePath : string.Empty;
-            if (shelfPath != loadedShelfTexturePath || (!string.IsNullOrEmpty(shelfPath) && itemView.ShelfImage == null))
+            bool willReloadShelf = shelfPath != loadedShelfTexturePath || (!string.IsNullOrEmpty(shelfPath) && itemView.ShelfImage == null);
+            ShelfDebugLog(string.Format("RefreshListBackgroundTexture: shelfPath='{0}' loadedShelfTexturePath='{1}' currentShelfImageIsNull={2} willReloadShelf={3}",
+                shelfPath, loadedShelfTexturePath, itemView.ShelfImage == null, willReloadShelf));
+            if (willReloadShelf)
             {
                 loadedShelfTexturePath = shelfPath;
                 Image old = itemView.ShelfImage;
                 itemView.ShelfImage = LoadImage(shelfPath);
                 old?.Dispose();
+                ShelfDebugLog(string.Format("RefreshListBackgroundTexture: reloaded shelf, result is {0}", (itemView.ShelfImage != null) ? "set" : "NULL"));
             }
             itemView.ShelfOffset = Program.Settings.LibraryShelfOffset;
             itemView.ShelfHeight = Program.Settings.LibraryShelfHeight;
@@ -1856,6 +1888,8 @@ namespace cYo.Projects.ComicRack.Viewer.Views
             itemView.ShelfShadowBlur = Program.Settings.LibraryShelfShadowBlur;
             itemView.ShelfShadowAlpha = (int)(255 * (100 - Program.Settings.LibraryShelfShadowTransparency) / 100.0);
             itemView.ShelfShadowColor = Program.Settings.LibraryShelfShadowColor;
+            ShelfDebugLog(string.Format("RefreshListBackgroundTexture: about to Invalidate. BackgroundTexture={0} ShelfImage={1}",
+                (itemView.BackgroundTexture != null) ? "set" : "NULL", (itemView.ShelfImage != null) ? "set" : "NULL"));
             itemView.Invalidate();
         }
 

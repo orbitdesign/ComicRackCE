@@ -301,6 +301,29 @@ namespace cYo.Common.Windows.Forms
 
 		private static readonly TR tr = TR.Load(typeof(ItemView).Name);
 
+		//TEMPORARY DIAGNOSTIC - remove once the startup shelf/background disappearing bug
+		//is actually root-caused. Appends a timestamped line to
+		//%APPDATA%\cYo\ComicRack\ShelfPaintDebug.log so a run where the bug happens can be
+		//read back afterwards. Never throws - a logging failure must not affect painting.
+		private static readonly object shelfDebugLogLock = new object();
+
+		private static void ShelfDebugLog(string message)
+		{
+			try
+			{
+				lock (shelfDebugLogLock)
+				{
+					string folder = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "cYo", "ComicRack");
+					System.IO.Directory.CreateDirectory(folder);
+					string path = System.IO.Path.Combine(folder, "ShelfPaintDebug.log");
+					System.IO.File.AppendAllText(path, string.Format("{0:HH:mm:ss.fff} [ItemView] {1}\r\n", DateTime.Now, message));
+				}
+			}
+			catch
+			{
+			}
+		}
+
 		private volatile bool pendingSelectedIndexChanged;
 
 		private volatile bool positionsInvalidated;
@@ -3355,6 +3378,8 @@ namespace cYo.Common.Windows.Forms
 			}
 			if ((drawItemsFlags & DrawItemViewOptions.BackgroundImage) != 0)
 			{
+				ShelfDebugLog(string.Format("DrawBackground: BackgroundImage flag SET. BackgroundTexture={0} ShelfImage={1} ClientSize={2}",
+					(BackgroundTexture != null) ? "set" : "NULL", (ShelfImage != null) ? "set" : "NULL", ClientRectangle.Size));
 				if (BackgroundTexture != null)
 				{
 					if (BackgroundTextureLayout == ImageLayout.Tile)
@@ -3370,6 +3395,10 @@ namespace cYo.Common.Windows.Forms
 				{
 					DrawShelfBackground(gr, ShelfImage);
 				}
+			}
+			else
+			{
+				ShelfDebugLog("DrawBackground: BackgroundImage flag NOT set - texture/shelf skipped this frame.");
 			}
 			if ((drawItemsFlags & DrawItemViewOptions.BackgroundImage) != 0 && BackgroundImage != null)
 			{
@@ -3858,13 +3887,16 @@ namespace cYo.Common.Windows.Forms
 
 		protected override void OnPaintBackground(PaintEventArgs e)
 		{
+			ShelfDebugLog(string.Format("OnPaintBackground enter: Visible={0} IsHandleCreated={1} ClientSize={2}", Visible, IsHandleCreated, ClientRectangle.Size));
 			try
 			{
 				UpdatePositions(e.Graphics);
 				DrawBackground(e.Graphics);
+				ShelfDebugLog("OnPaintBackground: completed without exception.");
 			}
-			catch (Exception)
+			catch (Exception ex)
 			{
+				ShelfDebugLog("OnPaintBackground: EXCEPTION swallowed: " + ex);
 				base.OnPaintBackground(e);
 			}
 		}
