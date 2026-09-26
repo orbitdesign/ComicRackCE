@@ -3557,12 +3557,11 @@ namespace cYo.Common.Windows.Forms
 		/// the shadow reads darkest; further out, fewer steps reach and it fades smoothly away
 		/// on every side instead of stopping abruptly at a rectangle's edge.
 		///
-		/// The width matches the item's own tile, which is not always exactly the width the
-		/// cover art itself renders at within that tile - a narrower cover leaves some of its
-		/// tile as empty space either side, and this shadow currently follows the tile rather
-		/// than that narrower art. Which pixels within a tile the art actually occupies is
-		/// decided by drawing code specific to each item, called back into by this generic
-		/// grid rather than owned by it, so this method has no way to see it.
+		/// itemBounds.Width, unlike an assumption made about it earlier, does already follow
+		/// each item's own rendered cover width rather than a uniform tile width: the layout
+		/// pass that produces it measures each item individually before positioning it, and
+		/// that per-item measurement is what decides its width here - it is only uniform across
+		/// items when the covers themselves are configured to render at a uniform size.
 		/// </summary>
 		private void DrawShelfShadow(Graphics gr, Rectangle itemBounds, int shelfTop)
 		{

@@ -1,4 +1,4 @@
-﻿orbitdesign Build 1.54 (based on Community Edition 0.9.184):
+﻿orbitdesign Build 1.55 (based on Community Edition 0.9.184):
 
 * 1.1 FIX: Hardware acceleration stability. Fixed OpenGL extension detection, replaced the deprecated automatic mip map generation that crashed some drivers, checked texture uploads for errors, and added a startup guard that switches hardware acceleration off for one session if ComicRack failed to start last time.
 * 1.2 NEW: Direct2D renderer for the reader. Used by default when hardware acceleration is on, with OpenGL and then software rendering as fallbacks. Handles graphics device resets, uses high quality cubic sampling for "Enable Hardware Filters", and supports paper textures. Start with -hwgl to use the old OpenGL renderer.
@@ -54,6 +54,7 @@
 * 1.52 FIX: OK/Apply/Cancel really do move now - the dialog's own auto-sizing was recalculating itself again after being told where everything should go, undoing it; sizing is now fully handed over once the second column exists. Library Background with Stretch/Center/Zoom now scrolls with the list instead of staying fixed to the window, repeating itself every screen's worth of scrolling down a long library.
 * 1.53 FIX: OK/Apply/Cancel really, actually move now, with no leftover empty space beneath them. The previous attempt measured the second column's size during the dialog's construction, before it had ever actually been shown - an AutoSize container's preferred size is not reliably settled until then, so that measurement was stale. It is now taken once the dialog is genuinely visible on screen instead.
 * 1.54 FIX: The actual reason OK/Apply/Cancel kept snapping back to the left, and the actual reason for the leftover empty space: that row of buttons was a flowed child inside the left column's own panel all along, not sitting independently beside it, so nothing set on the buttons themselves could ever move them, and the column's height already counted them once before this dialog's own sizing counted them a second time on top. It is now moved out to sit independently, as it was always meant to.
+* 1.55 NOTE: No behaviour change - a code comment claiming the shadow could not follow each cover's own rendered width was wrong. Tracing the actual layout code shows it already does, following from how each item is individually measured before being positioned; corrected the comment to say so.
 
 
 Community Edition Build 0.9.184:
