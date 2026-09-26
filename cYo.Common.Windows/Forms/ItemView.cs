@@ -3534,9 +3534,18 @@ namespace cYo.Common.Windows.Forms
 					{
 						gr.DrawImage(image, new Rectangle(x, bottom, image.Width, thickness), new Rectangle(0, 0, image.Width, image.Height), GraphicsUnit.Pixel);
 					}
-					foreach (Rectangle itemBounds in row.Value)
+					//Sorted left to right so each item's shadow can be clipped to the midpoint
+					//between it and whichever item sits next to it - without this, a wide
+					//enough blur setting spreads far enough to reach into a neighbour's own
+					//space, and adjacent shadows read as one continuous band rather than
+					//staying visually separate per item the way they would on a real shelf.
+					List<Rectangle> sortedRow = row.Value.OrderBy((Rectangle r) => r.Left).ToList();
+					for (int i = 0; i < sortedRow.Count; i++)
 					{
-						DrawShelfShadow(gr, itemBounds, bottom);
+						Rectangle itemBounds = sortedRow[i];
+						int leftLimit = (i > 0) ? ((itemBounds.Left + sortedRow[i - 1].Right) / 2) : int.MinValue;
+						int rightLimit = (i < sortedRow.Count - 1) ? ((itemBounds.Right + sortedRow[i + 1].Left) / 2) : int.MaxValue;
+						DrawShelfShadow(gr, itemBounds, bottom, leftLimit, rightLimit);
 					}
 				}
 			}
@@ -3562,8 +3571,14 @@ namespace cYo.Common.Windows.Forms
 		/// pass that produces it measures each item individually before positioning it, and
 		/// that per-item measurement is what decides its width here - it is only uniform across
 		/// items when the covers themselves are configured to render at a uniform size.
+		///
+		/// leftLimit/rightLimit are the midpoints to this item's left and right neighbours (or
+		/// unbounded, at either end of a row) - each step is clamped to them so a wide blur
+		/// setting can soften this item's own shadow without spreading into a neighbour's own
+		/// space and reading as one continuous band rather than staying visually separate per
+		/// item, the way books sitting apart on a real shelf would.
 		/// </summary>
-		private void DrawShelfShadow(Graphics gr, Rectangle itemBounds, int shelfTop)
+		private void DrawShelfShadow(Graphics gr, Rectangle itemBounds, int shelfTop, int leftLimit, int rightLimit)
 		{
 			int width = itemBounds.Width;
 			if (width <= 0 || ShelfShadowAlpha <= 0)
@@ -3586,6 +3601,13 @@ namespace cYo.Common.Windows.Forms
 					continue;
 				}
 				Rectangle stepBounds = new Rectangle(left - grow, top - grow, width + grow * 2, blur + grow);
+				int clampedLeft = Math.Max(stepBounds.Left, leftLimit);
+				int clampedRight = Math.Min(stepBounds.Right, rightLimit);
+				if (clampedRight <= clampedLeft)
+				{
+					continue;
+				}
+				stepBounds = new Rectangle(clampedLeft, stepBounds.Top, clampedRight - clampedLeft, stepBounds.Height);
 				using (SolidBrush brush = new SolidBrush(Color.FromArgb(alpha, ShelfShadowColor)))
 				{
 					gr.FillRectangle(brush, stepBounds);
