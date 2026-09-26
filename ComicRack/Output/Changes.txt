@@ -1,4 +1,4 @@
-﻿orbitdesign Build 1.56 (based on Community Edition 0.9.184):
+﻿orbitdesign Build 1.57 (based on Community Edition 0.9.184):
 
 * 1.1 FIX: Hardware acceleration stability. Fixed OpenGL extension detection, replaced the deprecated automatic mip map generation that crashed some drivers, checked texture uploads for errors, and added a startup guard that switches hardware acceleration off for one session if ComicRack failed to start last time.
 * 1.2 NEW: Direct2D renderer for the reader. Used by default when hardware acceleration is on, with OpenGL and then software rendering as fallbacks. Handles graphics device resets, uses high quality cubic sampling for "Enable Hardware Filters", and supports paper textures. Start with -hwgl to use the old OpenGL renderer.
@@ -56,6 +56,7 @@
 * 1.54 FIX: The actual reason OK/Apply/Cancel kept snapping back to the left, and the actual reason for the leftover empty space: that row of buttons was a flowed child inside the left column's own panel all along, not sitting independently beside it, so nothing set on the buttons themselves could ever move them, and the column's height already counted them once before this dialog's own sizing counted them a second time on top. It is now moved out to sit independently, as it was always meant to.
 * 1.55 NOTE: No behaviour change - a code comment claiming the shadow could not follow each cover's own rendered width was wrong. Tracing the actual layout code shows it already does, following from how each item is individually measured before being positioned; corrected the comment to say so.
 * 1.56 FIX: A wide Shadow Blur setting could spread far enough to reach a neighbouring book's own shadow, making adjacent shadows blend into one continuous band instead of staying visually separate per book. Each book's shadow is now clipped to the midpoint between it and whichever book sits next to it, regardless of how large Blur is set.
+* 1.57 FIX: Book shadows now really do follow each cover's own width. The earlier claim that they already did was wrong: the grid measures a tile per book, but the cover art is then aspect-fitted inside that tile when drawn, so a narrow cover sits in a wider tile and the shadow was following the tile. Each item can now report the rectangle its artwork actually occupies, and the shadow uses that.
 
 
 Community Edition Build 0.9.184:

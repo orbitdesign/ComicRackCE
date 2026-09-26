@@ -3311,6 +3311,12 @@ namespace cYo.Common.Windows.Forms
 			set;
 		} = 20;
 
+		/// <summary>
+		/// How many visible covers had not yet been drawn - and so could not report their own
+		/// artwork rect - the last time the shelf was painted. See DrawShelfBackground.
+		/// </summary>
+		private int lastPendingCoverRects = -1;
+
 		public int ShelfShadowAngle
 		{
 			get;
@@ -3467,8 +3473,10 @@ namespace cYo.Common.Windows.Forms
 			//into two, each holding only part of it - the strip for either half still spans
 			//the full width regardless, but this keeps them as the one row they visually are.
 			const int rowTolerance = 3;
+			int pendingCoverRects = 0;
 			List<int> rowKeys = new List<int>();
 			Dictionary<int, List<Rectangle>> rows = new Dictionary<int, List<Rectangle>>();
+			Dictionary<int, List<Rectangle>> rowCovers = new Dictionary<int, List<Rectangle>>();
 			using (ItemMonitor.Lock(visibleItems))
 			{
 				foreach (IViewableItem visibleItem in visibleItems)
@@ -3496,9 +3504,43 @@ namespace cYo.Common.Windows.Forms
 					{
 						row = new List<Rectangle>();
 						rows[key] = row;
+						rowCovers[key] = new List<Rectangle>();
 					}
 					row.Add(bounds);
+					//The shelf strip itself is positioned from the tile (above), but the
+					//shadow is cast by the artwork the viewer actually sees, which for a
+					//cover kept at its own aspect ratio is narrower than its tile - so each
+					//item is asked for its own artwork rect here rather than assuming the
+					//two are the same.
+					Rectangle coverBounds = (visibleItem as ItemViewItem)?.GetContentBounds(bounds) ?? bounds;
+					if (coverBounds.IsEmpty)
+					{
+						pendingCoverRects++;
+						coverBounds = bounds;
+					}
+					rowCovers[key].Add(coverBounds);
 				}
+			}
+			//The shelf is painted as part of the background, before the covers themselves are
+			//drawn, so on the very first paint of a given cover its artwork rect is not known
+			//yet and the tile is used instead. Asking for one more repaint once that count
+			//changes lets the shadows settle onto the real widths; the count only falls as
+			//covers get drawn, so this stops on its own rather than repainting forever, and
+			//a cover that can never be drawn leaves the count stable and so asks only once.
+			if (pendingCoverRects > 0 && pendingCoverRects != lastPendingCoverRects && base.IsHandleCreated)
+			{
+				lastPendingCoverRects = pendingCoverRects;
+				BeginInvoke((Action)delegate
+				{
+					if (!base.IsDisposed)
+					{
+						Invalidate();
+					}
+				});
+			}
+			else if (pendingCoverRects == 0)
+			{
+				lastPendingCoverRects = 0;
 			}
 			if (rows.Count == 0)
 			{
@@ -3539,7 +3581,7 @@ namespace cYo.Common.Windows.Forms
 					//enough blur setting spreads far enough to reach into a neighbour's own
 					//space, and adjacent shadows read as one continuous band rather than
 					//staying visually separate per item the way they would on a real shelf.
-					List<Rectangle> sortedRow = row.Value.OrderBy((Rectangle r) => r.Left).ToList();
+					List<Rectangle> sortedRow = rowCovers[row.Key].OrderBy((Rectangle r) => r.Left).ToList();
 					for (int i = 0; i < sortedRow.Count; i++)
 					{
 						Rectangle itemBounds = sortedRow[i];

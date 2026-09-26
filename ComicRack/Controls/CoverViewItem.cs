@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Drawing;
@@ -85,6 +85,14 @@ namespace cYo.Projects.ComicRack.Viewer.Controls
 		private MarkerType marker;
 
 		private Rectangle? drawnRect;
+
+		/// <summary>
+		/// The rectangle the cover artwork itself last actually occupied, as opposed to the
+		/// tile it sits in - see GetContentBounds below. Captured during OnDraw because that
+		/// is the only point at which it is known: it depends on the thumbnail's real aspect
+		/// ratio, which is not available until the thumbnail has been loaded and drawn.
+		/// </summary>
+		private Rectangle? drawnCoverRect;
 
 		private bool refreshed;
 
@@ -598,6 +606,7 @@ namespace cYo.Projects.ComicRack.Viewer.Controls
 								CreateThumbnailLines(thumbIconRenderer2.TextLines, FC.GetRelative(font, ThumbnailLabelFontScale), textColor);
 							}
 							drawnRect = thumbIconRenderer2.Draw(drawInfo.Graphics, rectangle);
+							drawnCoverRect = thumbIconRenderer2.ThumbnailBounds;
 							thumbIconRenderer2.DisposeTextLines();
 							OnDrawCustomThumbnailOverlay(drawInfo.Graphics, thumbIconRenderer2.ThumbnailBounds);
 							DrawFrontCoverButton(drawInfo.Graphics, thumbIconRenderer2.ThumbnailBounds);
@@ -1601,6 +1610,25 @@ namespace cYo.Projects.ComicRack.Viewer.Controls
 				control.Hide();
 				break;
 			}
+		}
+
+		/// <summary>
+		/// The cover artwork's own rectangle within itemBounds, as captured on the last draw
+		/// (see drawnCoverRect) - narrower than the tile for a cover kept at its own aspect
+		/// ratio, since the tile also has to fit the row's widest cover and the caption text
+		/// underneath. Falls back to the full tile until the cover has been drawn once and
+		/// its real aspect ratio is therefore known.
+		/// </summary>
+		public override Rectangle GetContentBounds(Rectangle itemBounds)
+		{
+			if (drawnCoverRect.HasValue && !drawnCoverRect.Value.IsEmpty)
+			{
+				return drawnCoverRect.Value;
+			}
+			//Deliberately Rectangle.Empty rather than itemBounds: "not drawn yet, so not
+			//known" and "known, and happens to fill its whole tile" need to be tellable
+			//apart by the caller, which repaints once for the former but not the latter.
+			return Rectangle.Empty;
 		}
 
 		public bool Contains(Point pt)
