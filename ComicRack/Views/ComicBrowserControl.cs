@@ -914,23 +914,33 @@ namespace cYo.Projects.ComicRack.Viewer.Views
             //settings (sort, group, columns) being applied after this point - was silently
             //clearing the background/shelf pictures just after they were first loaded, and
             //nothing afterwards ever asked for them again on a plain restart, only a manual
-            //change in Book Display Settings did. Rather than chase down exactly which step of
-            //startup does that, a second check shortly after everything has settled is a
-            //simple, low-risk way to recover from it regardless of the exact cause - the
-            //RefreshListBackgroundTexture it calls only reloads anything that has actually
-            //gone missing, so this costs nothing on the far more common case where nothing
-            //cleared it in the first place.
+            //change in Book Display Settings did. Scrolling brought them back, which points to
+            //this being about the picture not actually being repainted for a while rather than
+            //genuinely being lost - RefreshListBackgroundTexture unconditionally repaints every
+            //time it runs regardless of what it decides needs reloading, which is why a single
+            //check some time after load helps at all. A single check turned out not to be
+            //enough, and without being able to reproduce the exact timing this depends on,
+            //several spread over the first couple of seconds is a more robust hedge than
+            //trying to guess the one right moment for a single check.
+            int recheckTicksRemaining = 6;
             System.Windows.Forms.Timer recheckTimer = new System.Windows.Forms.Timer
             {
-                Interval = 750
+                Interval = 400
             };
             recheckTimer.Tick += delegate
             {
-                recheckTimer.Stop();
-                recheckTimer.Dispose();
-                if (!base.IsDisposed)
+                if (base.IsDisposed)
                 {
-                    RefreshListBackgroundTexture();
+                    recheckTimer.Stop();
+                    recheckTimer.Dispose();
+                    return;
+                }
+                RefreshListBackgroundTexture();
+                recheckTicksRemaining--;
+                if (recheckTicksRemaining <= 0)
+                {
+                    recheckTimer.Stop();
+                    recheckTimer.Dispose();
                 }
             };
             recheckTimer.Start();
