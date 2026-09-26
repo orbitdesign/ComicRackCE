@@ -307,12 +307,6 @@ namespace cYo.Common.Windows.Forms
 
 		private volatile bool itemsResort;
 
-		//Counts consecutive OnPaintBackground failures so the retry this leads to (see
-		//OnPaintBackground) can give up after a few attempts instead of retrying forever
-		//if something is genuinely, persistently broken rather than transiently caught
-		//mid-update.
-		private int backgroundPaintFailureCount;
-
 		private readonly StateInfo itemStates = new StateInfo();
 
 		private Dictionary<IViewableItem, ItemInformation> itemInfos = new Dictionary<IViewableItem, ItemInformation>();
@@ -3868,31 +3862,10 @@ namespace cYo.Common.Windows.Forms
 			{
 				UpdatePositions(e.Graphics);
 				DrawBackground(e.Graphics);
-				backgroundPaintFailureCount = 0;
 			}
 			catch (Exception)
 			{
 				base.OnPaintBackground(e);
-				//This frame drew none of the background/shelf texture or the items'
-				//positions, and unlike a normal missed paint, nothing else is guaranteed
-				//to invalidate this control again afterwards - if whatever threw was
-				//caught mid a one-off update (e.g. items still streaming in while this
-				//painted), the picture would otherwise stay stuck like this until a
-				//scroll or some unrelated change happens to repaint it. Ask for one more
-				//attempt, off the paint cycle so whatever caused this has a moment to
-				//clear, and give up after a few tries rather than retrying forever if
-				//the cause turns out not to be transient.
-				if (!base.IsDisposed && base.IsHandleCreated && backgroundPaintFailureCount < 3)
-				{
-					backgroundPaintFailureCount++;
-					BeginInvoke((Action)delegate
-					{
-						if (!base.IsDisposed)
-						{
-							Invalidate();
-						}
-					});
-				}
 			}
 		}
 
