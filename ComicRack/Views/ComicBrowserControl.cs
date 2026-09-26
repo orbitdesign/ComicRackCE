@@ -910,40 +910,15 @@ namespace cYo.Projects.ComicRack.Viewer.Views
             base.OnLoad(e);
             liveInstances.Add(this);
             RefreshListBackgroundTexture();
-            //Something in the rest of this control's own startup - most likely the saved view
-            //settings (sort, group, columns) being applied after this point - was silently
-            //clearing the background/shelf pictures just after they were first loaded, and
-            //nothing afterwards ever asked for them again on a plain restart, only a manual
-            //change in Book Display Settings did. Scrolling brought them back, which points to
-            //this being about the picture not actually being repainted for a while rather than
-            //genuinely being lost - RefreshListBackgroundTexture unconditionally repaints every
-            //time it runs regardless of what it decides needs reloading, which is why a single
-            //check some time after load helps at all. A single check turned out not to be
-            //enough, and without being able to reproduce the exact timing this depends on,
-            //several spread over the first couple of seconds is a more robust hedge than
-            //trying to guess the one right moment for a single check.
-            int recheckTicksRemaining = 6;
-            System.Windows.Forms.Timer recheckTimer = new System.Windows.Forms.Timer
-            {
-                Interval = 400
-            };
-            recheckTimer.Tick += delegate
-            {
-                if (base.IsDisposed)
-                {
-                    recheckTimer.Stop();
-                    recheckTimer.Dispose();
-                    return;
-                }
-                RefreshListBackgroundTexture();
-                recheckTicksRemaining--;
-                if (recheckTicksRemaining <= 0)
-                {
-                    recheckTimer.Stop();
-                    recheckTimer.Dispose();
-                }
-            };
-            recheckTimer.Start();
+            //The background/shelf picture used to be able to go missing just after this -
+            //most likely items still streaming into the list (the saved sort/group/columns
+            //being applied) landing on the same paint that draws this control's own
+            //background, whose OnPaintBackground silently swallows a failure with no
+            //guarantee anything asks for a repaint again afterwards. That is now handled at
+            //the source: ItemView.OnPaintBackground retries itself, a few times at most,
+            //whenever a background paint actually fails, instead of this control having to
+            //guess how long to keep blindly re-checking regardless of whether anything is
+            //actually wrong.
             if (base.DesignMode)
             {
                 return;
