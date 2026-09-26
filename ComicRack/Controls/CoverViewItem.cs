@@ -1616,14 +1616,22 @@ namespace cYo.Projects.ComicRack.Viewer.Controls
 		/// The cover artwork's own rectangle within itemBounds, as captured on the last draw
 		/// (see drawnCoverRect) - narrower than the tile for a cover kept at its own aspect
 		/// ratio, since the tile also has to fit the row's widest cover and the caption text
-		/// underneath. Falls back to the full tile until the cover has been drawn once and
+		/// underneath. Falls back to Rectangle.Empty until the cover has been drawn once and
 		/// its real aspect ratio is therefore known.
+		///
+		/// drawnCoverRect is captured while OnDraw's own graphics transform is translated to
+		/// this item's own position, with its bounds passed to it already shifted to (0,0) -
+		/// so it is relative to this item's own top-left corner, not to the view as a whole.
+		/// itemBounds here, by contrast, is what GetItemBounds returns: absolute, view-wide
+		/// coordinates. Re-anchoring the stored rect at itemBounds.Location is what brings
+		/// the two back into the same coordinate space.
 		/// </summary>
 		public override Rectangle GetContentBounds(Rectangle itemBounds)
 		{
 			if (drawnCoverRect.HasValue && !drawnCoverRect.Value.IsEmpty)
 			{
-				return drawnCoverRect.Value;
+				Rectangle relative = drawnCoverRect.Value;
+				return new Rectangle(itemBounds.Left + relative.Left, itemBounds.Top + relative.Top, relative.Width, relative.Height);
 			}
 			//Deliberately Rectangle.Empty rather than itemBounds: "not drawn yet, so not
 			//known" and "known, and happens to fill its whole tile" need to be tellable

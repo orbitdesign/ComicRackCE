@@ -1,4 +1,4 @@
-﻿orbitdesign Build 1.57 (based on Community Edition 0.9.184):
+﻿orbitdesign Build 1.58 (based on Community Edition 0.9.184):
 
 * 1.1 FIX: Hardware acceleration stability. Fixed OpenGL extension detection, replaced the deprecated automatic mip map generation that crashed some drivers, checked texture uploads for errors, and added a startup guard that switches hardware acceleration off for one session if ComicRack failed to start last time.
 * 1.2 NEW: Direct2D renderer for the reader. Used by default when hardware acceleration is on, with OpenGL and then software rendering as fallbacks. Handles graphics device resets, uses high quality cubic sampling for "Enable Hardware Filters", and supports paper textures. Start with -hwgl to use the old OpenGL renderer.
@@ -57,6 +57,7 @@
 * 1.55 NOTE: No behaviour change - a code comment claiming the shadow could not follow each cover's own rendered width was wrong. Tracing the actual layout code shows it already does, following from how each item is individually measured before being positioned; corrected the comment to say so.
 * 1.56 FIX: A wide Shadow Blur setting could spread far enough to reach a neighbouring book's own shadow, making adjacent shadows blend into one continuous band instead of staying visually separate per book. Each book's shadow is now clipped to the midpoint between it and whichever book sits next to it, regardless of how large Blur is set.
 * 1.57 FIX: Book shadows now really do follow each cover's own width. The earlier claim that they already did was wrong: the grid measures a tile per book, but the cover art is then aspect-fitted inside that tile when drawn, so a narrow cover sits in a wider tile and the shadow was following the tile. Each item can now report the rectangle its artwork actually occupies, and the shadow uses that.
+* 1.58 FIX: The previous fix for shadow width introduced a coordinate-space bug that made shadows only line up in the leftmost column and vanish or misplace everywhere else. Each item draws itself with its own top-left corner temporarily treated as the graphics origin, so the artwork rectangle it reports is relative to itself, not to the view - it now gets re-anchored to the item's real position before use.
 
 
 Community Edition Build 0.9.184:
