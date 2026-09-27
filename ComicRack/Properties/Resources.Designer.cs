@@ -2243,6 +2243,16 @@ namespace cYo.Projects.ComicRack.Viewer.Properties {
         /// <summary>
         ///   Looks up a localized resource of type System.Drawing.Bitmap.
         /// </summary>
+        internal static System.Drawing.Bitmap DarkUpdatePages {
+            get {
+                object obj = ResourceManager.GetObject("DarkUpdatePages", resourceCulture);
+                return ((System.Drawing.Bitmap)(obj));
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized resource of type System.Drawing.Bitmap.
+        /// </summary>
         internal static System.Drawing.Bitmap UpdateSmall {
             get {
                 object obj = ResourceManager.GetObject("UpdateSmall", resourceCulture);
