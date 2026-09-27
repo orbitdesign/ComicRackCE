@@ -34,6 +34,9 @@ namespace cYo.Projects.ComicRack.Engine.Display
 
 		private readonly IComicDisplay display;
 
+		//Remembers the texture to come back to when the paper texture is switched on again.
+		private string lastPaperTexture = string.Empty;
+
 		private ContainerControl control;
 
 		private float scrollLines = 1f;
@@ -47,6 +50,34 @@ namespace cYo.Projects.ComicRack.Engine.Display
 		private WallState wallState;
 
 		private long lastPaging;
+
+		//A fast flick of the wheel arrives as a short burst of separate wheel events, one right
+		//after another. Each is held for a moment (wheelCoalesceTimer) to see whether more are on
+		//the way; once they stop, the whole burst is applied as a single jump straight to the
+		//page it ends on, with one fold shown for the whole jump - covering however many pages
+		//the flick passed over - rather than turning, fetching and folding every one of them. A
+		//single, deliberate click of the wheel goes through the exact same short hold, so it
+		//still turns only one page; it is simply held for a moment before it does.
+		private const int WheelCoalesceGapTicks = 80;
+
+		//Measured from one hold's flush to the next, which already includes that hold's own
+		//WheelCoalesceGapTicks - so the actual silence between two flicks that still reads as
+		//one continuing gesture is a little under this. A longer pause is treated as a fresh
+		//gesture, and the fold returns to its normal speed instead of carrying on getting
+		//quicker.
+		private const int WheelRiffleGapTicks = 450;
+
+		private const int WheelRiffleMinDuration = 60;
+
+		private System.Windows.Forms.Timer wheelCoalesceTimer;
+
+		private int wheelPendingNotches;
+
+		private long wheelLastFlickTicks;
+
+		private int wheelLastFlickSign;
+
+		private int wheelRiffleDuration;
 
 		private bool fullScreen;
 
@@ -903,6 +934,131 @@ namespace cYo.Projects.ComicRack.Engine.Display
 			}
 		}
 
+		public bool DragPageTurning
+		{
+			get
+			{
+				return display.DragPageTurning;
+			}
+			set
+			{
+				display.DragPageTurning = value;
+			}
+		}
+
+		public int ReadAheadPages
+		{
+			get
+			{
+				return display.ReadAheadPages;
+			}
+			set
+			{
+				display.ReadAheadPages = value;
+			}
+		}
+
+		public float PageCurlAmount
+		{
+			get
+			{
+				return display.PageCurlAmount;
+			}
+			set
+			{
+				display.PageCurlAmount = value;
+			}
+		}
+
+		public float PageCurlShadowStrength
+		{
+			get
+			{
+				return display.PageCurlShadowStrength;
+			}
+			set
+			{
+				display.PageCurlShadowStrength = value;
+			}
+		}
+
+		public float PageCurlGrabArea
+		{
+			get
+			{
+				return display.PageCurlGrabArea;
+			}
+			set
+			{
+				display.PageCurlGrabArea = value;
+			}
+		}
+
+		public int PageCurlDuration
+		{
+			get
+			{
+				return display.PageCurlDuration;
+			}
+			set
+			{
+				display.PageCurlDuration = value;
+			}
+		}
+
+		public int NextPageTurnDuration
+		{
+			get
+			{
+				return display.NextPageTurnDuration;
+			}
+			set
+			{
+				display.NextPageTurnDuration = value;
+			}
+		}
+
+		//These two satisfy IComicDisplayConfig by simply forwarding, exactly like every other
+		//member on this interface. RiffleTo (below) is the one that actually drives them.
+		public void BeginRiffle()
+		{
+			display.BeginRiffle();
+		}
+
+		public void EndRiffle(int duration)
+		{
+			display.EndRiffle(duration);
+		}
+
+		public void RiffleTo(int pages, int duration)
+		{
+			if (pages == 0)
+			{
+				return;
+			}
+			bool forward = pages > 0;
+			int steps = Math.Abs(pages);
+			display.BeginRiffle();
+			try
+			{
+				for (int i = 0; i < steps; i++)
+				{
+					if (forward)
+					{
+						DisplayNextPageOrPart(forceNewPage: true);
+					}
+					else
+					{
+						DisplayPreviousPageOrPart(forceNewPage: true);
+					}
+				}
+			}
+			finally
+			{
+				display.EndRiffle(duration);
+			}
+		}
+
 		public bool SoftwareFiltering
 		{
 			get
@@ -1178,6 +1334,7 @@ namespace cYo.Projects.ComicRack.Engine.Display
 					mouseHWheel.MouseHWheel -= display_MouseHWheel;
 				}
 				pageKeys.Dispose();
+				wheelCoalesceTimer?.Dispose();
 			}
 			base.Dispose(disposing);
 		}
@@ -1476,6 +1633,23 @@ namespace cYo.Projects.ComicRack.Engine.Display
 		public void ToogleRealisticPages()
 		{
 			RealisticPages = !RealisticPages;
+		}
+
+		/// <summary>
+		/// Switches the paper texture off, and back on to whichever texture was last chosen.
+		/// Pick a different one in Book Display Settings.
+		/// </summary>
+		public void TogglePaperTexture()
+		{
+			if (!string.IsNullOrEmpty(PaperTexture))
+			{
+				lastPaperTexture = PaperTexture;
+				PaperTexture = string.Empty;
+			}
+			else if (!string.IsNullOrEmpty(lastPaperTexture))
+			{
+				PaperTexture = lastPaperTexture;
+			}
 		}
 
 		public void ToggleFitOnlyIfOversized()
@@ -1835,8 +2009,76 @@ namespace cYo.Projects.ComicRack.Engine.Display
 			else
 			{
 				scrollLines = (float)Math.Abs(e.Delta / SystemInformation.MouseWheelScrollDelta) * MouseWheelSpeed;
-				keyboardMap.HandleKey((e.Delta > 0) ? CommandKey.MouseWheelUp : CommandKey.MouseWheelDown, Control.ModifierKeys);
+				if (PageLayout == PageLayoutMode.Continuous || ImagePartCount != 1)
+				{
+					//Scrolling within a page you are zoomed into, or a continuous strip: every tick
+					//moves the page itself and has to react at once, with nothing held back.
+					keyboardMap.HandleKey((e.Delta > 0) ? CommandKey.MouseWheelUp : CommandKey.MouseWheelDown, Control.ModifierKeys);
+				}
+				else
+				{
+					//Wheel up is "back" and wheel down is "forward" throughout the rest of ComicRack
+					//(ScrollUp/ScrollDown below turn to the previous/next page respectively), which is
+					//the opposite sign from a raw wheel delta, where up is positive.
+					QueueWheelPageTurn(-Math.Sign(e.Delta));
+				}
 			}
+		}
+
+		/// <summary>
+		/// Holds one wheel notch for a short moment to see whether more are right behind it. Every
+		/// notch goes through this same short hold, so an isolated click still turns exactly one
+		/// page; what changes is only whether the hold catches company.
+		/// </summary>
+		private void QueueWheelPageTurn(int sign)
+		{
+			if (sign == 0)
+			{
+				return;
+			}
+			if (wheelPendingNotches != 0 && Math.Sign(wheelPendingNotches) != sign)
+			{
+				//Reversed direction while a hold was already pending: that pending amount is done
+				//gathering company, so send it on its way before starting the new direction.
+				FlushWheelPageTurn();
+			}
+			wheelPendingNotches += sign;
+			if (wheelCoalesceTimer == null)
+			{
+				wheelCoalesceTimer = new System.Windows.Forms.Timer
+				{
+					Interval = WheelCoalesceGapTicks
+				};
+				wheelCoalesceTimer.Tick += delegate
+				{
+					wheelCoalesceTimer.Stop();
+					FlushWheelPageTurn();
+				};
+			}
+			wheelCoalesceTimer.Stop();
+			wheelCoalesceTimer.Start();
+		}
+
+		/// <summary>
+		/// Applies however many notches gathered during the hold as a single jump, with one fold
+		/// covering the whole thing. Successive flicks arriving close together make that fold a
+		/// little quicker each time, down to a floor; a real pause resets it to normal speed.
+		/// </summary>
+		private void FlushWheelPageTurn()
+		{
+			int pages = wheelPendingNotches;
+			wheelPendingNotches = 0;
+			if (pages == 0)
+			{
+				return;
+			}
+			long ticks = Machine.Ticks;
+			int sign = Math.Sign(pages);
+			bool flag = sign == wheelLastFlickSign && ticks - wheelLastFlickTicks < WheelRiffleGapTicks;
+			wheelLastFlickSign = sign;
+			wheelLastFlickTicks = ticks;
+			wheelRiffleDuration = (flag ? Math.Max(WheelRiffleMinDuration, (int)((float)((wheelRiffleDuration > 0) ? wheelRiffleDuration : PageCurlDuration) * 0.6f)) : 0);
+			RiffleTo(pages, wheelRiffleDuration);
 		}
 
 		private void display_MouseHWheel(object sender, MouseEventArgs e)

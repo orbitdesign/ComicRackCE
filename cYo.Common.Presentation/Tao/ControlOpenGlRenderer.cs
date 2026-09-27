@@ -402,6 +402,10 @@ namespace cYo.Common.Presentation.Tao
 				throw new InvalidOperationException("Can not create a GL rendering context.");
 			}
 			MakeCurrent();
+			//Capabilities are cached in static fields and belong to the context that was
+			//current when they were first read, so they have to be dropped for a new one.
+			//On hybrid graphics machines the previous values can even be another GPU's.
+			OpenGlInfo.Reset();
 			Wgl.wglDescribePixelFormat(deviceContext, num, Marshal.SizeOf(typeof(Gdi.PIXELFORMATDESCRIPTOR)), ref pixelFormatDescriptor);
 			isSoftwareRenderer = (pixelFormatDescriptor.dwFlags & 0x1000) == 0 && (pixelFormatDescriptor.dwFlags & 0x40) != 0;
 			if (OpenGlInfo.Version < 1.2f)

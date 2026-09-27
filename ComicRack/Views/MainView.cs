@@ -509,28 +509,22 @@ namespace cYo.Projects.ComicRack.Viewer.Views
 
 		private void ComicBrowserForm_Resize(object sender, EventArgs e)
 		{
-			ComicBrowserForm comicBrowserForm = sender as ComicBrowserForm;
-			if (comicBrowserForm.WindowState != FormWindowState.Maximized)
-			{
-				base.ParentForm.WindowState = comicBrowserForm.WindowState;
-			}
-			comicBrowserForm.Visible = comicBrowserForm.WindowState != FormWindowState.Minimized;
+			//Nothing to do any more. Without a taskbar button, a minimized library window could not be
+			//brought back, so minimizing it used to minimize (and hide) the whole program. Now that it
+			//has its own button it minimizes on its own, like any other window.
 		}
 
 		private void ParentForm_Resize(object sender, EventArgs e)
 		{
-			Form form = (Form)sender;
-			if (form.WindowState == FormWindowState.Maximized)
-			{
-				return;
-			}
+			//Library windows have their own taskbar buttons now, so they are no longer minimized and
+			//restored together with the main window. Only make sure none is left hidden by the old
+			//behavior.
 			foreach (Form item in openBrowsers.OfType<Form>())
 			{
-				if (form.WindowState != FormWindowState.Minimized)
+				if (!item.IsDisposed && !item.Visible)
 				{
 					item.Visible = true;
 				}
-				item.WindowState = form.WindowState;
 			}
 		}
 
@@ -744,7 +738,8 @@ namespace cYo.Projects.ComicRack.Viewer.Views
 			ComicBrowserForm comicBrowserForm = new ComicBrowserForm
 			{
 				Text = bookList.Name,
-				ShowInTaskbar = false
+				//Own taskbar button, so the window can be found, switched to and minimized on its own.
+				ShowInTaskbar = true
 			};
 			comicBrowserForm.Disposed += ComicBrowserForm_Disposed;
 			comicBrowserForm.Resize += ComicBrowserForm_Resize;

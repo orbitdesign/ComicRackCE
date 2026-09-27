@@ -25,6 +25,54 @@ namespace cYo.Common.Runtime
 			return string.IsNullOrEmpty(CurrentCommit) ? "" : $" [{CurrentCommit[..7]}{isDirtyText}]";
         }
 
+		/// <summary>
+		/// Name of a custom build, from [assembly: AssemblyMetadata("BuildName", ...)]. Empty for
+		/// official Community Edition builds.
+		/// </summary>
+		public static string BuildName => GetMetadata("BuildName");
+
+		/// <summary>
+		/// Version of a custom build, from [assembly: AssemblyMetadata("BuildVersion", ...)].
+		/// </summary>
+		public static string BuildVersion => GetMetadata("BuildVersion");
+
+		/// <summary>
+		/// "orbitdesign build 1.3", or an empty string for official builds.
+		/// </summary>
+		public static string GetBuildInfo()
+		{
+			string name = BuildName;
+			string version = BuildVersion;
+			if (string.IsNullOrEmpty(name) && string.IsNullOrEmpty(version))
+			{
+				return string.Empty;
+			}
+			return $"{name} build {version}".Trim();
+		}
+
+		private static string GetMetadata(string key)
+		{
+			try
+			{
+				Assembly assembly = Assembly.GetEntryAssembly();
+				if (assembly == null)
+				{
+					return string.Empty;
+				}
+				foreach (AssemblyMetadataAttribute attribute in assembly.GetCustomAttributes(typeof(AssemblyMetadataAttribute), inherit: false))
+				{
+					if (attribute.Key == key)
+					{
+						return attribute.Value ?? string.Empty;
+					}
+				}
+			}
+			catch
+			{
+			}
+			return string.Empty;
+		}
+
 		public static Stream GetStream(string resourceName, Assembly assembly)
         {
             string fullResourceName = assembly.GetManifestResourceNames().FirstOrDefault(x => x.Contains(resourceName));

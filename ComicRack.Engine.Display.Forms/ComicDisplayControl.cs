@@ -460,6 +460,8 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 					return;
 				}
 				StopPendingImageCacheUpdate();
+				adaptiveReadAheadRadius = ReadAheadRadiusFloor;
+				lastReadAheadReach = -1;
 				if (comicBookNavigator != null)
 				{
 					comicBookNavigator.Disposing -= book_Disposing;
@@ -1753,8 +1755,11 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 			}
 			if (flag)
 			{
+				//Two pages ahead, not one: in two page layout the next turn needs both, and while
+				//reading forwards this is the page after the one being read.
 				CachePage(page, 1, fastMem: true, bottom: false);
-				InvalidatePendingImageCacheUpdate();
+				CachePage(page, 2, fastMem: true, bottom: false);
+				EnsurePendingImageCacheUpdate();
 			}
 			if (page2 != null)
 			{
@@ -1770,6 +1775,25 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 			return page2 ?? new ItemLock<PageImage>(null);
 		}
 
+		/// <summary>
+		/// Makes sure the deeper read ahead will run, without putting it off again. Restarting the
+		/// timer on every page meant that reading at any normal pace kept pushing it back, so the
+		/// cache was never filled beyond the next page and every turn waited on the decoder.
+		/// </summary>
+		private void EnsurePendingImageCacheUpdate()
+		{
+			if (ReadAheadPages <= 1)
+			{
+				//Read ahead turned off: the single next page fetched for the page currently being
+				//shown is all this book will ever get, so there is nothing for the deep walk to do.
+				return;
+			}
+			if (!cacheUpdateTimer.Enabled)
+			{
+				cacheUpdateTimer.Start();
+			}
+		}
+
 		private void InvalidatePendingImageCacheUpdate()
 		{
 			cacheUpdateTimer.Stop();
@@ -1781,17 +1805,66 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 			cacheUpdateTimer.Stop();
 		}
 
+		//How far the deep read ahead reaches, tuned automatically by whether the page right next
+		//door has been keeping up. Starts modest, grows a page at a time every tick it keeps up,
+		//and is cut sharply back the moment it does not - so a fast local disk gradually earns a
+		//wide reach that makes jumping around a book feel instant, while a slow connection settles
+		//to whatever depth it can actually sustain instead of being handed a fixed guess.
+		private const int ReadAheadRadiusFloor = 2;
+
+		private int adaptiveReadAheadRadius = ReadAheadRadiusFloor;
+
+		//The farthest forward page the last successful walk actually asked for, so the next tick
+		//can check whether that whole walk has landed - not just the one page right next door -
+		//before growing the reach any further. -1 means there is nothing to wait on yet.
+		private int lastReadAheadReach = -1;
+
 		private void cacheUpdateTimer_Tick(object sender, EventArgs e)
 		{
 			cacheUpdateTimer.Stop();
-			if (!IsValid)
+			if (!IsValid || ReadAheadPages <= 1)
 			{
+				//Read ahead may have just been turned off while this tick was already waiting to
+				//fire; check again rather than trust that EnsurePendingImageCacheUpdate caught it.
 				return;
 			}
 			try
 			{
 				int num = CurrentPage;
-				int num2 = (pagePool.MaximumMemoryItems - 15) / 2;
+				//Only reach further ahead once the page right next door has actually arrived. On a
+				//slow connection that page can itself take a long time, and starting a wide,
+				//multi-threaded read ahead on top of a fetch that has not even finished piles more
+				//concurrent traffic onto the same slow link and onto whatever archive is still being
+				//read from, which is what dragged page turning to a crawl. Skipping this tick costs
+				//nothing: the next page turn re-arms the timer and it simply tries again.
+				if (!IsPageInCache(num, 1, fastMem: true, putInCache: false))
+				{
+					//Not keeping up: pull the reach back sharply rather than just trying the same
+					//depth again next time.
+					adaptiveReadAheadRadius = Math.Max(ReadAheadRadiusFloor, adaptiveReadAheadRadius / 2);
+					lastReadAheadReach = -1;
+					return;
+				}
+				//The page right next door arriving is a weak signal on its own - the urgent, high
+				//priority fetch for that one page keeps winning a fair race against a slow link even
+				//while a much bigger walk from a previous tick is still draining in the background.
+				//Left unguarded, that let the reach keep growing tick after tick regardless of
+				//whether the connection could actually sustain what was already being asked for,
+				//until the growing walks began overlapping and the whole thing bogged down again -
+				//worse the longer reading continued, exactly as a fixed depth never did. So growth
+				//also needs the farthest page the previous walk reached for to have landed; if it
+				//has not, the reach simply holds where it is for now rather than being asked to
+				//stretch even further on top of a walk that has not finished yet.
+				if (lastReadAheadReach > num && !IsPageInCache(lastReadAheadReach, 0, fastMem: true, putInCache: false))
+				{
+					lastReadAheadReach = -1;
+					return;
+				}
+				adaptiveReadAheadRadius = Math.Min(ReadAheadPages, adaptiveReadAheadRadius + 1);
+				//Capped on its own regardless of how large the memory cache is configured to be, so a
+				//generous cache size (set for headroom, not for a wider read ahead) can not turn one
+				//tick into a burst of many concurrent background fetches.
+				int num2 = Math.Min(adaptiveReadAheadRadius, (pagePool.MaximumMemoryItems - 15) / 2);
 				int page = CachePage(num, 1, fastMem: true, bottom: false);
 				int page2 = num;
 				bool flag = page != -1;
@@ -1799,6 +1872,9 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 				while (num2 > 0 && (!flag || !(flag = CacheBackPage(ref page, 1)) || --num2 != 0) && (!flag || !(flag = CacheBackPage(ref page, 1)) || --num2 != 0) && (!flag2 || !(flag2 = CacheBackPage(ref page2, -1)) || --num2 != 0) && (flag || flag2))
 				{
 				}
+				//Remember how far forward this walk actually reached - a valid page only if the walk
+				//did not simply run off the end of the book - so next tick can check it landed.
+				lastReadAheadReach = flag ? page : (-1);
 			}
 			catch (Exception)
 			{
@@ -2061,18 +2137,20 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 						if (imageInfo.IsSingleImage && !imageInfo.IsForcedDoublePage)
 						{
 							DrawPage(gr, itemLock, destination, source);
-							if (RealisticPages)
+							//Always work out where the page ended up on screen. DrawPageOrnaments only
+							//draws bows, borders and shadows when Realistic Pages is on, but it also
+							//returns the page bounds, which the paper texture needs either way. Leaving
+							//this out kept the bounds from the previously shown page, so the texture
+							//covered the wrong area until the layout was changed.
+							if (imageInfo.IsDoublePage)
 							{
-								if (imageInfo.IsDoublePage)
-								{
-									RectangleF rectangleF = new RectangleF(0f, 0f, (float)itemLock.Item.Width / 2f, itemLock.Item.Height);
-									displayedPageBounds = DrawPageOrnaments(gr, destination, source, rectangleF, rectangleF, leftOk: true, rightOk: true, fillLeft: false, fillRight: false);
-								}
-								else
-								{
-									RectangleF rectangleF2 = new RectangleF(0f, 0f, itemLock.Item.Width, itemLock.Item.Height);
-									displayedPageBounds = DrawPageOrnaments(gr, destination, source, rectangleF2, rectangleF2, leftOk: true, rightOk: false, fillLeft: false, fillRight: false);
-								}
+								RectangleF rectangleF = new RectangleF(0f, 0f, (float)itemLock.Item.Width / 2f, itemLock.Item.Height);
+								displayedPageBounds = DrawPageOrnaments(gr, destination, source, rectangleF, rectangleF, leftOk: true, rightOk: true, fillLeft: false, fillRight: false);
+							}
+							else
+							{
+								RectangleF rectangleF2 = new RectangleF(0f, 0f, itemLock.Item.Width, itemLock.Item.Height);
+								displayedPageBounds = DrawPageOrnaments(gr, destination, source, rectangleF2, rectangleF2, leftOk: true, rightOk: false, fillLeft: false, fillRight: false);
 							}
 							displayHash = itemLock.Item.GetHashCode();
 							array = new int[1]
@@ -2232,6 +2310,7 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 		protected override void OnMouseDown(MouseEventArgs e)
 		{
 			base.OnMouseDown(e);
+			DragTurnMouseDown(e);
 			if (e.Button == MouseButtons.Left && IsMouseOk(e.Location))
 			{
 				if (!MagnifierVisible)
@@ -2263,11 +2342,13 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 				base.DisableScrolling = false;
 			}
 			base.OnMouseUp(e);
+			DragTurnMouseUp();
 		}
 
 		protected override void OnMouseMove(MouseEventArgs e)
 		{
 			base.OnMouseMove(e);
+			DragTurnMouseMove(e);
 			if (!mouseDown.IsEmpty && (Math.Abs(mouseDown.X - e.X) > 5 || Math.Abs(mouseDown.Y - e.Y) > 5))
 			{
 				longClickTimer.Stop();
@@ -3025,8 +3106,12 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 					Blender = PageBackward;
 				}
 				break;
+			case PageTransitionEffect.PageCurl:
+				//Works out direction and reading order itself.
+				Blender = PageCurlBlending;
+				break;
 			}
-			ShouldPagingBlend = !base.InvokeRequired && (BlendWhilePaging || Machine.Ticks - lastBlend > 100);
+			ShouldPagingBlend = !suppressNavigationBlend && !base.InvokeRequired && (BlendWhilePaging || Machine.Ticks - lastBlend > 100);
 			OnPageChange(e);
 			int oldPage = CurrentPage;
 			DisplayOutputConfig displayConfig = base.DisplayConfig;
@@ -3216,7 +3301,7 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 					{
 						renderer.EndScene();
 					}
-					ThreadUtility.Animate(EngineConfiguration.Default.BlendDuration, delegate(float x)
+					ThreadUtility.Animate(GetBlendDuration(blender), delegate(float x)
 					{
 						IBitmapRenderer bitmapRenderer = renderer;
 						try
@@ -3411,6 +3496,1399 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 			}
 			hr.Clip = Rectangle.Empty;
 		}
+
+		#region Realistic page curl
+
+		//The turning sheet is modelled as a strip of paper hinged at the spine. It is cut into thin
+		//vertical slices; every slice gets its own 3D angle (so the sheet can bend), a perspective
+		//size, and a shade from its angle to the viewer. Each slice is then drawn as the matching
+		//column of the page with an ordinary scale transform and a clip, which is all the renderer
+		//interface offers, so this works on the Direct2D and the OpenGL renderer alike.
+
+		private const float PageCurlBend = 0.9f;
+
+		private static readonly Color PageCurlPaperColor = Color.FromArgb(246, 243, 236);
+
+		public void PageCurlBlending(IBitmapRenderer hr, int oldPage, DisplayOutput oldOut, DisplayOutput display, float percent)
+		{
+			if (oldOut == null || display == null)
+			{
+				FadeInBlending(hr, oldPage, oldOut, display, percent);
+				return;
+			}
+			float t = percent.Clamp(0f, 1f);
+			//Any right-to-left book turns from the left, whichever way its spreads are arranged.
+			bool mirrored = base.RightToLeftReading;
+			if (hr is IGeometryClipRenderer clipper)
+			{
+				//Same paper as a mouse drag, with the page taken by an invisible hand: the corner
+				//is carried across to the far side along a slight arc, so the sheet bends and
+				//lifts instead of pivoting like card.
+				bool peelRight = (currentPage >= oldPage) != mirrored;
+				GetPeelGeometry(oldOut, peelRight, out bool _, out RectangleF sheet, out RectangleF _, out float spine);
+				if (sheet.Width > 8f && sheet.Height > 8f)
+				{
+					PointF corner = new PointF(peelRight ? sheet.Right : sheet.Left, sheet.Top + sheet.Height * 0.72f);
+					PointF landed = new PointF(2f * spine - corner.X, corner.Y);
+					float eased = t * t * (3f - 2f * t);
+					//A hand lifts the page a little as it carries it over.
+					float arc = 0f - sheet.Height * 0.12f * (float)Math.Sin(Math.PI * eased);
+					PointF hand = new PointF(corner.X + (landed.X - corner.X) * eased, corner.Y + (landed.Y - corner.Y) * eased + arc);
+					hand = ConstrainPeel(hand, corner, sheet, spine);
+					RenderCornerPeel(hr, clipper, oldOut, oldPage, display, currentPage, peelRight, corner, hand);
+					return;
+				}
+			}
+			if (currentPage >= oldPage)
+			{
+				//Forward: the old page is the sheet that turns away and uncovers the new one.
+				RenderPageCurl(hr, oldOut, oldPage, display, currentPage, t, mirrored);
+			}
+			else
+			{
+				//Backward: the same motion played in reverse, so the previous page swings back
+				//over the current one, just like turning back in a real book.
+				RenderPageCurl(hr, display, currentPage, oldOut, oldPage, 1f - t, mirrored);
+			}
+		}
+
+		private void GetCurlGeometry(DisplayOutput sheetOut, bool mirrored, out bool spread, out int sgn, out float spine, out float width)
+		{
+			Rectangle page = sheetOut.OutputBoundsScreen;
+			//A spread (two pages side by side) turns around its middle, a single page around its
+			//edge. Adaptive layouts can show a lone portrait page in two page mode, which the
+			//aspect ratio check catches.
+			spread = TwoPageDisplay && page.Width >= page.Height * 0.9f;
+			sgn = mirrored ? -1 : 1;
+			spine = spread ? (page.Left + page.Width / 2f) : (mirrored ? page.Right : page.Left);
+			width = spread ? (page.Width / 2f) : page.Width;
+		}
+
+		private void RenderPageCurl(IBitmapRenderer hr, DisplayOutput sheetOut, int sheetPage, DisplayOutput underOut, int underPage, float t, bool mirrored, bool ease = true)
+		{
+			Rectangle client = base.ClientRectangle;
+			Rectangle page = sheetOut.OutputBoundsScreen;
+			GetCurlGeometry(sheetOut, mirrored, out bool spread, out int sgn, out float spine, out float width);
+			float opacity = hr.Opacity;
+			System.Drawing.Drawing2D.Matrix baseTransform = hr.Transform;
+			try
+			{
+				if (width < 8f || page.Height < 8)
+				{
+					RenderImageSafe(hr, underOut, underPage, RenderType.Default);
+					return;
+				}
+				//Animations ease in and out; a page held by the mouse follows the mouse exactly.
+				float eased = ease ? (t * t * (3f - 2f * t)) : t.Clamp(0f, 1f);
+				float theta = (float)Math.PI * eased;
+				float sinTheta = (float)Math.Sin(theta);
+				RectangleF allowed = RectangleF.FromLTRB(page.Left, client.Top, page.Right, client.Bottom);
+
+				//1. What lies underneath: the new page where the sheet came from, and in a spread
+				//   the facing page of the old spread that the sheet will land on.
+				RenderImageBackground(hr, underOut, underPage);
+				if (spread)
+				{
+					RectangleF uncovered = (sgn > 0) ? RectangleF.FromLTRB(spine, client.Top, client.Right, client.Bottom) : RectangleF.FromLTRB(client.Left, client.Top, spine, client.Bottom);
+					RectangleF facing = (sgn > 0) ? RectangleF.FromLTRB(client.Left, client.Top, spine, client.Bottom) : RectangleF.FromLTRB(spine, client.Top, client.Right, client.Bottom);
+					SetCurlClip(hr, baseTransform, uncovered);
+					RenderImageSafe(hr, underOut, underPage, RenderType.WithoutBackground);
+					SetCurlClip(hr, baseTransform, facing);
+					RenderImageSafe(hr, sheetOut, sheetPage, RenderType.WithoutBackground);
+				}
+				else
+				{
+					SetCurlClip(hr, baseTransform, RectangleF.Empty);
+					RenderImageSafe(hr, underOut, underPage, RenderType.WithoutBackground);
+				}
+
+				//2. Shape of the sheet. Arc length u runs from the spine to the free edge. The free
+				//   edge leads, like a page lifted by its edge, and the bend straightens out again
+				//   as the sheet lands.
+				int slices = Math.Max(20, Math.Min(48, (int)(width / 14f)));
+				float step = width / slices;
+				float[] along = new float[slices + 1];
+				float[] height = new float[slices + 1];
+				float[] angle = new float[slices];
+				for (int i = 0; i < slices; i++)
+				{
+					float u = (i + 0.5f) / slices;
+					float phi = Math.Min((float)Math.PI, theta + PageCurlBend * sinTheta * u * u);
+					angle[i] = phi;
+					along[i + 1] = along[i] + (float)Math.Cos(phi) * step;
+					height[i + 1] = height[i] + (float)Math.Sin(phi) * step;
+				}
+				float centerX = client.Left + client.Width / 2f;
+				float centerY = page.Top + page.Height / 2f;
+				float eye = 4f * Math.Max(width, page.Height);
+				float[] screenX = new float[slices + 1];
+				float[] scale = new float[slices + 1];
+				for (int i = 0; i <= slices; i++)
+				{
+					scale[i] = eye / Math.Max(eye * 0.25f, eye - height[i]);
+					screenX[i] = centerX + (spine + sgn * along[i] - centerX) * scale[i];
+				}
+
+				//3. Soft shadow the lifted sheet throws next to its free edge.
+				if (sinTheta > 0.02f)
+				{
+					float edge = screenX[slices];
+					int side = Math.Sign(edge - spine);
+					if (side == 0)
+					{
+						side = sgn;
+					}
+					float shadowWidth = width * 0.18f * sinTheta;
+					float strength = 0.45f * sinTheta;
+					SetCurlClip(hr, baseTransform, allowed);
+					const int bands = 10;
+					for (int k = 0; k < bands; k++)
+					{
+						float a = edge + side * shadowWidth * k / bands;
+						float b = edge + side * shadowWidth * (k + 1) / bands;
+						float fade = 1f - (float)k / bands;
+						hr.Opacity = strength * fade * fade;
+						hr.FillRectangle(RectangleF.FromLTRB(Math.Min(a, b), page.Top, Math.Max(a, b), page.Bottom), Color.Black);
+					}
+				}
+
+				//4. The sheet itself, slice by slice, furthest from the viewer first.
+				int[] order = Enumerable.Range(0, slices).OrderBy((int i) => height[i] + height[i + 1]).ToArray();
+				foreach (int i in order)
+				{
+					float x0 = screenX[i];
+					float x1 = screenX[i + 1];
+					if (Math.Abs(x1 - x0) < 0.25f)
+					{
+						continue;
+					}
+					float s = (scale[i] + scale[i + 1]) / 2f;
+					bool front = (x1 - x0) * sgn > 0f;
+					RectangleF target = RectangleF.FromLTRB(Math.Min(x0, x1) - 0.35f, centerY + (page.Top - centerY) * s, Math.Max(x0, x1) + 0.35f, centerY + (page.Bottom - centerY) * s);
+					target.Intersect(allowed);
+					if (target.Width <= 0f || target.Height <= 0f)
+					{
+						continue;
+					}
+					float u0 = step * i;
+					float u1 = step * (i + 1);
+					//The back of a sheet in a spread is the first page of the next spread, which
+					//sits on the other side of the spine once the sheet has landed.
+					bool useBack = !front && spread;
+					float src0 = useBack ? (spine - sgn * u0) : (spine + sgn * u0);
+					float src1 = useBack ? (spine - sgn * u1) : (spine + sgn * u1);
+					float scaleX = (x1 - x0) / (src1 - src0);
+					SetCurlClip(hr, baseTransform, target);
+					if (!front && !spread)
+					{
+						//A single page has no next page on its back: show paper with the print
+						//faintly showing through.
+						hr.Opacity = 1f;
+						hr.FillRectangle(target, PageCurlPaperColor);
+					}
+					using (System.Drawing.Drawing2D.Matrix slice = new System.Drawing.Drawing2D.Matrix(scaleX, 0f, 0f, s, x0 - scaleX * src0, centerY - s * centerY))
+					{
+						System.Drawing.Drawing2D.Matrix m = baseTransform.Clone();
+						m.Multiply(slice);
+						hr.Transform = m;
+						hr.Opacity = (front || spread) ? 1f : 0.12f;
+						RenderImageSafe(hr, useBack ? underOut : sheetOut, useBack ? underPage : sheetPage, RenderType.WithoutBackground);
+						hr.Transform = baseTransform;
+						m.Dispose();
+					}
+					//Light: facing the viewer is fully lit, edge on is darkest.
+					float shade = (1f - Math.Abs((float)Math.Cos(angle[i]))) * 0.6f;
+					if (shade > 0.02f)
+					{
+						hr.Opacity = shade;
+						hr.FillRectangle(target, Color.Black);
+					}
+				}
+			}
+			finally
+			{
+				hr.Transform = baseTransform;
+				hr.Clip = RectangleF.Empty;
+				hr.Opacity = opacity;
+			}
+		}
+
+		private static void SetCurlClip(IBitmapRenderer hr, System.Drawing.Drawing2D.Matrix baseTransform, RectangleF rect)
+		{
+			//Clips are set in screen space, before any slice transform is applied. Setting them
+			//under a mirrored transform confuses the OpenGL renderer's scissor math.
+			hr.Transform = baseTransform;
+			hr.Clip = rect;
+		}
+
+		private int GetBlendDuration(BlendAnimationHandler blender)
+		{
+			if (blender != null && blender.Target == this && blender.Method.Name == nameof(PageCurlBlending))
+			{
+				//A wheel riffle sets this in EndRiffle, once it has finished silently stepping to
+				//the landed-on page, asking for a quicker fold so the run reads as pages riffling
+				//by. Consumed once so it can never linger onto some later, unrelated turn.
+				int duration = NextPageTurnDuration;
+				NextPageTurnDuration = 0;
+				return (duration > 0) ? duration : PageCurlDuration;
+			}
+			return EngineConfiguration.Default.BlendDuration;
+		}
+
+		#endregion
+
+		#region Turning pages by dragging
+
+		//Grab a page near its outer edge and drag it towards the spine: the page follows the mouse
+		//with the same curl as the Realistic Page Curl transition. Let go past about a third of the
+		//way (or flick) and the turn completes; otherwise the page falls back.
+		//
+		//The book is actually moved to the new page as soon as the drag starts, with the usual
+		//transition switched off, so both sides of the sheet are known. A cancelled drag moves it
+		//back the same way.
+
+		private enum DragTurnState
+		{
+			None,
+			Pending,
+			Active
+		}
+
+		private const int DragTurnStartDistance = 8;
+
+		private DragTurnState dragTurnState;
+
+		private Point dragTurnStart;
+
+		private bool dragTurnForward;
+
+		private int dragTurnOriginalPage;
+
+		private DisplayOutput dragSheetOut;
+
+		private DisplayOutput dragUnderOut;
+
+		private int dragSheetPage;
+
+		private int dragUnderPage;
+
+		private float dragTurnT;
+
+		private float dragTurnOffset;
+
+		private float dragTurnVelocity;
+
+		private long dragTurnLastTicks;
+
+		private bool dragTurnSuppressPaint;
+
+		private bool suppressNavigationBlend;
+
+		[DefaultValue(true)]
+		public bool DragPageTurning
+		{
+			get;
+			set;
+		} = true;
+
+		/// <summary>
+		/// Ceiling on the adaptive read ahead below. 1 turns the deep, speculative read ahead off
+		/// entirely - only the page being shown, and its double-page partner, are ever fetched.
+		/// </summary>
+		public int ReadAheadPages
+		{
+			get;
+			set;
+		} = 20;
+
+		public float PageCurlAmount
+		{
+			get;
+			set;
+		} = 0.12f;
+
+		public float PageCurlShadowStrength
+		{
+			get;
+			set;
+		} = 1f;
+
+		public float PageCurlGrabArea
+		{
+			get;
+			set;
+		} = 0.6f;
+
+		public int PageCurlDuration
+		{
+			get;
+			set;
+		} = 600;
+
+		public int NextPageTurnDuration
+		{
+			get;
+			set;
+		}
+
+		//The page and layout BeginRiffle remembered, purely to hand back to BlendAnimation once
+		//EndRiffle is called; never seen outside this class, so the engine layer that drives the
+		//two calls never has to know this type exists.
+		private int riffleOldPage;
+
+		private DisplayOutputConfig riffleOldConfig;
+
+		private bool riffleWasSuppressed;
+
+		private bool riffleSuppressPaint;
+
+		/// <summary>
+		/// Remembers the page shown right now, and mutes the ordinary per-turn fold until EndRiffle
+		/// turns it back on - used to step through several pages one by one (each through the
+		/// engine's own DisplayNextPageOrPart/DisplayPreviousPageOrPart) without a fold appearing
+		/// after every single one of them.
+		/// </summary>
+		public void BeginRiffle()
+		{
+			riffleOldPage = currentPage;
+			riffleOldConfig = base.DisplayConfig;
+			riffleWasSuppressed = suppressNavigationBlend;
+			suppressNavigationBlend = true;
+			riffleSuppressPaint = true;
+		}
+
+		/// <summary>
+		/// Turns the ordinary per-turn fold back on, then - if the page actually moved since the
+		/// matching BeginRiffle - shows one fold running from the page remembered then straight to
+		/// wherever the page is now.
+		/// </summary>
+		public void EndRiffle(int duration)
+		{
+			suppressNavigationBlend = riffleWasSuppressed;
+			riffleSuppressPaint = false;
+			if (!IsValid || currentPage == riffleOldPage)
+			{
+				//Already at the start or end of the book, or nothing else moved it: nothing to show.
+				return;
+			}
+			NextPageTurnDuration = duration;
+			BlendAnimation(riffleOldPage, riffleOldConfig);
+		}
+
+		private bool CanDragTurn()
+		{
+			return DragPageTurning && renderer != null && renderer.IsHardware && Book != null && PageLayout != PageLayoutMode.Continuous && !MagnifierVisible && !inBlendAnmation && base.Display != null && base.Display.IsAllVisible;
+		}
+
+		/// <summary>
+		/// +1 when the point is on the edge that turns to the next page, -1 on the edge that turns
+		/// back, 0 elsewhere.
+		/// </summary>
+		private int HitDragTurnZone(Point pt)
+		{
+			Rectangle page = base.Display.OutputBoundsScreen;
+			if (page.Width < 40 || !page.Contains(pt))
+			{
+				return 0;
+			}
+			//Roughly the outer 60% of each page can be grabbed. In a spread that is 30% of the
+			//whole width, measured from each outer edge, so the inner thirds near the gutter are
+			//left alone.
+			float zone = Math.Max(40f, page.Width * (TwoPageDisplay ? (PageCurlGrabArea * 0.5f) : PageCurlGrabArea));
+			bool right = pt.X >= page.Right - zone;
+			bool left = pt.X <= page.Left + zone;
+			if (!right && !left)
+			{
+				return 0;
+			}
+			if (right && left)
+			{
+				//Wide zones overlap in the middle: grab whichever edge is nearer.
+				right = page.Right - pt.X <= pt.X - page.Left;
+				left = !right;
+			}
+			bool forward = right != base.RightToLeftReading;
+			if (!Book.CanNavigate(forward ? 1 : -1))
+			{
+				return 0;
+			}
+			return forward ? 1 : -1;
+		}
+
+		private void DragTurnMouseDown(MouseEventArgs e)
+		{
+			dragTurnState = DragTurnState.None;
+			if (e.Button != MouseButtons.Left || !CanDragTurn())
+			{
+				return;
+			}
+			int zone = HitDragTurnZone(e.Location);
+			if (zone != 0)
+			{
+				dragTurnState = DragTurnState.Pending;
+				dragTurnStart = e.Location;
+				dragTurnForward = zone > 0;
+			}
+		}
+
+		private void DragTurnMouseMove(MouseEventArgs e)
+		{
+			if (dragTurnState == DragTurnState.Pending)
+			{
+				int dx = e.X - dragTurnStart.X;
+				int dy = e.Y - dragTurnStart.Y;
+				//Inward means away from the grabbed edge, towards the spine.
+				bool grabbedRight = dragTurnForward != base.RightToLeftReading;
+				int inward = grabbedRight ? -dx : dx;
+				if (Math.Abs(dy) > DragTurnStartDistance && Math.Abs(dy) > Math.Abs(dx))
+				{
+					//A vertical drag is not a page turn.
+					dragTurnState = DragTurnState.None;
+				}
+				else if (inward > DragTurnStartDistance)
+				{
+					BeginDragTurn(e.Location);
+				}
+			}
+			else if (dragTurnState == DragTurnState.Active)
+			{
+				UpdateDragTurn(e.Location);
+			}
+		}
+
+		private bool DragTurnMouseUp()
+		{
+			DragTurnState state = dragTurnState;
+			dragTurnState = DragTurnState.None;
+			if (state != DragTurnState.Active)
+			{
+				return false;
+			}
+			EndDragTurn();
+			return true;
+		}
+
+		private void BeginDragTurn(Point location)
+		{
+			DisplayOutputConfig oldConfig = base.DisplayConfig;
+			int oldPage = currentPage;
+			bool moved = false;
+			dragTurnSuppressPaint = true;
+			suppressNavigationBlend = true;
+			try
+			{
+				moved = NavigateForDragTurn(dragTurnForward) && currentPage != oldPage;
+			}
+			catch
+			{
+				moved = false;
+			}
+			finally
+			{
+				suppressNavigationBlend = false;
+			}
+			if (!moved)
+			{
+				dragTurnSuppressPaint = false;
+				dragTurnState = DragTurnState.None;
+				Invalidate();
+				return;
+			}
+			try
+			{
+				int wait = 20;
+				while ((!IsPageInCache(oldPage) || !IsPageInCache(oldPage, 1) || !IsPageInCache(currentPage) || !IsPageInCache(currentPage, 1)) && --wait > 0)
+				{
+					Thread.Sleep(25);
+				}
+				DisplayOutputConfig newConfig = base.DisplayConfig;
+				newConfig.Rotation = oldConfig.Rotation;
+				DisplayOutput newOut = DisplayOutput.Create(newConfig, base.CurrentAnamorphicTolerance);
+				DisplayOutput oldOut = DisplayOutput.Create(oldConfig, base.CurrentAnamorphicTolerance);
+				dragTurnOriginalPage = oldPage;
+				dragOldOut = oldOut;
+				dragNewOut = newOut;
+				dragOldPage = oldPage;
+				dragNewPage = currentPage;
+				dragCornerMode = renderer is IGeometryClipRenderer;
+				if (dragCornerMode)
+				{
+					//The grabbed edge is the one being peeled, whichever way the book is read.
+					dragPeelRight = dragTurnForward != base.RightToLeftReading;
+					GetPeelGeometry(oldOut, dragPeelRight, out bool _, out RectangleF sheet, out RectangleF _, out float _);
+					dragCorner = new PointF(dragPeelRight ? sheet.Right : sheet.Left, ((float)dragTurnStart.Y).Clamp(sheet.Top, sheet.Bottom));
+					dragGrabOffset = new PointF(dragCorner.X - dragTurnStart.X, dragCorner.Y - dragTurnStart.Y);
+					dragMouse = dragCorner;
+					dragProgress = 0f;
+				}
+				if (dragTurnForward)
+				{
+					dragSheetOut = oldOut;
+					dragSheetPage = oldPage;
+					dragUnderOut = newOut;
+					dragUnderPage = currentPage;
+				}
+				else
+				{
+					dragSheetOut = newOut;
+					dragSheetPage = currentPage;
+					dragUnderOut = oldOut;
+					dragUnderPage = oldPage;
+				}
+				//Start exactly where the page lies, whatever point inside the edge zone was grabbed.
+				dragTurnOffset = 0f;
+				dragTurnOffset = (dragTurnForward ? 0f : 1f) - PointToDragTurn(dragTurnStart);
+				dragTurnT = dragTurnForward ? 0f : 1f;
+				dragTurnVelocity = 0f;
+				dragTurnLastTicks = Machine.Ticks;
+				dragTurnState = DragTurnState.Active;
+				base.MouseActionHappened = true;
+			}
+			finally
+			{
+				dragTurnSuppressPaint = false;
+			}
+			UpdateDragTurn(location);
+		}
+
+		private float PointToDragTurn(Point pt)
+		{
+			GetCurlGeometry(dragSheetOut, base.RightToLeftReading, out bool spread, out int sgn, out float spine, out float width);
+			float rel = (pt.X - spine) * sgn / Math.Max(1f, width);
+			float t = spread ? (float)(Math.Acos(rel.Clamp(-1f, 1f)) / Math.PI) : (1f - rel);
+			return (t + dragTurnOffset).Clamp(0f, 1f);
+		}
+
+		private void UpdateDragTurn(Point pt)
+		{
+			if (dragCornerMode)
+			{
+				SetPeelMouse(new PointF(pt.X + dragGrabOffset.X, pt.Y + dragGrabOffset.Y), trackVelocity: true);
+				RenderDragTurnFrame();
+				return;
+			}
+			float t = PointToDragTurn(pt);
+			long now = Machine.Ticks;
+			long elapsed = now - dragTurnLastTicks;
+			if (elapsed > 0)
+			{
+				float velocity = (t - dragTurnT) * 1000f / elapsed;
+				//Smooth it so one jittery mouse event does not decide the outcome.
+				dragTurnVelocity = dragTurnVelocity * 0.6f + velocity * 0.4f;
+			}
+			dragTurnLastTicks = now;
+			dragTurnT = t;
+			RenderDragTurnFrame();
+		}
+
+		private void SetPeelMouse(PointF mouse, bool trackVelocity)
+		{
+			GetPeelGeometry(dragOldOut, dragPeelRight, out bool _, out RectangleF sheet, out RectangleF _, out float spine);
+			dragMouse = ConstrainPeel(mouse, dragCorner, sheet, spine);
+			//Progress: 0 with the page lying flat, 1 once the grabbed point has reached its mirror
+			//image on the other side of the spine.
+			float inward = Math.Sign(spine - dragCorner.X);
+			float travel = Math.Max(1f, 2f * Math.Abs(spine - dragCorner.X));
+			float progress = ((dragMouse.X - dragCorner.X) * inward / travel).Clamp(0f, 1f);
+			if (trackVelocity)
+			{
+				long now = Machine.Ticks;
+				long elapsed = now - dragTurnLastTicks;
+				if (elapsed > 0)
+				{
+					float velocity = (progress - dragProgress) * 1000f / elapsed;
+					dragTurnVelocity = dragTurnVelocity * 0.6f + velocity * 0.4f;
+				}
+				dragTurnLastTicks = now;
+			}
+			dragProgress = progress;
+		}
+
+		private bool EndCornerDragTurn()
+		{
+			bool complete = dragTurnVelocity > 1f || (dragTurnVelocity > -1f && dragProgress > 0.35f);
+			GetPeelGeometry(dragOldOut, dragPeelRight, out bool _, out RectangleF _, out RectangleF _, out float spine);
+			PointF from = dragMouse;
+			PointF to = complete ? new PointF(2f * spine - dragCorner.X, dragCorner.Y) : dragCorner;
+			int duration = Math.Max(80, (int)(PageCurlDuration * Math.Abs(complete ? (1f - dragProgress) : dragProgress)));
+			try
+			{
+				dragTurnState = DragTurnState.Active;
+				ThreadUtility.Animate(duration, delegate(float p)
+				{
+					float eased = 1f - (1f - p) * (1f - p);
+					SetPeelMouse(new PointF(from.X + (to.X - from.X) * eased, from.Y + (to.Y - from.Y) * eased), trackVelocity: false);
+					RenderDragTurnFrame();
+				});
+			}
+			catch
+			{
+			}
+			finally
+			{
+				dragTurnState = DragTurnState.None;
+			}
+			return complete;
+		}
+
+		private void EndDragTurn()
+		{
+			if (dragCornerMode)
+			{
+				FinishDragTurn(EndCornerDragTurn());
+				return;
+			}
+			bool complete;
+			if (dragTurnForward)
+			{
+				complete = dragTurnVelocity > 1f || (dragTurnVelocity > -1f && dragTurnT > 0.35f);
+			}
+			else
+			{
+				complete = dragTurnVelocity < -1f || (dragTurnVelocity < 1f && dragTurnT < 0.65f);
+			}
+			float target = (dragTurnForward == complete) ? 1f : 0f;
+			float from = dragTurnT;
+			int duration = Math.Max(60, (int)(PageCurlDuration * Math.Abs(target - from)));
+			try
+			{
+				dragTurnState = DragTurnState.Active;
+				ThreadUtility.Animate(duration, delegate(float p)
+				{
+					float eased = 1f - (1f - p) * (1f - p);
+					dragTurnT = from + (target - from) * eased;
+					RenderDragTurnFrame();
+				});
+			}
+			catch
+			{
+			}
+			finally
+			{
+				dragTurnState = DragTurnState.None;
+			}
+			FinishDragTurn(complete);
+		}
+
+		private void FinishDragTurn(bool complete)
+		{
+			if (!complete)
+			{
+				dragTurnSuppressPaint = true;
+				suppressNavigationBlend = true;
+				try
+				{
+					Book.Navigate(dragTurnOriginalPage, PageSeekOrigin.Absolute);
+				}
+				catch
+				{
+				}
+				finally
+				{
+					suppressNavigationBlend = false;
+					dragTurnSuppressPaint = false;
+				}
+			}
+			//Sheet/under and old/new are the same two outputs in a different order.
+			dragOldOut?.Dispose();
+			dragNewOut?.Dispose();
+			dragOldOut = null;
+			dragNewOut = null;
+			dragSheetOut = null;
+			dragUnderOut = null;
+			dragCornerMode = false;
+			Invalidate();
+		}
+
+		private bool NavigateForDragTurn(bool forward)
+		{
+			//Same page steps as ComicDisplay.DisplayNextPage / DisplayPreviousPage, which live in
+			//the engine and can not be called from here.
+			int offset;
+			if (forward)
+			{
+				offset = ((TwoPageDisplay && IsDoubleImage) ? 2 : 1);
+				if (offset == 2)
+				{
+					int next = Book.SeekNewPage(1, PageSeekOrigin.Current);
+					if (next >= 0 && Book.Comic.GetPage(next).PagePosition == ComicPagePosition.Near)
+					{
+						offset = 1;
+					}
+				}
+			}
+			else
+			{
+				int previous = Book.SeekNewPage(-1, PageSeekOrigin.Current);
+				int previous2 = Book.SeekNewPage(-2, PageSeekOrigin.Current);
+				if (!TwoPageDisplay || previous == -1 || previous2 == -1)
+				{
+					offset = -1;
+				}
+				else
+				{
+					ComicPageInfo a = Book.Comic.GetPage(previous);
+					ComicPageInfo b = Book.Comic.GetPage(previous2);
+					offset = ((a.IsSinglePageType || a.IsDoublePage || b.IsSinglePageType || b.IsDoublePage || (a.PagePosition == ComicPagePosition.Near && b.PagePosition != ComicPagePosition.Far)) ? (-1) : (-2));
+				}
+			}
+			return Book.Navigate(offset);
+		}
+
+		private bool RenderDragTurnFrame()
+		{
+			IBitmapRenderer bitmapRenderer = renderer;
+			if (bitmapRenderer == null || !bitmapRenderer.IsHardware || dragSheetOut == null || dragUnderOut == null)
+			{
+				return false;
+			}
+			try
+			{
+				if (bitmapRenderer.BeginScene(null))
+				{
+					using (bitmapRenderer.SaveState())
+					{
+						if (dragCornerMode && bitmapRenderer is IGeometryClipRenderer clipper)
+						{
+							RenderCornerPeel(bitmapRenderer, clipper, dragOldOut, dragOldPage, dragNewOut, dragNewPage, dragPeelRight, dragCorner, dragMouse);
+						}
+						else
+						{
+							RenderPageCurl(bitmapRenderer, dragSheetOut, dragSheetPage, dragUnderOut, dragUnderPage, dragTurnT, base.RightToLeftReading, ease: false);
+						}
+					}
+					RenderImageOverlay(bitmapRenderer, dragNewOut ?? dragUnderOut);
+				}
+			}
+			catch (Exception e)
+			{
+				HandleRendererError(e);
+			}
+			finally
+			{
+				try
+				{
+					bitmapRenderer.EndScene();
+				}
+				catch
+				{
+				}
+			}
+			return true;
+		}
+
+		protected override void OnPaint(PaintEventArgs e)
+		{
+			if (dragTurnSuppressPaint || riffleSuppressPaint)
+			{
+				//The page is being switched behind the scenes; the next frame - the curl catching
+				//up, or the riffle's own fold - follows right after. Without this, book_Navigation's
+				//own forced repaint at the end of each silent step would flash the destination page
+				//in early, a beat before the fold that is supposed to reveal it.
+				return;
+			}
+			if (dragTurnState == DragTurnState.Active && RenderDragTurnFrame())
+			{
+				return;
+			}
+			base.OnPaint(e);
+		}
+
+		#endregion
+
+		#region Corner fold (drag in any direction)
+
+		//When the renderer can clip to polygons (Direct2D), a dragged page folds like paper: the
+		//grabbed point follows the mouse, and the fold line is where the paper would crease, halfway
+		//between the grabbed point's resting place and the mouse, at right angles to the line
+		//joining them. The page splits along that line into the part still lying flat and a flap
+		//folded back over it, with the page underneath showing through where the flap lifted off.
+		//
+		//The paper can not stretch, so the grabbed point can never be further from the two spine
+		//corners than it started. That keeps the page attached to the book.
+
+		private bool dragCornerMode;
+
+		//This frame's pictures of the two pages, kept between frames and rebuilt when the window
+		//changes size.
+		private object peelOldCapture;
+
+		private object peelNewCapture;
+
+		private Size peelCaptureSize;
+
+		//Which renderer the pictures belong to, so they are dropped if the renderer is swapped.
+		private IOffscreenRenderer peelCaptureOwner;
+
+		private bool dragPeelRight;
+
+		private PointF dragCorner;
+
+		private PointF dragGrabOffset;
+
+		private PointF dragMouse;
+
+		private float dragProgress;
+
+		private DisplayOutput dragOldOut;
+
+		private DisplayOutput dragNewOut;
+
+		private int dragOldPage;
+
+		private int dragNewPage;
+
+		private void GetPeelGeometry(DisplayOutput output, bool peelRight, out bool spread, out RectangleF sheet, out RectangleF visible, out float spine)
+		{
+			Rectangle page = output.OutputBoundsScreen;
+			spread = TwoPageDisplay && page.Width >= page.Height * 0.9f;
+			visible = page;
+			if (spread)
+			{
+				spine = page.Left + page.Width / 2f;
+				sheet = peelRight ? RectangleF.FromLTRB(spine, page.Top, page.Right, page.Bottom) : RectangleF.FromLTRB(page.Left, page.Top, spine, page.Bottom);
+			}
+			else
+			{
+				//A single page pivots on its far edge and never leaves its own rectangle.
+				spine = peelRight ? page.Left : page.Right;
+				sheet = page;
+			}
+		}
+
+		private static PointF ConstrainPeel(PointF mouse, PointF dragCorner, RectangleF sheet, float spine)
+		{
+			PointF top = new PointF(spine, sheet.Top);
+			PointF bottom = new PointF(spine, sheet.Bottom);
+			float rTop = Distance(dragCorner, top);
+			float rBottom = Distance(dragCorner, bottom);
+			for (int i = 0; i < 3; i++)
+			{
+				mouse = KeepWithin(mouse, top, rTop);
+				mouse = KeepWithin(mouse, bottom, rBottom);
+			}
+			return mouse;
+		}
+
+		private static PointF KeepWithin(PointF p, PointF center, float radius)
+		{
+			float d = Distance(p, center);
+			if (d <= radius || d < 0.001f)
+			{
+				return p;
+			}
+			float f = radius / d;
+			return new PointF(center.X + (p.X - center.X) * f, center.Y + (p.Y - center.Y) * f);
+		}
+
+		private static float Distance(PointF a, PointF b)
+		{
+			float dx = a.X - b.X;
+			float dy = a.Y - b.Y;
+			return (float)Math.Sqrt(dx * dx + dy * dy);
+		}
+
+		private static PointF[] RectPolygon(RectangleF r)
+		{
+			return new PointF[4]
+			{
+				new PointF(r.Left, r.Top),
+				new PointF(r.Right, r.Top),
+				new PointF(r.Right, r.Bottom),
+				new PointF(r.Left, r.Bottom)
+			};
+		}
+
+		/// <summary>
+		/// Sutherland-Hodgman: keeps the part of a convex polygon where (p - origin) . normal is
+		/// negative (keepNegative) or positive.
+		/// </summary>
+		private static PointF[] ClipHalfPlane(PointF[] polygon, PointF origin, PointF normal, bool keepNegative)
+		{
+			List<PointF> result = new List<PointF>();
+			int n = polygon.Length;
+			for (int i = 0; i < n; i++)
+			{
+				PointF a = polygon[i];
+				PointF b = polygon[(i + 1) % n];
+				float da = (a.X - origin.X) * normal.X + (a.Y - origin.Y) * normal.Y;
+				float db = (b.X - origin.X) * normal.X + (b.Y - origin.Y) * normal.Y;
+				if (!keepNegative)
+				{
+					da = -da;
+					db = -db;
+				}
+				bool ina = da <= 0f;
+				bool inb = db <= 0f;
+				if (ina)
+				{
+					result.Add(a);
+				}
+				if (ina != inb)
+				{
+					float t = da / (da - db);
+					result.Add(new PointF(a.X + (b.X - a.X) * t, a.Y + (b.Y - a.Y) * t));
+				}
+			}
+			return result.ToArray();
+		}
+
+		private static PointF[] ClipToRect(PointF[] polygon, RectangleF r)
+		{
+			polygon = ClipHalfPlane(polygon, new PointF(r.Left, 0f), new PointF(-1f, 0f), keepNegative: true);
+			polygon = ClipHalfPlane(polygon, new PointF(r.Right, 0f), new PointF(1f, 0f), keepNegative: true);
+			polygon = ClipHalfPlane(polygon, new PointF(0f, r.Top), new PointF(0f, -1f), keepNegative: true);
+			return ClipHalfPlane(polygon, new PointF(0f, r.Bottom), new PointF(0f, 1f), keepNegative: true);
+		}
+
+		/// <summary>
+		/// How dark the paper is at distance u from the fold: brightest where it faces the reader,
+		/// darkest where it has turned edge on, and flat again once the roll is over.
+		/// </summary>
+		private static int RollShade(float u, float roll, float strength)
+		{
+			if (roll < 0.01f || u > roll)
+			{
+				return 0;
+			}
+			double angle = Math.PI * Math.Min(1f, u / roll);
+			float shade = (float)(1.0 - Math.Abs(Math.Cos(angle))) * 0.55f * strength;
+			return (int)(255f * shade.Clamp(0f, 1f));
+		}
+
+		/// <summary>
+		/// Adds points along every edge of a polygon, so that bending it keeps its shape instead
+		/// of cutting corners.
+		/// </summary>
+		private static PointF[] Subdivide(PointF[] polygon, float step)
+		{
+			List<PointF> result = new List<PointF>(polygon.Length * 4);
+			for (int i = 0; i < polygon.Length; i++)
+			{
+				PointF a = polygon[i];
+				PointF b = polygon[(i + 1) % polygon.Length];
+				result.Add(a);
+				int parts = (int)(Distance(a, b) / Math.Max(1f, step));
+				for (int k = 1; k < parts; k++)
+				{
+					float t = (float)k / parts;
+					result.Add(new PointF(a.X + (b.X - a.X) * t, a.Y + (b.Y - a.Y) * t));
+				}
+			}
+			return result.ToArray();
+		}
+
+		/// <summary>
+		/// Rolls every point of a polygon, writing over the polygon it was given.
+		/// </summary>
+		private static PointF[] MapPolygon(PointF[] polygon, PointF origin, PointF normal, float roll)
+		{
+			for (int i = 0; i < polygon.Length; i++)
+			{
+				polygon[i] = MapRoll(polygon[i], origin, normal, roll);
+			}
+			return polygon;
+		}
+
+		private static PointF[] MapPolygonSlice(PointF[] polygon, PointF origin, PointF normal, float slope, float shift)
+		{
+			for (int i = 0; i < polygon.Length; i++)
+			{
+				polygon[i] = MapRollSlice(polygon[i], origin, normal, slope, shift);
+			}
+			return polygon;
+		}
+
+		private static PointF[] OffsetPolygon(PointF[] polygon, float dx, float dy)
+		{
+			return polygon.Select((PointF p) => new PointF(p.X + dx, p.Y + dy)).ToArray();
+		}
+
+		/// <summary>
+		/// Where paper at distance u beyond the fold ends up, measured along the fold normal.
+		/// Up to "roll" the paper curves over a half cylinder; past that it lies flat again.
+		/// A sharp fold would simply be -u.
+		/// </summary>
+		private static float RollOffset(float u, float roll)
+		{
+			if (roll < 0.01f)
+			{
+				return 0f - u;
+			}
+			if (u <= roll)
+			{
+				return roll / (float)Math.PI * (float)Math.Sin(Math.PI * u / roll);
+			}
+			return 0f - (u - roll);
+		}
+
+		/// <summary>
+		/// Moves a point of the lifted paper onto the roll, exactly (used for the outline).
+		/// </summary>
+		private static PointF MapRoll(PointF p, PointF origin, PointF normal, float roll)
+		{
+			float u = (p.X - origin.X) * normal.X + (p.Y - origin.Y) * normal.Y;
+			float x = RollOffset(u, roll);
+			return new PointF(p.X + (x - u) * normal.X, p.Y + (x - u) * normal.Y);
+		}
+
+		/// <summary>
+		/// Same, but with one slice's straight-line approximation of the curve.
+		/// </summary>
+		private static PointF MapRollSlice(PointF p, PointF origin, PointF normal, float slope, float shift)
+		{
+			float u = (p.X - origin.X) * normal.X + (p.Y - origin.Y) * normal.Y;
+			float x = slope * u + shift;
+			return new PointF(p.X + (x - u) * normal.X, p.Y + (x - u) * normal.Y);
+		}
+
+		/// <summary>
+		/// One slice's mapping as a System.Drawing matrix: along the fold normal the paper is
+		/// scaled by slope and shifted, across it nothing changes.
+		/// </summary>
+		private static System.Drawing.Drawing2D.Matrix RollMatrix(PointF origin, PointF normal, float slope, float shift)
+		{
+			float nx = normal.X;
+			float ny = normal.Y;
+			float k = slope - 1f;
+			float a00 = 1f + k * nx * nx;
+			float a01 = k * nx * ny;
+			float a11 = 1f + k * ny * ny;
+			//Translation: keep the fold line where it is, then apply the slice's own shift.
+			float ox = origin.X - (a00 * origin.X + a01 * origin.Y) + shift * nx;
+			float oy = origin.Y - (a01 * origin.X + a11 * origin.Y) + shift * ny;
+			return new System.Drawing.Drawing2D.Matrix(a00, a01, a01, a11, ox, oy);
+		}
+
+		private void RenderCornerPeel(IBitmapRenderer hr, IGeometryClipRenderer clipper, DisplayOutput oldOut, int oldPageIndex, DisplayOutput newOut, int newPageIndex, bool peelRight, PointF corner, PointF mouse)
+		{
+			GetPeelGeometry(oldOut, peelRight, out bool spread, out RectangleF sheet, out RectangleF visible, out float spine);
+			Rectangle client = base.ClientRectangle;
+			//Paper folded at an angle reaches past the edges of the page, exactly as it would in
+			//life, and cutting it off there left a straight break across the sheet. The only edge
+			//that still cuts is a single page's far edge: once the sheet has swung past there it
+			//has left the book and should be gone.
+			visible = client;
+			System.Drawing.Drawing2D.Matrix baseTransform = hr.Transform;
+			float opacity = hr.Opacity;
+			//Draw each page once into an offscreen picture the size of the window, then fold that
+			//picture. Without this every slice of the fold redraws the page, which is ruinous on a
+			//7000 pixel scan. It also means the fold shows the page at full quality.
+			bool captured = CapturePeelPages(hr, oldOut, oldPageIndex, newOut, newPageIndex);
+			IHardwareRenderer hardware = hr as IHardwareRenderer;
+			bool wasOptimized = hardware != null && hardware.OptimizedTextures;
+			if (hardware != null && !captured)
+			{
+				//Falling back to redrawing per slice: sample the cheap way while it moves.
+				hardware.OptimizedTextures = true;
+			}
+			try
+			{
+				//1. What is underneath: the new page on the side being peeled, and in a spread the
+				//   old facing page on the other side, where the flap will come to rest.
+				RenderImageBackground(hr, newOut, newPageIndex);
+				if (spread)
+				{
+					RectangleF peelSide = peelRight ? RectangleF.FromLTRB(spine, client.Top, client.Right, client.Bottom) : RectangleF.FromLTRB(client.Left, client.Top, spine, client.Bottom);
+					RectangleF otherSide = peelRight ? RectangleF.FromLTRB(client.Left, client.Top, spine, client.Bottom) : RectangleF.FromLTRB(spine, client.Top, client.Right, client.Bottom);
+					SetCurlClip(hr, baseTransform, peelSide);
+					DrawPeelPage(hr, captured, isOld: false, newOut, newPageIndex);
+					SetCurlClip(hr, baseTransform, otherSide);
+					DrawPeelPage(hr, captured, isOld: true, oldOut, oldPageIndex);
+				}
+				else
+				{
+					SetCurlClip(hr, baseTransform, RectangleF.Empty);
+					DrawPeelPage(hr, captured, isOld: false, newOut, newPageIndex);
+				}
+				SetCurlClip(hr, baseTransform, RectangleF.Empty);
+				float lift = Distance(corner, mouse);
+				PointF[] sheetPolygon = RectPolygon(sheet);
+				if (lift < 0.5f)
+				{
+					clipper.PushPolygonClip(sheetPolygon);
+					DrawPeelPage(hr, captured, isOld: true, oldOut, oldPageIndex);
+					clipper.PopPolygonClip();
+					return;
+				}
+				float width = sheet.Width;
+				//The paper does not crease: it rolls. The roll takes up some of the sheet, so the
+				//fold sits a little further from the corner than the halfway point, which is what
+				//keeps the corner exactly under the mouse.
+				float roll = Math.Min(width * PageCurlAmount, lift * 0.8f);
+				float creaseDistance = (lift + roll) / 2f;
+				PointF normal = new PointF((corner.X - mouse.X) / lift, (corner.Y - mouse.Y) / lift);
+				PointF mid = new PointF(corner.X - normal.X * creaseDistance, corner.Y - normal.Y * creaseDistance);
+				PointF[] flat = ClipHalfPlane(sheetPolygon, mid, normal, keepNegative: true);
+				PointF[] lifted = ClipHalfPlane(sheetPolygon, mid, normal, keepNegative: false);
+				//How far the lifted part reaches, measured from the fold.
+				float reach = 0f;
+				foreach (PointF p in lifted)
+				{
+					reach = Math.Max(reach, (p.X - mid.X) * normal.X + (p.Y - mid.Y) * normal.Y);
+				}
+				//Shape for the shadows: where the lifted paper would lie if it folded flat instead of
+				//rolling. The roll takes up paper, so this reaches a little further than the sheet
+				//itself, and the difference is the pocket under the curled edge that should be shaded.
+				PointF[] flap = ClipToRect(MapPolygon(Subdivide(lifted, 8f), mid, normal, 0f), visible);
+				float shadowLength = Math.Min(width * 0.25f, lift * 0.5f) + 4f;
+				float strength = Math.Min(1f, lift / (width * 0.3f));
+				//A single page has nothing on the far side of its hinge for the sheet to land on, so
+				//once it swings past there it fades away rather than being chopped off at the edge.
+				float fade = 1f;
+				if (!spread)
+				{
+					float turn = creaseDistance / Math.Max(1f, Math.Abs(corner.X - spine));
+					//Keep the sheet solid for as long as possible: while it fades it is see through,
+					//and anything dark on the page underneath shows through it.
+					fade = ((1f - turn) / 0.12f).Clamp(0f, 1f);
+					if (fade <= 0.01f)
+					{
+						return;
+					}
+				}
+
+				//2. The part of the old page still lying flat.
+				if (flat.Length >= 3)
+				{
+					clipper.PushPolygonClip(flat);
+					DrawPeelPage(hr, captured, isOld: true, oldOut, oldPageIndex);
+					clipper.PopPolygonClip();
+				}
+				//3. Shadow the lifted flap throws on the uncovered page, darkest at the crease.
+				if (lifted.Length >= 3)
+				{
+					clipper.FillPolygonGradient(lifted, mid, Color.FromArgb((int)(115 * strength * PageCurlShadowStrength).Clamp(0, 255), Color.Black), new PointF(mid.X + normal.X * shadowLength, mid.Y + normal.Y * shadowLength), Color.FromArgb(0, Color.Black));
+				}
+				if (flap.Length >= 3)
+				{
+					//4. The shadow. One shape stepped out from the edge in several goes rather than
+					//   one hard copy: the steps pile up close to the paper and thin out further away,
+					//   which gives a single soft shadow instead of two outlines. The first step sits
+					//   in place, which is what shades the pocket under the curled edge.
+					float shadowOffset = Math.Min(28f, 6f + lift * 0.09f);
+					const int steps = 6;
+					int stepAlpha = (int)(26f * strength * fade * PageCurlShadowStrength).Clamp(0, 255);
+					if (stepAlpha > 1)
+					{
+						for (int step = 0; step < steps; step++)
+						{
+							float away = shadowOffset * step / (steps - 1);
+							PointF[] drop = ClipToRect(OffsetPolygon(flap, 0f - normal.X * away, 0f - normal.Y * away + away * 0.25f), visible);
+							if (drop.Length >= 3)
+							{
+								clipper.FillPolygon(drop, Color.FromArgb(stepAlpha, Color.Black));
+							}
+						}
+					}
+				}
+				//5. The lifted part, drawn as slices across the roll. Each slice gets its own
+				//   position along the curve and its own shading, so the paper bends instead of
+				//   creasing. Slices are drawn from the fold outwards, which is also furthest
+				//   from the viewer first.
+				//Drawing from a capture makes a slice cheap, so the roll can have plenty of them
+				//and look smooth. Redrawing the page per slice does not, so big scans get fewer.
+				int sourceWidth = Math.Max(oldOut.OutputBounds.Width, newOut.OutputBounds.Width);
+				int curved = (captured ? 16 : ((sourceWidth > 4000) ? 5 : ((sourceWidth > 2000) ? 7 : 10)));
+				float rollEnd = Math.Min(roll, reach);
+				for (int k = 0; k <= curved; k++)
+				{
+					float u0;
+					float u1;
+					if (k < curved)
+					{
+						u0 = rollEnd * k / curved;
+						u1 = rollEnd * (k + 1) / curved;
+					}
+					else
+					{
+						//Past the roll the paper is flat again, lying back over the page.
+						u0 = rollEnd;
+						u1 = reach;
+					}
+					if (u1 - u0 < 0.01f)
+					{
+						continue;
+					}
+					//Take a sliver more paper than the slice needs at each end: neighbouring slices
+					//then overlap instead of risking a hairline gap where they meet.
+					float cut0 = u0 - 0.5f;
+					float cut1 = (k < curved) ? (u1 + 0.5f) : (reach + 2f);
+					PointF[] band = ClipHalfPlane(lifted, new PointF(mid.X + normal.X * cut0, mid.Y + normal.Y * cut0), normal, keepNegative: false);
+					band = ClipHalfPlane(band, new PointF(mid.X + normal.X * cut1, mid.Y + normal.Y * cut1), normal, keepNegative: true);
+					if (band.Length < 3)
+					{
+						continue;
+					}
+					float x0 = RollOffset(u0, roll);
+					float x1 = RollOffset(u1, roll);
+					float slope = (x1 - x0) / (u1 - u0);
+					float shift = x0 - slope * u0;
+					//Mapped in place: band is not needed afterwards.
+					PointF[] slice = ClipToRect(MapPolygonSlice(band, mid, normal, slope, shift), visible);
+					if (slice.Length < 3)
+					{
+						continue;
+					}
+					//Hard edges: neighbouring slices meet exactly, with no seam along the join.
+					clipper.PushPolygonClip(slice, smoothEdges: false);
+					using (System.Drawing.Drawing2D.Matrix fold = RollMatrix(mid, normal, slope, shift))
+					{
+						System.Drawing.Drawing2D.Matrix m = baseTransform.Clone();
+						if (spread)
+						{
+							//The back of this sheet is the facing page of the new spread, found on
+							//the other side of the spine: mirror across the spine, then bend.
+							using (System.Drawing.Drawing2D.Matrix mirror = new System.Drawing.Drawing2D.Matrix(-1f, 0f, 0f, 1f, 2f * spine, 0f))
+							{
+								System.Drawing.Drawing2D.Matrix combined = fold.Clone();
+								combined.Multiply(mirror);
+								m.Multiply(combined);
+								combined.Dispose();
+							}
+							hr.Transform = m;
+							hr.Opacity = fade;
+							DrawPeelPage(hr, captured, isOld: false, newOut, newPageIndex);
+						}
+						else
+						{
+							//A single page has plain paper on its back, with the print faintly
+							//showing through.
+							clipper.FillCurrentClip(Color.FromArgb((int)(255 * fade), PageCurlPaperColor));
+							m.Multiply(fold);
+							hr.Transform = m;
+							hr.Opacity = 0.12f * fade;
+							DrawPeelPage(hr, captured, isOld: true, oldOut, oldPageIndex);
+						}
+						hr.Transform = baseTransform;
+						hr.Opacity = opacity;
+						m.Dispose();
+					}
+					//Light: paper facing the viewer is bright, paper turned edge on is dark. The
+					//shade runs across each slice rather than being flat, so the tone is continuous
+					//over the whole roll instead of stepping at every join.
+					int shade0 = RollShade(u0, roll, strength * fade * PageCurlShadowStrength);
+					int shade1 = RollShade(u1, roll, strength * fade * PageCurlShadowStrength);
+					if (shade0 > 2 || shade1 > 2)
+					{
+						PointF from = new PointF(mid.X + normal.X * x0, mid.Y + normal.Y * x0);
+						PointF to = new PointF(mid.X + normal.X * x1, mid.Y + normal.Y * x1);
+						if (Math.Abs(x1 - x0) < 0.5f)
+						{
+							clipper.FillCurrentClip(Color.FromArgb((shade0 + shade1) / 2, Color.Black));
+						}
+						else
+						{
+							clipper.FillPolygonGradient(slice, from, Color.FromArgb(shade0, Color.Black), to, Color.FromArgb(shade1, Color.Black));
+						}
+					}
+					clipper.PopPolygonClip();
+				}
+			}
+			finally
+			{
+				hr.Transform = baseTransform;
+				hr.Clip = RectangleF.Empty;
+				hr.Opacity = opacity;
+				if (hardware != null)
+				{
+					hardware.OptimizedTextures = wasOptimized;
+				}
+			}
+		}
+
+		/// <summary>
+		/// Draws one of the two pages, either from this frame's capture or, when captures are
+		/// not available, by rendering it again.
+		/// </summary>
+		private void DrawPeelPage(IBitmapRenderer hr, bool captured, bool isOld, DisplayOutput output, int page)
+		{
+			if (captured)
+			{
+				RectangleF all = base.ClientRectangle;
+				((IOffscreenRenderer)hr).DrawOffscreen(isOld ? peelOldCapture : peelNewCapture, all, all, 1f);
+			}
+			else
+			{
+				RenderImageSafe(hr, output, page, RenderType.WithoutBackground);
+			}
+		}
+
+		/// <summary>
+		/// Renders both pages into offscreen pictures for this frame. Returns false when the
+		/// renderer cannot do it, and the caller redraws per slice instead.
+		/// </summary>
+		private bool CapturePeelPages(IBitmapRenderer hr, DisplayOutput oldOut, int oldPageIndex, DisplayOutput newOut, int newPageIndex)
+		{
+			IOffscreenRenderer offscreen = hr as IOffscreenRenderer;
+			Size size = base.ClientRectangle.Size;
+			if (offscreen == null || size.Width <= 0 || size.Height <= 0)
+			{
+				return false;
+			}
+			if (peelCaptureOwner != offscreen)
+			{
+				//A different renderer: the old pictures belong to something that is gone.
+				peelOldCapture = null;
+				peelNewCapture = null;
+				peelCaptureSize = Size.Empty;
+				peelCaptureOwner = offscreen;
+			}
+			if (peelCaptureSize != size)
+			{
+				ReleasePeelCaptures(offscreen);
+				peelCaptureOwner = offscreen;
+			}
+			if (peelOldCapture == null)
+			{
+				peelOldCapture = offscreen.CreateOffscreen(size);
+				peelNewCapture = offscreen.CreateOffscreen(size);
+				peelCaptureSize = size;
+			}
+			if (peelOldCapture == null || peelNewCapture == null)
+			{
+				ReleasePeelCaptures(offscreen);
+				return false;
+			}
+			if (!CaptureOne(hr, offscreen, peelOldCapture, oldOut, oldPageIndex) || !CaptureOne(hr, offscreen, peelNewCapture, newOut, newPageIndex))
+			{
+				//Usually means the graphics device was rebuilt; try again next frame.
+				ReleasePeelCaptures(offscreen);
+				return false;
+			}
+			return true;
+		}
+
+		private bool CaptureOne(IBitmapRenderer hr, IOffscreenRenderer offscreen, object capture, DisplayOutput output, int page)
+		{
+			if (!offscreen.BeginOffscreen(capture))
+			{
+				return false;
+			}
+			try
+			{
+				RenderImageSafe(hr, output, page, RenderType.WithoutBackground);
+			}
+			finally
+			{
+				offscreen.EndOffscreen();
+			}
+			return true;
+		}
+
+		private void ReleasePeelCaptures(IOffscreenRenderer offscreen)
+		{
+			if (offscreen != null)
+			{
+				offscreen.DisposeOffscreen(peelOldCapture);
+				offscreen.DisposeOffscreen(peelNewCapture);
+			}
+			peelOldCapture = null;
+			peelNewCapture = null;
+			peelCaptureSize = Size.Empty;
+		}
+
+		#endregion
 
 		public void ScrollToLeftBlending(IBitmapRenderer hr, int oldPage, DisplayOutput oldOut, DisplayOutput display, float percent)
 		{
