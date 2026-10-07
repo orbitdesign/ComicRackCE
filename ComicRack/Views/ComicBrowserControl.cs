@@ -987,6 +987,9 @@ namespace cYo.Projects.ComicRack.Viewer.Views
             ToolStripMenuItem toolStripMenuItem3;
             autoViewContextMenuStrip.Items.Add(toolStripMenuItem3 = miResetListBackground.Clone());
             tsQuickSearch.TextBox.SearchMenu = contextQuickSearch;
+            //The new search syntax is otherwise invisible, so it is spelled out where
+            //people will find it: hovering the box itself.
+            toolTip.SetToolTip(tsQuickSearch.TextBox, TR.Default["QuickSearchHelp", "Words can match any field; accents are ignored.\n\"big trouble\"  exact phrase\n-word  exclude\nwriter:franz  series:aspic  publisher:\"les humanoides\"\nOther fields: title, artist, creator, tag, genre, character, team,\nlocation, arc, format, year, number, volume, file, notes, language"]);
             components.Add(commands);
             commands.Add(delegate
             {
@@ -2895,7 +2898,11 @@ namespace cYo.Projects.ComicRack.Viewer.Views
             }
             if (quickFilter == null)
             {
-                quickFilter = ComicBookAllPropertiesMatcher.Create(QuickSearch, 3, QuickSearchType, ShowOptionType, ShowComicType);
+                //Words may now each match a different field, accents and full-width
+                //characters are ignored, and "phrases", -exclusions and field: prefixes
+                //work - see QuickSearchQuery. The MATCH/NOT smart-list syntax above is
+                //still handled first, exactly as before.
+                quickFilter = ComicBookQuickSearchMatcher.Create(QuickSearch, QuickSearchType, ShowOptionType, ShowComicType);
             }
         }
 
