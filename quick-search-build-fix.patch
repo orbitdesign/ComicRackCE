@@ -1,0 +1,12 @@
+diff --git a/ComicRack.Engine/Metadata/ComicBook/Matcher/ComicBookQuickSearchMatcher.cs b/ComicRack.Engine/Metadata/ComicBook/Matcher/ComicBookQuickSearchMatcher.cs
+index 1e00b88..c0a98a4 100644
+--- a/ComicRack.Engine/Metadata/ComicBook/Matcher/ComicBookQuickSearchMatcher.cs
++++ b/ComicRack.Engine/Metadata/ComicBook/Matcher/ComicBookQuickSearchMatcher.cs
+@@ -1,6 +1,7 @@
+ using System;
+ using System.Collections.Generic;
+ using System.Linq;
++using cYo.Common.ComponentModel;
+ 
+ namespace cYo.Projects.ComicRack.Engine
+ {
