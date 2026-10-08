@@ -2379,7 +2379,10 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 					SetVisiblePart(new ImagePartInfo(orgPart.Part, offset));
 				}
 			}
-			if (e.Button == MouseButtons.Middle)
+			//Same few pixels of give as the left-button drag above. Without it the slightest
+			//movement while pressing the middle button counted as a zoom drag, which also
+			//cancelled the click - so a middle click could never reliably do anything.
+			if (e.Button == MouseButtons.Middle && (MouseActionHappened || Math.Abs(clickPoint.X - e.X) > 5 || Math.Abs(clickPoint.Y - e.Y) > 5))
 			{
 				DoZoom(ClientToImage(clickPoint), (orgZoom + (float)(e.Location.Y - clickPoint.Y) / 100f).Clamp(MinimumZoom, MaximumZoom));
 				MouseActionHappened = true;

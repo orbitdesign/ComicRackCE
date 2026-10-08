@@ -1672,10 +1672,11 @@ namespace cYo.Projects.ComicRack.Viewer
 			ComicDisplay.KeyboardMap.Commands.Add(new KeyboardCommand(miMagnify.Image, "ToggleMagnify", group, "Toggle Magnifier", (Action)delegate
 			{
 				ComicDisplay.MagnifierVisible = !ComicDisplay.MagnifierVisible;
-			}, new CommandKey[2]
+			}, new CommandKey[3]
 			{
 				CommandKey.M,
-				CommandKey.TouchPressAndTap
+				CommandKey.TouchPressAndTap,
+				CommandKey.MouseMiddle
 			}));
 			ComicDisplay.KeyboardMap.Commands.Add(new KeyboardCommand("ToggleMenu", group, "Toggle Menu", delegate
 			{
@@ -1801,6 +1802,7 @@ namespace cYo.Projects.ComicRack.Viewer
 			ComicDisplay.KeyboardMap.Commands.Add(new KeyboardCommand("Exit", group, "Exit", ControlExit, CommandKey.Q));
 			Program.DefaultKeyboardMapping = ComicDisplay.KeyboardMap.GetKeyMapping().ToArray();
 			ComicDisplay.KeyboardMap.SetKeyMapping(Program.Settings.ReaderKeyboardMapping);
+			AddMiddleClickMagnifierOnce();
 			mainKeys.Commands.Add(new KeyboardCommand("FocusQuickSearch", "General", "FQS", FocusQuickSearch, CommandKey.F | CommandKey.Ctrl));
 			mainKeys.Commands.Add(new KeyboardCommand("BrowsePrevious", "General", "Previous List",
 				() =>
@@ -3457,6 +3459,33 @@ namespace cYo.Projects.ComicRack.Viewer
 
 				if (!books.IsOpen(e.Book))
 					Program.QueueManager.AddBookToFileUpdate(e.Book);
+			}
+		}
+
+		/// <summary>
+		/// The whole reader keyboard/mouse layout is saved with the settings, so an existing
+		/// install keeps the "M, touch press-and-tap" it saved for Toggle Magnifier and never
+		/// sees the middle-click that is now part of the default. This adds it once. It is
+		/// left alone if another command already uses the middle button, or if Toggle
+		/// Magnifier has no free slot, and since it only ever runs once, removing it again in
+		/// Preferences > Keyboard sticks.
+		/// </summary>
+		private void AddMiddleClickMagnifierOnce()
+		{
+			if (Program.Settings.MiddleClickMagnifierAdded)
+			{
+				return;
+			}
+			Program.Settings.MiddleClickMagnifierAdded = true;
+			KeyboardCommand magnify = ComicDisplay.KeyboardMap.FindCommandByKey("ToggleMagnify");
+			if (magnify == null || ComicDisplay.KeyboardMap.Commands.Any((KeyboardCommand c) => c.Handles(CommandKey.MouseMiddle)))
+			{
+				return;
+			}
+			int free = Array.IndexOf(magnify.Keyboard, CommandKey.None);
+			if (free >= 0)
+			{
+				magnify.Keyboard[free] = CommandKey.MouseMiddle;
 			}
 		}
 

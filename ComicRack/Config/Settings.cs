@@ -192,6 +192,8 @@ namespace cYo.Projects.ComicRack.Viewer.Config
 
 		private bool libraryBackgroundEnabled;
 
+		private bool middleClickMagnifierAdded;
+
 		private string libraryBackgroundTexturePath = string.Empty;
 
 		private System.Windows.Forms.ImageLayout libraryBackgroundLayout = System.Windows.Forms.ImageLayout.Tile;
@@ -1289,6 +1291,28 @@ namespace cYo.Projects.ComicRack.Viewer.Config
 		[XmlArray("ReaderKeyboardV3")]
 		[XmlArrayItem("Action")]
 		public List<StringPair> ReaderKeyboardMapping => readerKeyboardMapping;
+
+		/// <summary>
+		/// Set once the middle mouse button has been added to Toggle Magnifier in a saved
+		/// keyboard layout (see MainForm.AddMiddleClickMagnifierOnce).
+		/// </summary>
+		[Browsable(false)]
+		[DefaultValue(false)]
+		public bool MiddleClickMagnifierAdded
+		{
+			get
+			{
+				return middleClickMagnifierAdded;
+			}
+			set
+			{
+				if (middleClickMagnifierAdded != value)
+				{
+					middleClickMagnifierAdded = value;
+					FireEvent(null);
+				}
+			}
+		}
 
 		[Category("Behavior")]
 		[Description("Images not to use as cover images")]
