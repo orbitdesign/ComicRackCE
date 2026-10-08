@@ -1,0 +1,720 @@
+diff --git a/ComicRack/Config/DisplayPreset.cs b/ComicRack/Config/DisplayPreset.cs
+new file mode 100644
+index 0000000..28443c4
+--- /dev/null
++++ b/ComicRack/Config/DisplayPreset.cs
+@@ -0,0 +1,316 @@
++using System;
++using System.Collections.Generic;
++using System.IO;
++using System.Linq;
++using System.Security.Cryptography;
++using System.Text;
++using System.Xml;
++using System.Xml.Serialization;
++
++namespace cYo.Projects.ComicRack.Viewer.Config
++{
++	/// <summary>
++	/// Every setting in the Book Display Settings dialog, under a name: the reader's page
++	/// effects, curl, paper and background, and the library's background, bookshelf and
++	/// cover shadow. Textures are kept as references (see DisplayPresetStore), not paths,
++	/// so a preset still works after the original picture has been moved or deleted.
++	/// Plain public properties only - this is written with XmlSerializer.
++	/// </summary>
++	[Serializable]
++	public class DisplayPreset
++	{
++		public string Name { get; set; }
++
++		//Reader
++		public int PageTransition { get; set; }
++		public bool RealisticPages { get; set; }
++		public bool PageMargin { get; set; }
++		public int PageMarginPercent { get; set; }
++		public int BackgroundType { get; set; }
++		public string BackgroundColor { get; set; }
++		public string BackgroundTexture { get; set; }
++		public int BackgroundTextureLayout { get; set; }
++		public string PaperTexture { get; set; }
++		public int PaperStrength { get; set; }
++		public int PaperLayout { get; set; }
++		public int CurlAmount { get; set; }
++		public int CurlShadowStrength { get; set; }
++		public int CurlGrabArea { get; set; }
++		public int TurnDuration { get; set; }
++
++		//Library
++		public bool LibraryBackgroundEnabled { get; set; }
++		public string LibraryBackgroundTexture { get; set; }
++		public int LibraryBackgroundLayout { get; set; }
++		public bool LibraryShelfEnabled { get; set; }
++		public string LibraryShelfTexture { get; set; }
++		public int LibraryShelfPosition { get; set; }
++		public int LibraryShelfHeight { get; set; }
++		public int ShadowDistance { get; set; }
++		public int ShadowAngle { get; set; }
++		public int ShadowBlur { get; set; }
++		public int ShadowTransparency { get; set; }
++
++		/// <summary>
++		/// Colour name as the colour picker uses it (like BackgroundColor), not an ARGB
++		/// number: the picker only selects the colours in its own list, matched by name.
++		/// </summary>
++		public string ShadowColor { get; set; }
++	}
++
++	/// <summary>
++	/// Presets live one-per-file in a "DisplayPresets" folder next to the rest of
++	/// ComicRack's settings, and every custom texture a preset uses is copied into its
++	/// "Textures" subfolder. Copies are named after a hash of their contents, so the same
++	/// picture used by ten presets - or saved again later - is stored once, and nothing
++	/// ever has to be deleted: removing a preset leaves its textures alone, which keeps
++	/// whatever the library or reader is currently displaying from losing its picture.
++	/// </summary>
++	public static class DisplayPresetStore
++	{
++		private const string FolderName = "DisplayPresets";
++
++		private const string TextureFolderName = "Textures";
++
++		private const string Extension = ".preset.xml";
++
++		//A texture reference is a short tag plus a name, so it means the same on another
++		//install. "default:" is one of ComicRack's own bundled textures, found again by file
++		//name; "store:" is a copy in the Textures folder; "path:" is only a fallback for
++		//when copying failed, and points at the original file.
++		private const string DefaultPrefix = "default:";
++
++		private const string StorePrefix = "store:";
++
++		private const string PathPrefix = "path:";
++
++		private static readonly XmlSerializer serializer = new XmlSerializer(typeof(DisplayPreset));
++
++		public static string FolderPath => Path.Combine(Program.Paths.ApplicationDataPath, FolderName);
++
++		public static string TextureFolderPath => Path.Combine(FolderPath, TextureFolderName);
++
++		/// <summary>
++		/// Names of all saved presets, alphabetically. A file that cannot be read is skipped
++		/// rather than failing the list.
++		/// </summary>
++		public static List<string> GetNames()
++		{
++			return ReadAll().Select((KeyValuePair<string, DisplayPreset> kvp) => kvp.Value.Name).OrderBy((string n) => n, StringComparer.CurrentCultureIgnoreCase).ToList();
++		}
++
++		public static DisplayPreset Load(string name)
++		{
++			foreach (KeyValuePair<string, DisplayPreset> item in ReadAll())
++			{
++				if (string.Equals(item.Value.Name, name, StringComparison.CurrentCultureIgnoreCase))
++				{
++					return item.Value;
++				}
++			}
++			return null;
++		}
++
++		/// <summary>
++		/// Saves the preset, replacing an existing one of the same name (ignoring case).
++		/// </summary>
++		public static void Save(DisplayPreset preset)
++		{
++			if (preset == null || string.IsNullOrWhiteSpace(preset.Name))
++			{
++				throw new ArgumentException("A preset needs a name.");
++			}
++			preset.Name = preset.Name.Trim();
++			Directory.CreateDirectory(FolderPath);
++			string target = FindFile(preset.Name) ?? NewFileName(preset.Name);
++			string temp = target + ".tmp";
++			XmlWriterSettings settings = new XmlWriterSettings
++			{
++				Indent = true,
++				Encoding = new UTF8Encoding(false)
++			};
++			using (XmlWriter writer = XmlWriter.Create(temp, settings))
++			{
++				serializer.Serialize(writer, preset);
++			}
++			//Written beside the real file first, so a failure part-way never leaves a
++			//half-written preset behind.
++			File.Copy(temp, target, overwrite: true);
++			File.Delete(temp);
++		}
++
++		public static bool Delete(string name)
++		{
++			string file = FindFile(name);
++			if (file == null)
++			{
++				return false;
++			}
++			File.Delete(file);
++			return true;
++		}
++
++		/// <summary>
++		/// Turns a texture file path as shown in the dialog into what is saved in the
++		/// preset. builtIn is ComicRack's own list of bundled textures for that setting
++		/// (null for the library's, which only ever uses files the user picked).
++		/// </summary>
++		public static string ToReference(string path, IEnumerable<string> builtIn)
++		{
++			if (string.IsNullOrEmpty(path))
++			{
++				return string.Empty;
++			}
++			string bundled = builtIn?.FirstOrDefault((string b) => string.Equals(b, path, StringComparison.OrdinalIgnoreCase));
++			if (bundled != null)
++			{
++				return DefaultPrefix + Path.GetFileName(bundled);
++			}
++			try
++			{
++				if (!File.Exists(path))
++				{
++					return string.Empty;
++				}
++				string full = Path.GetFullPath(path);
++				if (string.Equals(Path.GetDirectoryName(full), Path.GetFullPath(TextureFolderPath), StringComparison.OrdinalIgnoreCase))
++				{
++					return StorePrefix + Path.GetFileName(full);
++				}
++				return StorePrefix + StoreTexture(full);
++			}
++			catch (Exception)
++			{
++				return PathPrefix + path;
++			}
++		}
++
++		/// <summary>
++		/// The reverse: a usable file path for a saved reference, or null when there is
++		/// nothing to show (no texture was set, or its file has gone missing).
++		/// </summary>
++		public static string FromReference(string reference, IEnumerable<string> builtIn)
++		{
++			if (string.IsNullOrEmpty(reference))
++			{
++				return null;
++			}
++			if (reference.StartsWith(DefaultPrefix, StringComparison.Ordinal))
++			{
++				string name = reference.Substring(DefaultPrefix.Length);
++				return builtIn?.FirstOrDefault((string b) => string.Equals(Path.GetFileName(b), name, StringComparison.OrdinalIgnoreCase));
++			}
++			if (reference.StartsWith(StorePrefix, StringComparison.Ordinal))
++			{
++				//Only the file name is used, so a hand-edited preset cannot point outside
++				//the Textures folder.
++				string file = Path.Combine(TextureFolderPath, Path.GetFileName(reference.Substring(StorePrefix.Length)));
++				return File.Exists(file) ? file : null;
++			}
++			if (reference.StartsWith(PathPrefix, StringComparison.Ordinal))
++			{
++				string file = reference.Substring(PathPrefix.Length);
++				return File.Exists(file) ? file : null;
++			}
++			return null;
++		}
++
++		private static string StoreTexture(string fullPath)
++		{
++			string hash;
++			using (SHA1 sha = SHA1.Create())
++			using (FileStream stream = File.OpenRead(fullPath))
++			{
++				hash = BitConverter.ToString(sha.ComputeHash(stream)).Replace("-", string.Empty).Substring(0, 8).ToLowerInvariant();
++			}
++			string storedName = hash + "-" + SafeFileName(Path.GetFileName(fullPath), 100);
++			Directory.CreateDirectory(TextureFolderPath);
++			string target = Path.Combine(TextureFolderPath, storedName);
++			if (!File.Exists(target))
++			{
++				File.Copy(fullPath, target);
++			}
++			return storedName;
++		}
++
++		private static List<KeyValuePair<string, DisplayPreset>> ReadAll()
++		{
++			List<KeyValuePair<string, DisplayPreset>> list = new List<KeyValuePair<string, DisplayPreset>>();
++			if (!Directory.Exists(FolderPath))
++			{
++				return list;
++			}
++			foreach (string file in Directory.GetFiles(FolderPath, "*" + Extension))
++			{
++				try
++				{
++					using (XmlReader reader = XmlReader.Create(file))
++					{
++						DisplayPreset preset = serializer.Deserialize(reader) as DisplayPreset;
++						if (preset != null)
++						{
++							if (string.IsNullOrWhiteSpace(preset.Name))
++							{
++								preset.Name = Path.GetFileName(file).Replace(Extension, string.Empty);
++							}
++							list.Add(new KeyValuePair<string, DisplayPreset>(file, preset));
++						}
++					}
++				}
++				catch (Exception)
++				{
++				}
++			}
++			return list;
++		}
++
++		private static string FindFile(string name)
++		{
++			foreach (KeyValuePair<string, DisplayPreset> item in ReadAll())
++			{
++				if (string.Equals(item.Value.Name, name, StringComparison.CurrentCultureIgnoreCase))
++				{
++					return item.Key;
++				}
++			}
++			return null;
++		}
++
++		private static string NewFileName(string name)
++		{
++			string baseName = SafeFileName(name, 80);
++			string file = Path.Combine(FolderPath, baseName + Extension);
++			for (int i = 2; File.Exists(file); i++)
++			{
++				file = Path.Combine(FolderPath, baseName + "-" + i + Extension);
++			}
++			return file;
++		}
++
++		private static string SafeFileName(string text, int maxLength)
++		{
++			StringBuilder sb = new StringBuilder();
++			char[] invalid = Path.GetInvalidFileNameChars();
++			foreach (char c in text.Trim())
++			{
++				sb.Append(Array.IndexOf(invalid, c) >= 0 ? '_' : c);
++			}
++			string result = sb.ToString();
++			if (result.Length > maxLength)
++			{
++				result = result.Substring(0, maxLength);
++			}
++			if (result.Length == 0)
++			{
++				return "preset";
++			}
++			//Windows refuses CON, NUL, COM1... as a file name even with an extension after it.
++			string stem = result.Split('.')[0].TrimEnd().ToUpperInvariant();
++			if (stem == "CON" || stem == "PRN" || stem == "AUX" || stem == "NUL" || ((stem.StartsWith("COM") || stem.StartsWith("LPT")) && stem.Length == 4 && char.IsDigit(stem[3])))
++			{
++				result = "_" + result;
++			}
++			return result;
++		}
++	}
++}
+diff --git a/ComicRack/Dialogs/ComicDisplaySettingsDialog.cs b/ComicRack/Dialogs/ComicDisplaySettingsDialog.cs
+index 60897a3..8676aa9 100644
+--- a/ComicRack/Dialogs/ComicDisplaySettingsDialog.cs
++++ b/ComicRack/Dialogs/ComicDisplaySettingsDialog.cs
+@@ -1,4 +1,5 @@
+ ﻿using System;
++using System.Collections.Generic;
+ using System.ComponentModel;
+ using System.Drawing;
+ using System.IO;
+@@ -228,6 +229,7 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
+ 			LocalizeUtility.Localize(TR.Load(base.Name), cbPaperLayout);
+ 			LocalizeUtility.Localize(TR.Load(base.Name), cbTextureLayout);
+ 			AddLibraryPanels();
++			AddPresetBar();
+ 		}
+ 
+ 		//The two groups below are built directly in code rather than as Designer.cs markup:
+@@ -549,6 +551,266 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
+ 			panel1.Anchor = AnchorStyles.Top | AnchorStyles.Left;
+ 			ClientSize = new Size(contentRight + 12, contentBottom + panel1.Height + 24);
+ 			panel1.Location = new Point(contentRight - panel1.Width, contentBottom + 12);
++
++			//The preset bar takes the empty space to the left of OK / Apply / Cancel, centred
++			//on the same line.
++			int centerY = panel1.Top + panel1.Height / 2;
++			labelPresets.Location = new Point(12, centerY - labelPresets.Height / 2);
++			cbPresets.Location = new Point(labelPresets.Right + 6, centerY - cbPresets.Height / 2);
++			btPresetSave.Location = new Point(cbPresets.Right + 8, centerY - btPresetSave.Height / 2);
++			btPresetDelete.Location = new Point(btPresetSave.Right + 6, centerY - btPresetDelete.Height / 2);
++			//Hidden until placed, so they do not flash in the top-left corner while the form opens.
++			labelPresets.Visible = cbPresets.Visible = btPresetSave.Visible = btPresetDelete.Visible = true;
++		}
++
++		//Presets: everything in this dialog - the reader's page effects, curl, paper and
++		//background, and the library's background, bookshelf and cover shadow - saved under a
++		//name and loaded back with one click. Choosing a preset only fills in the dialog,
++		//exactly like moving the controls by hand: nothing changes until OK or Apply. Custom
++		//textures are copied into the preset store (see DisplayPresetStore), so a preset still
++		//has its pictures if the original files are moved or deleted.
++
++		private Label labelPresets;
++
++		private ComboBox cbPresets;
++
++		private Button btPresetSave;
++
++		private Button btPresetDelete;
++
++		private bool loadingPreset;
++
++		private void AddPresetBar()
++		{
++			labelPresets = new Label
++			{
++				Text = "Preset:",
++				AutoSize = true,
++				Visible = false,
++				TextAlign = ContentAlignment.MiddleLeft
++			};
++			cbPresets = new ComboBox
++			{
++				DropDownStyle = ComboBoxStyle.DropDownList,
++				Size = new Size(180, 21),
++				Visible = false
++			};
++			btPresetSave = new Button
++			{
++				Text = "Save As...",
++				Size = new Size(80, 23),
++				Visible = false
++			};
++			btPresetDelete = new Button
++			{
++				Text = "Delete",
++				Size = new Size(64, 23),
++				Enabled = false,
++				Visible = false
++			};
++			cbPresets.SelectedIndexChanged += cbPresets_SelectedIndexChanged;
++			btPresetSave.Click += btPresetSave_Click;
++			btPresetDelete.Click += btPresetDelete_Click;
++			Controls.AddRange(new Control[] { labelPresets, cbPresets, btPresetSave, btPresetDelete });
++			RefreshPresetList(null);
++		}
++
++		private void RefreshPresetList(string select)
++		{
++			loadingPreset = true;
++			try
++			{
++				List<string> names;
++				try
++				{
++					names = DisplayPresetStore.GetNames();
++				}
++				catch (Exception)
++				{
++					names = new List<string>();
++				}
++				cbPresets.BeginUpdate();
++				cbPresets.Items.Clear();
++				foreach (string name in names)
++				{
++					cbPresets.Items.Add(name);
++				}
++				cbPresets.SelectedIndex = (select == null) ? -1 : names.FindIndex((string n) => string.Equals(n, select, StringComparison.CurrentCultureIgnoreCase));
++				cbPresets.EndUpdate();
++			}
++			finally
++			{
++				loadingPreset = false;
++			}
++			btPresetDelete.Enabled = cbPresets.SelectedIndex >= 0;
++		}
++
++		private void cbPresets_SelectedIndexChanged(object sender, EventArgs e)
++		{
++			btPresetDelete.Enabled = cbPresets.SelectedIndex >= 0;
++			if (loadingPreset || cbPresets.SelectedIndex < 0)
++			{
++				return;
++			}
++			try
++			{
++				DisplayPreset preset = DisplayPresetStore.Load((string)cbPresets.SelectedItem);
++				if (preset == null)
++				{
++					RefreshPresetList(null);
++					return;
++				}
++				ShowPreset(preset);
++			}
++			catch (Exception ex)
++			{
++				MessageBox.Show(this, "Could not load the preset:\n" + ex.Message, Text, MessageBoxButtons.OK, MessageBoxIcon.Exclamation);
++			}
++		}
++
++		private void btPresetSave_Click(object sender, EventArgs e)
++		{
++			using (PresetNameDialog nameDialog = new PresetNameDialog("Save Preset", cbPresets.Text))
++			{
++				if (nameDialog.ShowDialog(this) != DialogResult.OK)
++				{
++					return;
++				}
++				string name = nameDialog.PresetName;
++				try
++				{
++					bool exists = DisplayPresetStore.GetNames().Any((string n) => string.Equals(n, name, StringComparison.CurrentCultureIgnoreCase));
++					if (exists && MessageBox.Show(this, "A preset named \"" + name + "\" already exists. Replace it?", Text, MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes)
++					{
++						return;
++					}
++					DisplayPresetStore.Save(CapturePreset(name));
++					RefreshPresetList(name);
++				}
++				catch (Exception ex)
++				{
++					MessageBox.Show(this, "Could not save the preset:\n" + ex.Message, Text, MessageBoxButtons.OK, MessageBoxIcon.Exclamation);
++				}
++			}
++		}
++
++		private void btPresetDelete_Click(object sender, EventArgs e)
++		{
++			string name = cbPresets.SelectedItem as string;
++			if (name == null || MessageBox.Show(this, "Delete the preset \"" + name + "\"?", Text, MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes)
++			{
++				return;
++			}
++			try
++			{
++				DisplayPresetStore.Delete(name);
++			}
++			catch (Exception ex)
++			{
++				MessageBox.Show(this, "Could not delete the preset:\n" + ex.Message, Text, MessageBoxButtons.OK, MessageBoxIcon.Exclamation);
++			}
++			RefreshPresetList(null);
++		}
++
++		/// <summary>
++		/// Reads the controls as they are right now - including changes not yet applied -
++		/// the same way Apply does, so what is saved is what is on screen.
++		/// </summary>
++		private DisplayPreset CapturePreset(string name)
++		{
++			string[] backgrounds = Program.LoadDefaultBackgroundTextures();
++			string[] papers = Program.LoadDefaultPaperTextures();
++			return new DisplayPreset
++			{
++				Name = name,
++				PageTransition = cbPageTransition.SelectedIndex,
++				RealisticPages = chkRealisticPages.Checked,
++				PageMargin = chkPageMargin.Checked,
++				PageMarginPercent = tbMargin.Value,
++				BackgroundType = cbBackgroundType.SelectedIndex,
++				BackgroundColor = cpBackgroundColor.SelectedColorName,
++				BackgroundTexture = DisplayPresetStore.ToReference((cbBackgroundTexture.SelectedItem as TextureFileItem)?.Item, backgrounds),
++				BackgroundTextureLayout = cbTextureLayout.SelectedIndex,
++				PaperTexture = DisplayPresetStore.ToReference((cbPaperTexture.SelectedItem as TextureFileItem)?.Item, papers),
++				PaperStrength = tbPaperStrength.Value,
++				PaperLayout = cbPaperLayout.SelectedIndex,
++				CurlAmount = tbCurlAmount.Value,
++				CurlShadowStrength = tbShadowStrength.Value,
++				CurlGrabArea = tbGrabArea.Value,
++				TurnDuration = (int)nudTurnDuration.Value,
++				LibraryBackgroundEnabled = chkLibBackgroundEnabled.Checked,
++				LibraryBackgroundTexture = DisplayPresetStore.ToReference(txtLibBackgroundPath.Text, null),
++				LibraryBackgroundLayout = cbLibBackgroundLayout.SelectedIndex,
++				LibraryShelfEnabled = chkLibShelfEnabled.Checked,
++				LibraryShelfTexture = DisplayPresetStore.ToReference(txtLibShelfPath.Text, null),
++				LibraryShelfPosition = tbLibShelfPosition.Value,
++				LibraryShelfHeight = tbLibShelfHeight.Value,
++				ShadowDistance = tbLibShelfDistance.Value,
++				ShadowAngle = tbLibShelfAngle.Value,
++				ShadowBlur = tbLibShelfBlur.Value,
++				ShadowTransparency = tbLibShelfTransparency.Value,
++				ShadowColor = cpLibShelfColor.SelectedColorName
++			};
++		}
++
++		/// <summary>
++		/// Fills the controls from a preset, in the same order Update does (a texture before
++		/// its layout, since choosing a bundled texture sets its own layout first). Values
++		/// outside what a control accepts - from a hand-edited file, or a slider whose range
++		/// changed in a later version - are pulled back into range rather than throwing.
++		/// </summary>
++		private void ShowPreset(DisplayPreset p)
++		{
++			string[] backgrounds = Program.LoadDefaultBackgroundTextures();
++			string[] papers = Program.LoadDefaultPaperTextures();
++			SetSelectedIndex(cbPageTransition, p.PageTransition);
++			chkRealisticPages.Checked = p.RealisticPages;
++			chkPageMargin.Checked = p.PageMargin;
++			SetTrackValue(tbMargin, p.PageMarginPercent);
++			if (!string.IsNullOrEmpty(p.BackgroundColor))
++			{
++				cpBackgroundColor.SelectedColorName = p.BackgroundColor;
++			}
++			SetSelectedIndex(cbBackgroundType, p.BackgroundType);
++			SelectTextureFile(cbBackgroundTexture, DisplayPresetStore.FromReference(p.BackgroundTexture, backgrounds));
++			SelectTextureFile(cbPaperTexture, DisplayPresetStore.FromReference(p.PaperTexture, papers));
++			SetTrackValue(tbPaperStrength, p.PaperStrength);
++			SetSelectedIndex(cbPaperLayout, p.PaperLayout);
++			SetSelectedIndex(cbTextureLayout, p.BackgroundTextureLayout);
++			cbBackgroundType_SelectedIndexChanged(this, EventArgs.Empty);
++			SetTrackValue(tbCurlAmount, p.CurlAmount);
++			SetTrackValue(tbShadowStrength, p.CurlShadowStrength);
++			SetTrackValue(tbGrabArea, p.CurlGrabArea);
++			nudTurnDuration.Value = Math.Max(nudTurnDuration.Minimum, Math.Min(nudTurnDuration.Maximum, p.TurnDuration));
++
++			chkLibBackgroundEnabled.Checked = p.LibraryBackgroundEnabled;
++			txtLibBackgroundPath.Text = DisplayPresetStore.FromReference(p.LibraryBackgroundTexture, null) ?? string.Empty;
++			SetSelectedIndex(cbLibBackgroundLayout, p.LibraryBackgroundLayout);
++			chkLibShelfEnabled.Checked = p.LibraryShelfEnabled;
++			txtLibShelfPath.Text = DisplayPresetStore.FromReference(p.LibraryShelfTexture, null) ?? string.Empty;
++			SetTrackValue(tbLibShelfPosition, p.LibraryShelfPosition);
++			SetTrackValue(tbLibShelfHeight, p.LibraryShelfHeight);
++			SetTrackValue(tbLibShelfDistance, p.ShadowDistance);
++			SetTrackValue(tbLibShelfAngle, p.ShadowAngle);
++			SetTrackValue(tbLibShelfBlur, p.ShadowBlur);
++			SetTrackValue(tbLibShelfTransparency, p.ShadowTransparency);
++			if (!string.IsNullOrEmpty(p.ShadowColor))
++			{
++				cpLibShelfColor.SelectedColorName = p.ShadowColor;
++			}
++		}
++
++		private static void SetSelectedIndex(ComboBox cb, int index)
++		{
++			if (index >= 0 && index < cb.Items.Count)
++			{
++				cb.SelectedIndex = index;
++			}
++		}
++
++		private static void SetTrackValue(TrackBarLite tb, int value)
++		{
++			tb.Value = Math.Max(tb.Minimum, Math.Min(tb.Maximum, value));
+ 		}
+ 
+ 		protected override void OnShown(EventArgs e)
+diff --git a/ComicRack/Dialogs/PresetNameDialog.cs b/ComicRack/Dialogs/PresetNameDialog.cs
+new file mode 100644
+index 0000000..d8adde5
+--- /dev/null
++++ b/ComicRack/Dialogs/PresetNameDialog.cs
+@@ -0,0 +1,76 @@
++using System;
++using System.Drawing;
++using System.Windows.Forms;
++using cYo.Common.Windows.Forms;
++using cYo.Common.Windows.Forms.Theme;
++
++namespace cYo.Projects.ComicRack.Viewer.Dialogs
++{
++	/// <summary>
++	/// A small "type a name" box for saving a display preset. Built in code rather than as
++	/// designer markup because it is just a label, a text box and two buttons.
++	/// </summary>
++	public class PresetNameDialog : FormEx
++	{
++		private readonly TextBox txtName;
++
++		private readonly Button btOK;
++
++		public override UIComponent UIComponent => UIComponent.Content;
++
++		public string PresetName => txtName.Text.Trim();
++
++		public PresetNameDialog(string title, string name)
++		{
++			Text = title;
++			FormBorderStyle = FormBorderStyle.FixedDialog;
++			StartPosition = FormStartPosition.CenterParent;
++			MaximizeBox = false;
++			MinimizeBox = false;
++			ShowInTaskbar = false;
++			ClientSize = new Size(340, 100);
++
++			Label label = new Label
++			{
++				Text = "Preset name:",
++				AutoSize = true,
++				Location = new Point(12, 14)
++			};
++			txtName = new TextBox
++			{
++				Location = new Point(12, 34),
++				Size = new Size(316, 20),
++				MaxLength = 60,
++				Text = name ?? string.Empty
++			};
++			btOK = new Button
++			{
++				Text = "OK",
++				DialogResult = DialogResult.OK,
++				Location = new Point(172, 66),
++				Size = new Size(75, 23)
++			};
++			Button btCancel = new Button
++			{
++				Text = "Cancel",
++				DialogResult = DialogResult.Cancel,
++				Location = new Point(253, 66),
++				Size = new Size(75, 23)
++			};
++			Controls.AddRange(new Control[] { label, txtName, btOK, btCancel });
++			AcceptButton = btOK;
++			CancelButton = btCancel;
++
++			btOK.Enabled = PresetName.Length > 0;
++			txtName.TextChanged += delegate
++			{
++				btOK.Enabled = PresetName.Length > 0;
++			};
++			Shown += delegate
++			{
++				txtName.Focus();
++				txtName.SelectAll();
++			};
++		}
++	}
++}
+diff --git a/ComicRack/Output/Changes.txt b/ComicRack/Output/Changes.txt
+index 3a885b6..3e7f32e 100644
+--- a/ComicRack/Output/Changes.txt
++++ b/ComicRack/Output/Changes.txt
+@@ -1,4 +1,4 @@
+-﻿orbitdesign Build 1.65 (based on Community Edition 0.9.184):
++﻿orbitdesign Build 1.66 (based on Community Edition 0.9.184):
+ 
+ * 1.1 FIX: Hardware acceleration stability. Fixed OpenGL extension detection, replaced the deprecated automatic mip map generation that crashed some drivers, checked texture uploads for errors, and added a startup guard that switches hardware acceleration off for one session if ComicRack failed to start last time.
+ * 1.2 NEW: Direct2D renderer for the reader. Used by default when hardware acceleration is on, with OpenGL and then software rendering as fallbacks. Handles graphics device resets, uses high quality cubic sampling for "Enable Hardware Filters", and supports paper textures. Start with -hwgl to use the old OpenGL renderer.
+@@ -65,6 +65,7 @@
+ * 1.63 FIX: The page-count status bar icon that spins while a book's page index is still being read (UpdatePages) is a plain grayscale spinner, nearly invisible against a dark theme's background. Added a white version (Resources\Dark\UpdatePages.gif) and switched it in based on ThemeManager.IsDarkModeEnabled, using the existing ThemeExtensions.InvokeFunc helper - the same light/dark asset-picking convention a few other icons already had files prepared for but nothing was actually wired up to yet.
+ * 1.64 NEW: Smarter library quick search. Each word can now match a different field ("aspic poupee" finds Aspic books titled Poupée), accents and full-width characters are ignored ("legendes" finds Légendes), "quoted phrases" match exactly, -word excludes, and field:word restricts a word to one field (writer:, series:, title:, artist:, publisher:, tag:, genre:, character:, year:, number:, file: and more - hover the search box for the list). Smart-list MATCH/NOT queries typed into the box work as before. No slower than the old search.
+ * 1.65 FIX: Ctrl+C, Ctrl+X, Ctrl+V and Ctrl+A in the library search boxes now copy, cut, paste and select the search text. The "Copy Data" / "Copy List" menu shortcuts were taking Ctrl+C first, so copying the text put comic data on the clipboard and pasting into Notepad gave nothing.
++* 1.66 NEW: Presets in Book Display Settings (F9). The Preset bar at the bottom-left of the dialog saves everything in it - page effects, curl, paper and reader background, plus the library background, bookshelf and book cover shadow - under a name; picking a preset fills the dialog in, and OK or Apply makes it live. Custom textures are copied into the preset (in a DisplayPresets folder beside the settings), so a preset keeps its pictures even if the original files are moved or deleted.
+ 
+ 
+ Community Edition Build 0.9.184:
+diff --git a/ComicRack/Properties/AssemblyInfo.cs b/ComicRack/Properties/AssemblyInfo.cs
+index 0c47b07..aa85473 100644
+--- a/ComicRack/Properties/AssemblyInfo.cs
++++ b/ComicRack/Properties/AssemblyInfo.cs
+@@ -25,7 +25,7 @@ using System.Runtime.Versioning;
+ // Our own build number, shown in the About box and crash reports. The second number counts the
+ // changes made on top of Community Edition; add one for each new change (see Changes.txt).
+ [assembly: AssemblyMetadata("BuildName", "orbitdesign")]
+-[assembly: AssemblyMetadata("BuildVersion", "1.65")]
++[assembly: AssemblyMetadata("BuildVersion", "1.66")]
+ [assembly: AssemblyDelaySign(false)]
+ [assembly: AssemblyKeyName("")]
+ [assembly: AssemblyVersion("1.0.*")]

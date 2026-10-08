@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.ComponentModel;
 using System.Drawing;
 using System.IO;
@@ -228,6 +229,7 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			LocalizeUtility.Localize(TR.Load(base.Name), cbPaperLayout);
 			LocalizeUtility.Localize(TR.Load(base.Name), cbTextureLayout);
 			AddLibraryPanels();
+			AddPresetBar();
 		}
 
 		//The two groups below are built directly in code rather than as Designer.cs markup:
@@ -549,6 +551,266 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			panel1.Anchor = AnchorStyles.Top | AnchorStyles.Left;
 			ClientSize = new Size(contentRight + 12, contentBottom + panel1.Height + 24);
 			panel1.Location = new Point(contentRight - panel1.Width, contentBottom + 12);
+
+			//The preset bar takes the empty space to the left of OK / Apply / Cancel, centred
+			//on the same line.
+			int centerY = panel1.Top + panel1.Height / 2;
+			labelPresets.Location = new Point(12, centerY - labelPresets.Height / 2);
+			cbPresets.Location = new Point(labelPresets.Right + 6, centerY - cbPresets.Height / 2);
+			btPresetSave.Location = new Point(cbPresets.Right + 8, centerY - btPresetSave.Height / 2);
+			btPresetDelete.Location = new Point(btPresetSave.Right + 6, centerY - btPresetDelete.Height / 2);
+			//Hidden until placed, so they do not flash in the top-left corner while the form opens.
+			labelPresets.Visible = cbPresets.Visible = btPresetSave.Visible = btPresetDelete.Visible = true;
+		}
+
+		//Presets: everything in this dialog - the reader's page effects, curl, paper and
+		//background, and the library's background, bookshelf and cover shadow - saved under a
+		//name and loaded back with one click. Choosing a preset only fills in the dialog,
+		//exactly like moving the controls by hand: nothing changes until OK or Apply. Custom
+		//textures are copied into the preset store (see DisplayPresetStore), so a preset still
+		//has its pictures if the original files are moved or deleted.
+
+		private Label labelPresets;
+
+		private ComboBox cbPresets;
+
+		private Button btPresetSave;
+
+		private Button btPresetDelete;
+
+		private bool loadingPreset;
+
+		private void AddPresetBar()
+		{
+			labelPresets = new Label
+			{
+				Text = "Preset:",
+				AutoSize = true,
+				Visible = false,
+				TextAlign = ContentAlignment.MiddleLeft
+			};
+			cbPresets = new ComboBox
+			{
+				DropDownStyle = ComboBoxStyle.DropDownList,
+				Size = new Size(180, 21),
+				Visible = false
+			};
+			btPresetSave = new Button
+			{
+				Text = "Save As...",
+				Size = new Size(80, 23),
+				Visible = false
+			};
+			btPresetDelete = new Button
+			{
+				Text = "Delete",
+				Size = new Size(64, 23),
+				Enabled = false,
+				Visible = false
+			};
+			cbPresets.SelectedIndexChanged += cbPresets_SelectedIndexChanged;
+			btPresetSave.Click += btPresetSave_Click;
+			btPresetDelete.Click += btPresetDelete_Click;
+			Controls.AddRange(new Control[] { labelPresets, cbPresets, btPresetSave, btPresetDelete });
+			RefreshPresetList(null);
+		}
+
+		private void RefreshPresetList(string select)
+		{
+			loadingPreset = true;
+			try
+			{
+				List<string> names;
+				try
+				{
+					names = DisplayPresetStore.GetNames();
+				}
+				catch (Exception)
+				{
+					names = new List<string>();
+				}
+				cbPresets.BeginUpdate();
+				cbPresets.Items.Clear();
+				foreach (string name in names)
+				{
+					cbPresets.Items.Add(name);
+				}
+				cbPresets.SelectedIndex = (select == null) ? -1 : names.FindIndex((string n) => string.Equals(n, select, StringComparison.CurrentCultureIgnoreCase));
+				cbPresets.EndUpdate();
+			}
+			finally
+			{
+				loadingPreset = false;
+			}
+			btPresetDelete.Enabled = cbPresets.SelectedIndex >= 0;
+		}
+
+		private void cbPresets_SelectedIndexChanged(object sender, EventArgs e)
+		{
+			btPresetDelete.Enabled = cbPresets.SelectedIndex >= 0;
+			if (loadingPreset || cbPresets.SelectedIndex < 0)
+			{
+				return;
+			}
+			try
+			{
+				DisplayPreset preset = DisplayPresetStore.Load((string)cbPresets.SelectedItem);
+				if (preset == null)
+				{
+					RefreshPresetList(null);
+					return;
+				}
+				ShowPreset(preset);
+			}
+			catch (Exception ex)
+			{
+				MessageBox.Show(this, "Could not load the preset:\n" + ex.Message, Text, MessageBoxButtons.OK, MessageBoxIcon.Exclamation);
+			}
+		}
+
+		private void btPresetSave_Click(object sender, EventArgs e)
+		{
+			using (PresetNameDialog nameDialog = new PresetNameDialog("Save Preset", cbPresets.Text))
+			{
+				if (nameDialog.ShowDialog(this) != DialogResult.OK)
+				{
+					return;
+				}
+				string name = nameDialog.PresetName;
+				try
+				{
+					bool exists = DisplayPresetStore.GetNames().Any((string n) => string.Equals(n, name, StringComparison.CurrentCultureIgnoreCase));
+					if (exists && MessageBox.Show(this, "A preset named \"" + name + "\" already exists. Replace it?", Text, MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes)
+					{
+						return;
+					}
+					DisplayPresetStore.Save(CapturePreset(name));
+					RefreshPresetList(name);
+				}
+				catch (Exception ex)
+				{
+					MessageBox.Show(this, "Could not save the preset:\n" + ex.Message, Text, MessageBoxButtons.OK, MessageBoxIcon.Exclamation);
+				}
+			}
+		}
+
+		private void btPresetDelete_Click(object sender, EventArgs e)
+		{
+			string name = cbPresets.SelectedItem as string;
+			if (name == null || MessageBox.Show(this, "Delete the preset \"" + name + "\"?", Text, MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes)
+			{
+				return;
+			}
+			try
+			{
+				DisplayPresetStore.Delete(name);
+			}
+			catch (Exception ex)
+			{
+				MessageBox.Show(this, "Could not delete the preset:\n" + ex.Message, Text, MessageBoxButtons.OK, MessageBoxIcon.Exclamation);
+			}
+			RefreshPresetList(null);
+		}
+
+		/// <summary>
+		/// Reads the controls as they are right now - including changes not yet applied -
+		/// the same way Apply does, so what is saved is what is on screen.
+		/// </summary>
+		private DisplayPreset CapturePreset(string name)
+		{
+			string[] backgrounds = Program.LoadDefaultBackgroundTextures();
+			string[] papers = Program.LoadDefaultPaperTextures();
+			return new DisplayPreset
+			{
+				Name = name,
+				PageTransition = cbPageTransition.SelectedIndex,
+				RealisticPages = chkRealisticPages.Checked,
+				PageMargin = chkPageMargin.Checked,
+				PageMarginPercent = tbMargin.Value,
+				BackgroundType = cbBackgroundType.SelectedIndex,
+				BackgroundColor = cpBackgroundColor.SelectedColorName,
+				BackgroundTexture = DisplayPresetStore.ToReference((cbBackgroundTexture.SelectedItem as TextureFileItem)?.Item, backgrounds),
+				BackgroundTextureLayout = cbTextureLayout.SelectedIndex,
+				PaperTexture = DisplayPresetStore.ToReference((cbPaperTexture.SelectedItem as TextureFileItem)?.Item, papers),
+				PaperStrength = tbPaperStrength.Value,
+				PaperLayout = cbPaperLayout.SelectedIndex,
+				CurlAmount = tbCurlAmount.Value,
+				CurlShadowStrength = tbShadowStrength.Value,
+				CurlGrabArea = tbGrabArea.Value,
+				TurnDuration = (int)nudTurnDuration.Value,
+				LibraryBackgroundEnabled = chkLibBackgroundEnabled.Checked,
+				LibraryBackgroundTexture = DisplayPresetStore.ToReference(txtLibBackgroundPath.Text, null),
+				LibraryBackgroundLayout = cbLibBackgroundLayout.SelectedIndex,
+				LibraryShelfEnabled = chkLibShelfEnabled.Checked,
+				LibraryShelfTexture = DisplayPresetStore.ToReference(txtLibShelfPath.Text, null),
+				LibraryShelfPosition = tbLibShelfPosition.Value,
+				LibraryShelfHeight = tbLibShelfHeight.Value,
+				ShadowDistance = tbLibShelfDistance.Value,
+				ShadowAngle = tbLibShelfAngle.Value,
+				ShadowBlur = tbLibShelfBlur.Value,
+				ShadowTransparency = tbLibShelfTransparency.Value,
+				ShadowColor = cpLibShelfColor.SelectedColorName
+			};
+		}
+
+		/// <summary>
+		/// Fills the controls from a preset, in the same order Update does (a texture before
+		/// its layout, since choosing a bundled texture sets its own layout first). Values
+		/// outside what a control accepts - from a hand-edited file, or a slider whose range
+		/// changed in a later version - are pulled back into range rather than throwing.
+		/// </summary>
+		private void ShowPreset(DisplayPreset p)
+		{
+			string[] backgrounds = Program.LoadDefaultBackgroundTextures();
+			string[] papers = Program.LoadDefaultPaperTextures();
+			SetSelectedIndex(cbPageTransition, p.PageTransition);
+			chkRealisticPages.Checked = p.RealisticPages;
+			chkPageMargin.Checked = p.PageMargin;
+			SetTrackValue(tbMargin, p.PageMarginPercent);
+			if (!string.IsNullOrEmpty(p.BackgroundColor))
+			{
+				cpBackgroundColor.SelectedColorName = p.BackgroundColor;
+			}
+			SetSelectedIndex(cbBackgroundType, p.BackgroundType);
+			SelectTextureFile(cbBackgroundTexture, DisplayPresetStore.FromReference(p.BackgroundTexture, backgrounds));
+			SelectTextureFile(cbPaperTexture, DisplayPresetStore.FromReference(p.PaperTexture, papers));
+			SetTrackValue(tbPaperStrength, p.PaperStrength);
+			SetSelectedIndex(cbPaperLayout, p.PaperLayout);
+			SetSelectedIndex(cbTextureLayout, p.BackgroundTextureLayout);
+			cbBackgroundType_SelectedIndexChanged(this, EventArgs.Empty);
+			SetTrackValue(tbCurlAmount, p.CurlAmount);
+			SetTrackValue(tbShadowStrength, p.CurlShadowStrength);
+			SetTrackValue(tbGrabArea, p.CurlGrabArea);
+			nudTurnDuration.Value = Math.Max(nudTurnDuration.Minimum, Math.Min(nudTurnDuration.Maximum, p.TurnDuration));
+
+			chkLibBackgroundEnabled.Checked = p.LibraryBackgroundEnabled;
+			txtLibBackgroundPath.Text = DisplayPresetStore.FromReference(p.LibraryBackgroundTexture, null) ?? string.Empty;
+			SetSelectedIndex(cbLibBackgroundLayout, p.LibraryBackgroundLayout);
+			chkLibShelfEnabled.Checked = p.LibraryShelfEnabled;
+			txtLibShelfPath.Text = DisplayPresetStore.FromReference(p.LibraryShelfTexture, null) ?? string.Empty;
+			SetTrackValue(tbLibShelfPosition, p.LibraryShelfPosition);
+			SetTrackValue(tbLibShelfHeight, p.LibraryShelfHeight);
+			SetTrackValue(tbLibShelfDistance, p.ShadowDistance);
+			SetTrackValue(tbLibShelfAngle, p.ShadowAngle);
+			SetTrackValue(tbLibShelfBlur, p.ShadowBlur);
+			SetTrackValue(tbLibShelfTransparency, p.ShadowTransparency);
+			if (!string.IsNullOrEmpty(p.ShadowColor))
+			{
+				cpLibShelfColor.SelectedColorName = p.ShadowColor;
+			}
+		}
+
+		private static void SetSelectedIndex(ComboBox cb, int index)
+		{
+			if (index >= 0 && index < cb.Items.Count)
+			{
+				cb.SelectedIndex = index;
+			}
+		}
+
+		private static void SetTrackValue(TrackBarLite tb, int value)
+		{
+			tb.Value = Math.Max(tb.Minimum, Math.Min(tb.Maximum, value));
 		}
 
 		protected override void OnShown(EventArgs e)
