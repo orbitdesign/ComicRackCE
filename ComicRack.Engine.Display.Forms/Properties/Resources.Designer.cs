@@ -193,6 +193,16 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms.Properties {
         /// <summary>
         ///   Looks up a localized resource of type System.Drawing.Bitmap.
         /// </summary>
+        internal static System.Drawing.Bitmap MagnifierArt {
+            get {
+                object obj = ResourceManager.GetObject("MagnifierArt", resourceCulture);
+                return ((System.Drawing.Bitmap)(obj));
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized resource of type System.Drawing.Bitmap.
+        /// </summary>
         internal static System.Drawing.Bitmap MagnifierLight {
             get {
                 object obj = ResourceManager.GetObject("MagnifierLight", resourceCulture);

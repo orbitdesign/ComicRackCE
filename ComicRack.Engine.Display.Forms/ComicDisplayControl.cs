@@ -236,6 +236,23 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 		//Whether the last draw used the round lens (needs a renderer with polygon clipping).
 		private bool magnifierRound = true;
 
+		//Where the centre of the lens is inside the overlay. The engraved magnifier has a
+		//handle, so the lens is not in the middle of the overlay and the overlay is placed by
+		//its lens, not by its centre.
+		private Point magnifierLensOffset;
+
+		//How far from the lens centre a click still counts as being on the magnifier.
+		private float magnifierHitRadius;
+
+		//The engraving: where the lens opening sits in the picture, as a fraction of its width.
+		private const float ArtLensCenterX = 0.4514f;
+
+		private const float ArtLensCenterY = 0.4299f;
+
+		private const float ArtLensRadius = 0.3810f;
+
+		private static Bitmap magnifierArt;
+
 		private readonly NavigationOverlay navigationOverlay;
 
 		private readonly OverlayPanel gestureOverlay;
@@ -875,7 +892,14 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 			}
 			set
 			{
-				magnifierStyle = value;
+				if (magnifierStyle != value)
+				{
+					magnifierStyle = value;
+					if (magnifierOverlay != null)
+					{
+						ApplyMagnifierSize();
+					}
+				}
 			}
 		}
 
@@ -1099,7 +1123,7 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 			components.Add(overlayManager);
 			Size size = new Size(300, 200).ScaleDpi();
 			magnifierNominalSize = size;
-			magnifierOverlay = new OverlayPanel(GetMagnifierOverlaySize(size))
+			magnifierOverlay = new OverlayPanel(ComputeMagnifierLayout(out magnifierLensOffset, out magnifierHitRadius))
 			{
 				Opacity = 1f,
 				Visible = false,
@@ -1472,7 +1496,7 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 
 		private void PositionMagnifier(Point location)
 		{
-			magnifierOverlay.CenterLocation = location;
+			MagnifierCenter = location;
 			UpdateMagnifierVisibility();
 		}
 
@@ -1486,7 +1510,7 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 			{
 				Rectangle clientRectangle = base.ClientRectangle;
 				clientRectangle.Inflate(-32, -32);
-				magnifierOverlay.Visible = MagnifierVisible && (!autoHideMagnifier || clientRectangle.Contains(magnifierOverlay.CenterLocation));
+				magnifierOverlay.Visible = MagnifierVisible && (!autoHideMagnifier || clientRectangle.Contains(MagnifierCenter));
 			}
 			if (magnifierOverlay.Visible)
 			{
@@ -1499,28 +1523,78 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 			PositionMagnifier(PointToClient(Cursor.Position));
 		}
 
-		private static Size GetMagnifierOverlaySize(Size nominal)
+		private bool UseMagnifierArt => magnifierRound && magnifierStyle == MagnifierStyle.Glass && magnifierArt != null;
+
+		/// <summary>
+		/// The centre of the lens on the control. Setting it moves the whole overlay.
+		/// </summary>
+		private Point MagnifierCenter
 		{
-			int side = Math.Max(16, (int)Math.Round((double)Math.Max(nominal.Width, nominal.Height) * MagnifierGrowth));
-			return new Size(side, side);
+			get
+			{
+				Point location = magnifierOverlay.Location;
+				location.Offset(magnifierLensOffset);
+				return location;
+			}
+			set
+			{
+				value.Offset(-magnifierLensOffset.X, -magnifierLensOffset.Y);
+				magnifierOverlay.Location = value;
+			}
+		}
+
+		private int GetMagnifierDiameter()
+		{
+			return Math.Max(16, (int)Math.Round((double)Math.Max(magnifierNominalSize.Width, magnifierNominalSize.Height) * MagnifierGrowth));
+		}
+
+		/// <summary>
+		/// How much the engraving is scaled so that the opening of its lens is as wide as the
+		/// magnifier should be.
+		/// </summary>
+		private float GetMagnifierArtScale()
+		{
+			return (float)GetMagnifierDiameter() / 2f / (ArtLensRadius * (float)magnifierArt.Width);
+		}
+
+		/// <summary>
+		/// Works out how big the overlay has to be, and where the lens sits in it. The lens
+		/// itself is always 15% wider than the longer side of the size the user chose.
+		/// </summary>
+		private Size ComputeMagnifierLayout(out Point lensOffset, out float hitRadius)
+		{
+			int diameter = GetMagnifierDiameter();
+			if (UseMagnifierArt)
+			{
+				float scale = GetMagnifierArtScale();
+				lensOffset = new Point((int)Math.Round(ArtLensCenterX * (float)magnifierArt.Width * scale), (int)Math.Round(ArtLensCenterY * (float)magnifierArt.Width * scale));
+				hitRadius = (float)diameter / 2f * 1.15f;
+				return new Size((int)Math.Ceiling((float)magnifierArt.Width * scale), (int)Math.Ceiling((float)magnifierArt.Height * scale));
+			}
+			lensOffset = new Point(diameter / 2, diameter / 2);
+			hitRadius = (float)diameter / 2f;
+			return new Size(diameter, diameter);
 		}
 
 		private void ApplyMagnifierSize()
 		{
-			//Keep the lens centred on the same spot when its size changes.
-			Point center = magnifierOverlay.CenterLocation;
-			magnifierOverlay.Size = GetMagnifierOverlaySize(magnifierNominalSize);
-			magnifierOverlay.CenterLocation = center;
+			if (magnifierOverlay == null)
+			{
+				return;
+			}
+			//Keep the lens centred on the same spot when its size or style changes.
+			Point center = MagnifierCenter;
+			magnifierOverlay.Size = ComputeMagnifierLayout(out magnifierLensOffset, out magnifierHitRadius);
+			MagnifierCenter = center;
 		}
 
 		/// <summary>
 		/// True when the point is on the magnifier. The round lens leaves the corners of its
-		/// square overlay empty, and a click there belongs to the page underneath.
+		/// overlay empty, and a click there belongs to the page underneath.
 		/// </summary>
 		private bool IsOverMagnifier(Point pt)
 		{
-			Rectangle bounds = magnifierOverlay.Bounds;
-			if (!bounds.Contains(pt))
+			if (!magnifierOverlay.Bounds.Contains(pt))
 			{
 				return false;
 			}
@@ -1528,10 +1602,10 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 			{
 				return true;
 			}
-			double radius = (double)bounds.Width / 2.0;
-			double dx = (double)pt.X - ((double)bounds.Left + radius);
-			double dy = (double)pt.Y - ((double)bounds.Top + (double)bounds.Height / 2.0);
-			return dx * dx + dy * dy <= radius * radius;
+			Point center = MagnifierCenter;
+			double dx = pt.X - center.X;
+			double dy = pt.Y - center.Y;
+			return dx * dx + dy * dy <= (double)magnifierHitRadius * (double)magnifierHitRadius;
 		}
 
 		private PageKey GetPageKey(int page)
@@ -2985,14 +3059,28 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 		private void magnifierOverlay_RenderSurface(object sender, PanelRenderEventArgs e)
 		{
 			IBitmapRenderer renderer = e.Renderer;
-			if (renderer is IGeometryClipRenderer clipper)
+			bool round = renderer is IGeometryClipRenderer;
+			if (round != magnifierRound)
 			{
-				magnifierRound = true;
-				RenderRoundMagnifier(renderer, clipper);
+				//The renderer cannot clip to a shape (or can again): switch to the matching
+				//layout. The overlay is redrawn at its new size straight away.
+				magnifierRound = round;
+				ApplyMagnifierSize();
+				return;
+			}
+			if (round)
+			{
+				if (UseMagnifierArt)
+				{
+					RenderArtMagnifier(renderer, (IGeometryClipRenderer)renderer);
+				}
+				else
+				{
+					RenderRoundMagnifier(renderer, (IGeometryClipRenderer)renderer);
+				}
 			}
 			else
 			{
-				magnifierRound = false;
 				RenderRectangularMagnifier(renderer);
 			}
 		}
@@ -3022,6 +3110,44 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 			renderer.Clip = clip;
 			renderer.Opacity = 1f;
 			ScalableBitmap.Draw(renderer, magnifier.Bitmap, frame, padding2, 1f);
+		}
+
+		/// <summary>
+		/// The magnified picture in a circle, with the engraved magnifying glass drawn over it:
+		/// the picture's lens opening is transparent, so the rim and handle frame the view.
+		/// </summary>
+		private void RenderArtMagnifier(IBitmapRenderer renderer, IGeometryClipRenderer clipper)
+		{
+			float opacity = MagnifierOpacity.Clamp(0f, 1f);
+			float scale = GetMagnifierArtScale();
+			float radius = ArtLensRadius * (float)magnifierArt.Width * scale;
+			PointF center = new PointF(ArtLensCenterX * (float)magnifierArt.Width * scale, ArtLensCenterY * (float)magnifierArt.Width * scale);
+			RectangleF lens = new RectangleF(center.X - radius, center.Y - radius, radius * 2f, radius * 2f);
+			if (lens.Width < 8f)
+			{
+				return;
+			}
+			Rectangle content = Rectangle.Round(lens);
+			Point location = magnifierOverlay.Location;
+			location.Offset(content.Location);
+			location.Offset(content.Width / 2, content.Height / 2);
+			location = location.Clip(base.ClientRectangle);
+
+			//Slightly inside the opening is enough to hide the picture's edge under the rim.
+			clipper.PushPolygonClip(CirclePolygon(renderer, lens));
+			try
+			{
+				renderer.Opacity = opacity;
+				RectangleF clip = renderer.Clip;
+				DrawMagnifier(renderer, location, content, MagnifierZoom);
+				renderer.Clip = clip;
+				renderer.Opacity = 1f;
+			}
+			finally
+			{
+				clipper.PopPolygonClip();
+			}
+			renderer.DrawImage(magnifierArt, new RectangleF(0f, 0f, (float)magnifierArt.Width * scale, (float)magnifierArt.Height * scale), new RectangleF(0f, 0f, magnifierArt.Width, magnifierArt.Height), BitmapAdjustment.Empty, opacity);
 		}
 
 		/// <summary>
@@ -5171,6 +5297,7 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 			};
 			array[1] = magnifier;
 			magnifiers = array;
+			magnifierArt = Resources.MagnifierArt;
 		}
 	}
 }
