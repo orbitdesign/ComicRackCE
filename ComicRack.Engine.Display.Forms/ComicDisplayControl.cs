@@ -3105,7 +3105,7 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 			{
 				new PointF(x, y)
 			};
-			using (Matrix m = renderer.Transform)
+			using (System.Drawing.Drawing2D.Matrix m = renderer.Transform)
 			{
 				m.TransformPoints(pts);
 			}
@@ -3129,7 +3129,7 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 				double a = Math.PI * 2.0 * (double)i / (double)Sides;
 				pts[i] = new PointF(cx + rx * (float)Math.Cos(a), cy + ry * (float)Math.Sin(a));
 			}
-			using (Matrix m = renderer.Transform)
+			using (System.Drawing.Drawing2D.Matrix m = renderer.Transform)
 			{
 				m.TransformPoints(pts);
 			}
