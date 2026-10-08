@@ -245,11 +245,11 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 		private float magnifierHitRadius;
 
 		//The engraving: where the lens opening sits in the picture, as a fraction of its width.
-		private const float ArtLensCenterX = 0.4514f;
+		private const float ArtLensCenterX = 0.4379f;
 
-		private const float ArtLensCenterY = 0.4299f;
+		private const float ArtLensCenterY = 0.4143f;
 
-		private const float ArtLensRadius = 0.3810f;
+		private const float ArtLensRadius = 0.3598f;
 
 		private static Bitmap magnifierArt;
 
