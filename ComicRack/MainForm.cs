@@ -2935,9 +2935,12 @@ namespace cYo.Projects.ComicRack.Viewer
 
 		private void OnOpenRecent(object sender, EventArgs e)
 		{
-			string text = ((ToolStripMenuItem)sender).Text;
-			int num = Convert.ToInt32(text.Substring(0, 2)) - 1;
-			OpenSupportedFile(recentFiles[num], Program.Settings.OpenInNewTab);
+			//The item carries its own file; its number in the text is not an index into the list
+			//when files that no longer exist were skipped, or once the list passes 99.
+			if (((ToolStripMenuItem)sender).Tag is string path)
+			{
+				OpenSupportedFile(path, Program.Settings.OpenInNewTab);
+			}
 		}
 
 		private void RecentFilesMenuOpening(object sender, EventArgs e)
@@ -2964,6 +2967,7 @@ namespace cYo.Projects.ComicRack.Viewer
 					try
 					{
 						ToolStripMenuItem value = new ToolStripMenuItem(text2, (itemLock != null && itemLock.Item != null) ? itemLock.Item.Bitmap.Resize(16, 16) : null, OnOpenRecent);
+						value.Tag = text;
 						miOpenRecent.DropDownItems.Add(value);
 					}
 					catch (Exception)

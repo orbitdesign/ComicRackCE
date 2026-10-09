@@ -1,0 +1,72 @@
+diff --git a/ComicRack/Config/Settings.cs b/ComicRack/Config/Settings.cs
+index 654641f..d7f88f8 100644
+--- a/ComicRack/Config/Settings.cs
++++ b/ComicRack/Config/Settings.cs
+@@ -106,7 +106,7 @@ namespace cYo.Projects.ComicRack.Viewer.Config
+ 			}
+ 		}
+ 
+-		public const int RecentFileCount = 20;
++		public const int RecentFileCount = 30;
+ 
+ 		public const int MinimumMemoryPageCacheCount = 20;
+ 
+diff --git a/ComicRack/MainForm.cs b/ComicRack/MainForm.cs
+index efc96bc..8bdca73 100644
+--- a/ComicRack/MainForm.cs
++++ b/ComicRack/MainForm.cs
+@@ -2935,9 +2935,12 @@ namespace cYo.Projects.ComicRack.Viewer
+ 
+ 		private void OnOpenRecent(object sender, EventArgs e)
+ 		{
+-			string text = ((ToolStripMenuItem)sender).Text;
+-			int num = Convert.ToInt32(text.Substring(0, 2)) - 1;
+-			OpenSupportedFile(recentFiles[num], Program.Settings.OpenInNewTab);
++			//The item carries its own file; its number in the text is not an index into the list
++			//when files that no longer exist were skipped, or once the list passes 99.
++			if (((ToolStripMenuItem)sender).Tag is string path)
++			{
++				OpenSupportedFile(path, Program.Settings.OpenInNewTab);
++			}
+ 		}
+ 
+ 		private void RecentFilesMenuOpening(object sender, EventArgs e)
+@@ -2964,6 +2967,7 @@ namespace cYo.Projects.ComicRack.Viewer
+ 					try
+ 					{
+ 						ToolStripMenuItem value = new ToolStripMenuItem(text2, (itemLock != null && itemLock.Item != null) ? itemLock.Item.Bitmap.Resize(16, 16) : null, OnOpenRecent);
++						value.Tag = text;
+ 						miOpenRecent.DropDownItems.Add(value);
+ 					}
+ 					catch (Exception)
+diff --git a/ComicRack/Output/Changes.txt b/ComicRack/Output/Changes.txt
+index b87d049..37ab986 100644
+--- a/ComicRack/Output/Changes.txt
++++ b/ComicRack/Output/Changes.txt
+@@ -1,4 +1,4 @@
+-﻿orbitdesign Build 1.70 (based on Community Edition 0.9.184):
++﻿orbitdesign Build 1.71 (based on Community Edition 0.9.184):
+ 
+ * 1.1 FIX: Hardware acceleration stability. Fixed OpenGL extension detection, replaced the deprecated automatic mip map generation that crashed some drivers, checked texture uploads for errors, and added a startup guard that switches hardware acceleration off for one session if ComicRack failed to start last time.
+ * 1.2 NEW: Direct2D renderer for the reader. Used by default when hardware acceleration is on, with OpenGL and then software rendering as fallbacks. Handles graphics device resets, uses high quality cubic sampling for "Enable Hardware Filters", and supports paper textures. Start with -hwgl to use the old OpenGL renderer.
+@@ -70,6 +70,7 @@
+ * 1.68 CHANGE: The magnifier is now a round lens instead of a rectangle, and 15% bigger (the longer side of your chosen size plus 15%, so it covers more of the page). The Glass style has a metal rim and a soft reflection, the Simple style a thin dark rim; clicks in the empty corners around the lens go to the page underneath. Round needs hardware acceleration (Direct2D); with other renderers it stays rectangular, also 15% bigger. Also fixed the magnified picture sitting a few pixels off and rotating about the wrong point on rotated pages.
+ * 1.69 CHANGE: The Glass magnifier now uses the engraved magnifying glass artwork: the zoomed view sits inside its ring, with the handle hanging off to the lower right. The lens is still the 15% larger round view (the artwork scales to fit it). The Simple style keeps its plain round rim, and renderers without hardware acceleration keep the rectangular frame.
+ * 1.70 CHANGE: Updated the magnifier artwork and gave it a soft drop shadow, cast down and to the right, outside the lens.
++* 1.71 CHANGE: The Recent Books list in the File menu now keeps the last 30 books (was 20). Also made picking a book from that list always open the book you clicked, even if some of the books above it have since been deleted or moved.
+ 
+ 
+ Community Edition Build 0.9.184:
+diff --git a/ComicRack/Properties/AssemblyInfo.cs b/ComicRack/Properties/AssemblyInfo.cs
+index 2765d7e..eadeb38 100644
+--- a/ComicRack/Properties/AssemblyInfo.cs
++++ b/ComicRack/Properties/AssemblyInfo.cs
+@@ -25,7 +25,7 @@ using System.Runtime.Versioning;
+ // Our own build number, shown in the About box and crash reports. The second number counts the
+ // changes made on top of Community Edition; add one for each new change (see Changes.txt).
+ [assembly: AssemblyMetadata("BuildName", "orbitdesign")]
+-[assembly: AssemblyMetadata("BuildVersion", "1.70")]
++[assembly: AssemblyMetadata("BuildVersion", "1.71")]
+ [assembly: AssemblyDelaySign(false)]
+ [assembly: AssemblyKeyName("")]
+ [assembly: AssemblyVersion("1.0.*")]

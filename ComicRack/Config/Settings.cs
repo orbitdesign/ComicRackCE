@@ -106,7 +106,7 @@ namespace cYo.Projects.ComicRack.Viewer.Config
 			}
 		}
 
-		public const int RecentFileCount = 20;
+		public const int RecentFileCount = 30;
 
 		public const int MinimumMemoryPageCacheCount = 20;
 
