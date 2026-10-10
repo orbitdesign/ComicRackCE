@@ -421,6 +421,16 @@ namespace cYo.Common.Threading
             Trim(0);
         }
 
+        /// <summary>
+        /// Tells the worker threads to finish their current item and exit, without waiting.
+        /// Lets several queues wind down at the same time before they are disposed.
+        /// </summary>
+        public void SignalAbort()
+        {
+            abort = true;
+            processThreads.ForEach((ProcessData pd) => pd.Event.Set());
+        }
+
         public void Stop(bool abort, int timeOut)
         {
 			if (abort)
