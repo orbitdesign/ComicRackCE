@@ -35,6 +35,11 @@ namespace cYo.Common.Runtime
 		{
 			sw.WriteLine("Application: {0}", Application.ProductName);
 			sw.WriteLine("Version    : {0}", Application.ProductVersion);
+			string buildInfo = GitVersion.GetBuildInfo();
+			if (!string.IsNullOrEmpty(buildInfo))
+			{
+				sw.WriteLine("Build      : {0}", buildInfo);
+			}
 			sw.WriteLine("Assembly   : {0}", Assembly.GetEntryAssembly().GetName().Version);
 			sw.WriteLine("OS         : {0} {1}", Environment.OSVersion, Environment.Is64BitProcess ? "64" : "32");
 			sw.WriteLine(".NET       : {0}", Environment.Version);

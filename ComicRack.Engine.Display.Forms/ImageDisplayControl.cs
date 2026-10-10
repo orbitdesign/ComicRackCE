@@ -3,11 +3,13 @@ using System.ComponentModel;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
+using System.Runtime.CompilerServices;
 using System.Windows.Forms;
 using cYo.Common.ComponentModel;
 using cYo.Common.Drawing;
 using cYo.Common.Mathematics;
 using cYo.Common.Presentation;
+using cYo.Common.Presentation.Direct2D;
 using cYo.Common.Presentation.Tao;
 using cYo.Common.Runtime;
 using cYo.Common.Threading;
@@ -753,6 +755,12 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 			Forced
 		}
 
+		public enum HardwareBackendType
+		{
+			Direct2D,
+			OpenGL
+		}
+
 		private static class Native
 		{
 			public const int WM_MOUSEHWHEEL = 0x020E;
@@ -1473,6 +1481,16 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 
 		public static TextureManagerSettings HardwareSettings => hardwareSettings;
 
+		/// <summary>
+		/// Which hardware renderer to try first. Direct2D is the default; OpenGL is kept as a
+		/// fallback and can be forced with the -hwgl command line switch.
+		/// </summary>
+		public static HardwareBackendType HardwareBackend
+		{
+			get;
+			set;
+		} = HardwareBackendType.Direct2D;
+
 		public Point PanLocation => panLocation;
 
 		public event EventHandler PageDisplayModeChanged;
@@ -1843,6 +1861,15 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 						renderer = null;
 						disposable.Dispose();
 					}
+					if (HardwareBackend == HardwareBackendType.Direct2D)
+					{
+						IControlRenderer direct2DRenderer = TryCreateDirect2DRenderer();
+						if (direct2DRenderer != null)
+						{
+							renderer = direct2DRenderer;
+							return true;
+						}
+					}
 					ControlOpenGlRenderer controlOpenGlRenderer = null;
 					bool flag;
 					try
@@ -1960,9 +1987,34 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 			}
 		}
 
+		private IControlRenderer TryCreateDirect2DRenderer()
+		{
+			try
+			{
+				return CreateDirect2DRenderer();
+			}
+			catch
+			{
+				//Direct2D missing or unusable (including the SharpDX assemblies failing to load).
+				//The caller falls back to OpenGL and then to GDI+.
+				return null;
+			}
+		}
+
+		//Kept in its own method so the SharpDX assemblies are only loaded when it is JIT compiled,
+		//inside the try block above, rather than when SetRenderer itself is compiled.
+		[MethodImpl(MethodImplOptions.NoInlining)]
+		private IControlRenderer CreateDirect2DRenderer()
+		{
+			return new ControlDirect2DRenderer(this, registerPaint: false, (TextureManagerSettings)HardwareSettings.Clone())
+			{
+				EnableFilter = hardwareFiltering
+			};
+		}
+
 		protected bool HandleRendererError(Exception e)
 		{
-			if (e != null && e.ToString().Contains("Tao."))
+			if (e != null && (e is Direct2DRendererException || e.ToString().Contains("Tao.") || e.ToString().Contains("SharpDX.")))
 			{
 				SetRenderer(hardware: false);
 				return true;
@@ -2327,7 +2379,10 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 					SetVisiblePart(new ImagePartInfo(orgPart.Part, offset));
 				}
 			}
-			if (e.Button == MouseButtons.Middle)
+			//Same few pixels of give as the left-button drag above. Without it the slightest
+			//movement while pressing the middle button counted as a zoom drag, which also
+			//cancelled the click - so a middle click could never reliably do anything.
+			if (e.Button == MouseButtons.Middle && (MouseActionHappened || Math.Abs(clickPoint.X - e.X) > 5 || Math.Abs(clickPoint.Y - e.Y) > 5))
 			{
 				DoZoom(ClientToImage(clickPoint), (orgZoom + (float)(e.Location.Y - clickPoint.Y) / 100f).Clamp(MinimumZoom, MaximumZoom));
 				MouseActionHappened = true;

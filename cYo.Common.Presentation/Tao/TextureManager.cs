@@ -105,6 +105,15 @@ namespace cYo.Common.Presentation.Tao
 										internalformat = 32849;
 										memory = num2 * 3;
 									}
+									//Mip mapping is only safe on plain, uncompressed 32bit textures and only
+									//when the driver offers glGenerateMipmap. The old code used the deprecated
+									//GL_GENERATE_MIPMAP (SGIS) parameter, which several drivers only emulate and
+									//which crashes outright when combined with compressed or packed formats.
+									bool useMipMaps = !manager.IsOptimizedTexture
+										&& manager.EnableFilter
+										&& manager.Settings.IsMipMapFilter
+										&& internalformat == 6408
+										&& OpenGlInfo.SupportsGenerateMipmap;
 									if (manager.IsOptimizedTexture)
 									{
 										Gl.glTexParameteri(3553, 10241, 9728);
@@ -116,28 +125,49 @@ namespace cYo.Common.Presentation.Tao
 									}
 									else
 									{
-										Gl.glGetTexParameteriv(3553, 33169, out var _);
-										if (Gl.glGetError() != 0 || !manager.Settings.IsMipMapFilter || !manager.EnableFilter)
+										//Start out linear. The min filter is only switched to a mip mapped
+										//one after the mip chain was built without an error.
+										Gl.glTexParameteri(3553, 10241, 9729);
+										Gl.glTexParameteri(3553, 10240, 9729);
+									}
+									//Drain errors left behind by earlier calls, so the checks below report
+									//what this upload did and nothing else. Bounded, because a broken driver
+									//can keep returning errors forever.
+									for (int drain = 0; drain < 16 && Gl.glGetError() != 0; drain++)
+									{
+									}
+									Gl.glTexImage2D(3553, 0, internalformat, fastBitmapLock.Width, fastBitmapLock.Height, 0, 32993, 5121, fastBitmapLock.Data);
+									int uploadError = Gl.glGetError();
+									if (uploadError != 0)
+									{
+										//Out of video memory, or a format the driver rejected. Either way
+										//this texture is unusable, so give up on it and let the caller
+										//fall back instead of drawing from a half written texture.
+										throw new InvalidOperationException("glTexImage2D failed with error " + uploadError);
+									}
+									if (useMipMaps)
+									{
+										Gl.glGenerateMipmapEXT(3553);
+										if (Gl.glGetError() == 0)
 										{
-											Gl.glTexParameteri(3553, 10241, 9729);
+											Gl.glTexParameteri(3553, 10241, 9987);
+											if (manager.Settings.IsAnisotropicFilter && OpenGlInfo.SupportsAnisotopricFilter)
+											{
+												float[] maxAnisotropy = new float[1];
+												Gl.glGetFloatv(34047, maxAnisotropy);
+												if (Gl.glGetError() == 0 && maxAnisotropy[0] >= 1f)
+												{
+													Gl.glTexParameterf(3553, 34046, Math.Min(maxAnisotropy[0], 16f));
+												}
+											}
 										}
 										else
 										{
-											Gl.glTexParameteri(3553, 33169, 1);
-											Gl.glTexParameteri(3553, 10241, 9987);
-											if (manager.Settings.IsAnisotropicFilter)
-											{
-												float[] array = new float[1];
-												Gl.glGetFloatv(34047, array);
-												Gl.glTexParameterf(3553, 34046, array[0]);
-											}
+											//Mip generation failed. The base level is still valid, so keep
+											//the texture and stay on plain linear filtering.
+											Gl.glTexParameteri(3553, 10241, 9729);
+											manager.DisableMipMapping();
 										}
-										Gl.glTexParameteri(3553, 10240, 9729);
-									}
-									Gl.glTexImage2D(3553, 0, internalformat, fastBitmapLock.Width, fastBitmapLock.Height, 0, 32993, 5121, fastBitmapLock.Data);
-									if (Gl.glGetError() == 1285)
-									{
-										throw new InvalidOperationException();
 									}
 								}
 							}
@@ -275,6 +305,19 @@ namespace cYo.Common.Presentation.Tao
 		{
 			get;
 			set;
+		}
+
+		/// <summary>
+		/// Turns mip mapping off for the rest of this session. Called when the driver
+		/// reports an error building a mip chain, so the failure is not retried for
+		/// every remaining texture of the book.
+		/// </summary>
+		public void DisableMipMapping()
+		{
+			if (Settings != null)
+			{
+				Settings.MipMapping = false;
+			}
 		}
 
 		protected override void Dispose(bool disposing)

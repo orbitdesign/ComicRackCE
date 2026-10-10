@@ -23,6 +23,7 @@ using cYo.Common.Threading;
 using cYo.Common.Win32;
 using cYo.Common.Windows;
 using cYo.Common.Windows.Forms;
+using cYo.Common.Windows.Forms.Theme;
 using cYo.Common.Windows.Forms.Theme.Resources;
 using cYo.Projects.ComicRack.Engine;
 using cYo.Projects.ComicRack.Engine.Controls;
@@ -384,7 +385,7 @@ namespace cYo.Projects.ComicRack.Viewer
 
 		private static readonly Image zoomClearImage = Resources.ZoomClear;
 
-		private static readonly Image updatePages = Resources.UpdatePages;
+		private static readonly Image updatePages = ThemeExtensions.InvokeFunc(() => Resources.UpdatePages, () => Resources.DarkUpdatePages);
 
 		private static readonly Image greenLight = Resources.GreenLight;
 
@@ -831,6 +832,8 @@ namespace cYo.Projects.ComicRack.Viewer
 			ComicDisplay.LeftRightMovementReversed = Program.Settings.LeftRightMovementReversed;
 			ComicDisplay.DisplayChangeAnimation = Program.Settings.DisplayChangeAnimation;
 			ComicDisplay.FlowingMouseScrolling = Program.Settings.FlowingMouseScrolling;
+			ComicDisplay.DragPageTurning = Program.Settings.DragPageTurning;
+			ComicDisplay.ReadAheadPages = Program.Settings.ReadAheadPages;
 			ComicDisplay.SoftwareFiltering = Program.Settings.SoftwareFiltering;
 			ComicDisplay.HardwareFiltering = Program.Settings.HardwareFiltering;
 			ComicDisplay.SetRenderer(Program.Settings.HardwareAcceleration);
@@ -1444,6 +1447,7 @@ namespace cYo.Projects.ComicRack.Viewer
 				ComicDisplay.ImageAutoRotate = !ComicDisplay.ImageAutoRotate;
 			}, notContinuousLayout, () => ComicDisplay.ImageAutoRotate, miAutoRotate, tbAutoRotate);
 			commands.Add(ComicDisplay.ToggleMagnifier, true, () => ComicDisplay.MagnifierVisible, miMagnify, tbMagnify, cmMagnify);
+			commands.Add(ComicDisplay.TogglePaperTexture, true, () => !string.IsNullOrEmpty(ComicDisplay.PaperTexture), miPaperTexture);
 			commands.Add(delegate
 			{
 				ShowPortableDevices();
@@ -1554,7 +1558,7 @@ namespace cYo.Projects.ComicRack.Viewer
 			commands.Add(delegate
 			{
 				Program.ShowExplorer(ComicDisplay.Book.Comic.FilePath);
-			}, () => ComicDisplay.Book != null && ComicDisplay.Book.Comic.EditMode.IsLocalComic(), cmRevealInExplorer);
+			}, () => ComicDisplay.Book != null && ComicDisplay.Book.Comic.EditMode.IsLocalComic(), cmRevealInExplorer, cmPageRevealInExplorer);
 			commands.Add(() => _ = CheckForUpdateAsync(true), miCheckUpdate);
 		}
 
@@ -1664,13 +1668,15 @@ namespace cYo.Projects.ComicRack.Viewer
 			ComicDisplay.KeyboardMap.Commands.Add(new KeyboardCommand(miFullScreen.Image, "ToggleFullScreen", group, "Toggle Full Screen", ComicDisplay.ToggleFullScreen, CommandKey.F, CommandKey.MouseDoubleLeft, CommandKey.Gesture2));
 			ComicDisplay.KeyboardMap.Commands.Add(new KeyboardCommand(miTwoPages.Image, "ToggleTwoPages", group, "Toggle Two Pages", ComicDisplay.TogglePageLayout, CommandKey.T));
 			ComicDisplay.KeyboardMap.Commands.Add(new KeyboardCommand("ToggleRealisticPages", group, "Toggle Realistic Display", ComicDisplay.ToogleRealisticPages, CommandKey.D | CommandKey.Shift));
+			ComicDisplay.KeyboardMap.Commands.Add(new KeyboardCommand("TogglePaperTexture", group, "Toggle Paper Texture", ComicDisplay.TogglePaperTexture));
 			ComicDisplay.KeyboardMap.Commands.Add(new KeyboardCommand(miMagnify.Image, "ToggleMagnify", group, "Toggle Magnifier", (Action)delegate
 			{
 				ComicDisplay.MagnifierVisible = !ComicDisplay.MagnifierVisible;
-			}, new CommandKey[2]
+			}, new CommandKey[3]
 			{
 				CommandKey.M,
-				CommandKey.TouchPressAndTap
+				CommandKey.TouchPressAndTap,
+				CommandKey.MouseMiddle
 			}));
 			ComicDisplay.KeyboardMap.Commands.Add(new KeyboardCommand("ToggleMenu", group, "Toggle Menu", delegate
 			{
@@ -1796,6 +1802,7 @@ namespace cYo.Projects.ComicRack.Viewer
 			ComicDisplay.KeyboardMap.Commands.Add(new KeyboardCommand("Exit", group, "Exit", ControlExit, CommandKey.Q));
 			Program.DefaultKeyboardMapping = ComicDisplay.KeyboardMap.GetKeyMapping().ToArray();
 			ComicDisplay.KeyboardMap.SetKeyMapping(Program.Settings.ReaderKeyboardMapping);
+			AddMiddleClickMagnifierOnce();
 			mainKeys.Commands.Add(new KeyboardCommand("FocusQuickSearch", "General", "FQS", FocusQuickSearch, CommandKey.F | CommandKey.Ctrl));
 			mainKeys.Commands.Add(new KeyboardCommand("BrowsePrevious", "General", "Previous List",
 				() =>
@@ -2722,6 +2729,10 @@ namespace cYo.Projects.ComicRack.Viewer
 				ComicDisplay.BackgroundTexture = workspace.BackgroundTexture;
 				ComicDisplay.PaperTexture = workspace.PaperTexture;
 				ComicDisplay.PaperTextureStrength = workspace.PaperTextureStrength;
+				ComicDisplay.PageCurlAmount = workspace.PageCurlAmount;
+				ComicDisplay.PageCurlShadowStrength = workspace.PageCurlShadowStrength;
+				ComicDisplay.PageCurlGrabArea = workspace.PageCurlGrabArea;
+				ComicDisplay.PageCurlDuration = workspace.PageCurlDuration;
 				ComicDisplay.ImageBackgroundMode = workspace.PageImageBackgroundMode;
 				ComicDisplay.PaperTextureLayout = workspace.PaperTextureLayout;
 				ComicDisplay.BackgroundImageLayout = workspace.BackgroundImageLayout;
@@ -2754,6 +2765,10 @@ namespace cYo.Projects.ComicRack.Viewer
 			workspace.BackgroundTexture = ComicDisplay.BackgroundTexture;
 			workspace.PaperTexture = ComicDisplay.PaperTexture;
 			workspace.PaperTextureStrength = ComicDisplay.PaperTextureStrength;
+			workspace.PageCurlAmount = ComicDisplay.PageCurlAmount;
+			workspace.PageCurlShadowStrength = ComicDisplay.PageCurlShadowStrength;
+			workspace.PageCurlGrabArea = ComicDisplay.PageCurlGrabArea;
+			workspace.PageCurlDuration = ComicDisplay.PageCurlDuration;
 			workspace.PageImageBackgroundMode = ComicDisplay.ImageBackgroundMode;
 			workspace.PaperTextureLayout = ComicDisplay.PaperTextureLayout;
 			workspace.BackgroundImageLayout = ComicDisplay.BackgroundImageLayout;
@@ -2920,9 +2935,12 @@ namespace cYo.Projects.ComicRack.Viewer
 
 		private void OnOpenRecent(object sender, EventArgs e)
 		{
-			string text = ((ToolStripMenuItem)sender).Text;
-			int num = Convert.ToInt32(text.Substring(0, 2)) - 1;
-			OpenSupportedFile(recentFiles[num], Program.Settings.OpenInNewTab);
+			//The item carries its own file; its number in the text is not an index into the list
+			//when files that no longer exist were skipped, or once the list passes 99.
+			if (((ToolStripMenuItem)sender).Tag is string path)
+			{
+				OpenSupportedFile(path, Program.Settings.OpenInNewTab);
+			}
 		}
 
 		private void RecentFilesMenuOpening(object sender, EventArgs e)
@@ -2949,6 +2967,7 @@ namespace cYo.Projects.ComicRack.Viewer
 					try
 					{
 						ToolStripMenuItem value = new ToolStripMenuItem(text2, (itemLock != null && itemLock.Item != null) ? itemLock.Item.Bitmap.Resize(16, 16) : null, OnOpenRecent);
+						value.Tag = text;
 						miOpenRecent.DropDownItems.Add(value);
 					}
 					catch (Exception)
@@ -3444,6 +3463,33 @@ namespace cYo.Projects.ComicRack.Viewer
 
 				if (!books.IsOpen(e.Book))
 					Program.QueueManager.AddBookToFileUpdate(e.Book);
+			}
+		}
+
+		/// <summary>
+		/// The whole reader keyboard/mouse layout is saved with the settings, so an existing
+		/// install keeps the "M, touch press-and-tap" it saved for Toggle Magnifier and never
+		/// sees the middle-click that is now part of the default. This adds it once. It is
+		/// left alone if another command already uses the middle button, or if Toggle
+		/// Magnifier has no free slot, and since it only ever runs once, removing it again in
+		/// Preferences > Keyboard sticks.
+		/// </summary>
+		private void AddMiddleClickMagnifierOnce()
+		{
+			if (Program.Settings.MiddleClickMagnifierAdded)
+			{
+				return;
+			}
+			Program.Settings.MiddleClickMagnifierAdded = true;
+			KeyboardCommand magnify = ComicDisplay.KeyboardMap.FindCommandByKey("ToggleMagnify");
+			if (magnify == null || ComicDisplay.KeyboardMap.Commands.Any((KeyboardCommand c) => c.Handles(CommandKey.MouseMiddle)))
+			{
+				return;
+			}
+			int free = Array.IndexOf(magnify.Keyboard, CommandKey.None);
+			if (free >= 0)
+			{
+				magnify.Keyboard[free] = CommandKey.MouseMiddle;
 			}
 		}
 

@@ -190,6 +190,20 @@ namespace cYo.Common.Windows.Forms
 			return defaultSize;
 		}
 
+		/// <summary>
+		/// The rectangle the item's own visible artwork actually occupies within itemBounds,
+		/// which for a cover kept at its own aspect ratio is narrower than the tile it sits
+		/// in - the tile has to be wide enough for the widest cover in the row and for the
+		/// caption underneath, so a narrow cover leaves empty space either side of itself.
+		/// Defaults to the whole tile; ItemView uses this to line a shelf shadow up with the
+		/// artwork rather than the tile. Returns Rectangle.Empty if the item has not been
+		/// drawn yet and so does not know its own artwork rect.
+		/// </summary>
+		public virtual Rectangle GetContentBounds(Rectangle itemBounds)
+		{
+			return itemBounds;
+		}
+
 		public virtual void OnDraw(ItemDrawInformation drawInfo)
 		{
 		}

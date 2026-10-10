@@ -240,6 +240,40 @@ namespace cYo.Common.Windows.Forms
 			textBox.Focus();
 		}
 
+		/// <summary>
+		/// While the text box has focus, Ctrl+C / X / V / A edit its text. Without this the
+		/// menu items that own those shortcuts elsewhere in the window ("Copy Data" for the
+		/// selected comics, "Copy List", "Select All") get the keys first, so copying the
+		/// search text silently put comic data on the clipboard instead of the text.
+		/// Handled directly here rather than passed on, because this control sits below the
+		/// menus in the key-routing chain and so always sees the key first.
+		/// </summary>
+		protected override bool ProcessCmdKey(ref Message m, Keys keyData)
+		{
+			if (textBox.TextBox != null && textBox.TextBox.Focused)
+			{
+				switch (keyData)
+				{
+				case Keys.Control | Keys.C:
+				case Keys.Control | Keys.Insert:
+					textBox.Copy();
+					return true;
+				case Keys.Control | Keys.X:
+				case Keys.Shift | Keys.Delete:
+					textBox.Cut();
+					return true;
+				case Keys.Control | Keys.V:
+				case Keys.Shift | Keys.Insert:
+					textBox.Paste();
+					return true;
+				case Keys.Control | Keys.A:
+					textBox.SelectAll();
+					return true;
+				}
+			}
+			return base.ProcessCmdKey(ref m, keyData);
+		}
+
 		public void SetCueText(string text)
 		{
 			if (!(text == cueText))

@@ -543,6 +543,10 @@ namespace cYo.Projects.ComicRack.Engine.IO.Cache
 		{
 			if (disposing)
 			{
+				// Signal every queue first so busy workers wind down in parallel; disposing them one
+				// by one made each queue wait for the previous queue's in-flight item.
+				foreach (var queue in new[] { fastThumbnailQueue, slowThumbnailQueue, slowThumbnailQueueUnlimited, fastPageQueue, slowPageQueue })
+					queue.SignalAbort();
 				fastThumbnailQueue.Dispose();
 				slowThumbnailQueue.Dispose();
 				slowThumbnailQueueUnlimited.Dispose();

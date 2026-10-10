@@ -251,6 +251,16 @@ namespace cYo.Projects.ComicRack.Viewer.Config
 			set;
 		}
 
+		/// <summary>
+		/// Use the old OpenGL renderer instead of Direct2D (-hwgl).
+		/// </summary>
+		[CommandLineSwitch(ShortName = "hwgl")]
+		public bool UseOpenGL
+		{
+			get;
+			set;
+		}
+
 		[CommandLineSwitch(ShortName = "hwf")]
 		public bool ForceHardware
 		{

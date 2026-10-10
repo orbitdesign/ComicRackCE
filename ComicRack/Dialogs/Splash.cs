@@ -117,21 +117,52 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 
         public EventWaitHandle Initialized => initialized;
 
+        /// <summary>
+        /// Height of the text area at the bottom of the artwork.
+        /// </summary>
+        protected int BandHeight => FormUtility.ScaleDpiY(34);
+
+        /// <summary>
+        /// Inset from the edges of the artwork that all text and the progress bar keep to.
+        /// </summary>
+        protected int TextMargin => FormUtility.ScaleDpiX(18);
+
         protected Rectangle ProgressBounds
         {
             get
             {
                 Rectangle clientRectangle = base.ClientRectangle;
-                return new Rectangle(clientRectangle.Left + FormUtility.ScaleDpiX(6), clientRectangle.Bottom - FormUtility.ScaleDpiY(52), clientRectangle.Width - FormUtility.ScaleDpiX(28), FormUtility.ScaleDpiY(2));
+                int height = FormUtility.ScaleDpiY(3);
+                return new Rectangle(clientRectangle.Left + TextMargin, clientRectangle.Bottom - TextMargin - height, clientRectangle.Width - 2 * TextMargin, height);
             }
         }
 
+        /// <summary>
+        /// Startup messages: bottom left, inside the margin.
+        /// </summary>
         protected Rectangle MessageBounds
         {
             get
             {
-                Rectangle rectangle = base.ClientRectangle.Pad(0, 0, FormUtility.ScaleDpiX(16), FormUtility.ScaleDpiY(18));
-                return new Rectangle(rectangle.Right - FormUtility.ScaleDpiX(204), rectangle.Bottom - FormUtility.ScaleDpiY(52) - (messageLines - 1) * Font.Height, FormUtility.ScaleDpiX(200), messageLines * Font.Height);
+                Rectangle clientRectangle = base.ClientRectangle;
+                int bottom = ProgressBounds.Top - FormUtility.ScaleDpiY(5);
+                return new Rectangle(clientRectangle.Left + TextMargin, bottom - BandHeight, clientRectangle.Width / 4, BandHeight);
+            }
+        }
+
+        /// <summary>
+        /// Copyright and version: bottom right, inside the margin.
+        /// </summary>
+        protected Rectangle VersionBounds
+        {
+            get
+            {
+                Rectangle clientRectangle = base.ClientRectangle;
+                int bottom = ProgressBounds.Top - FormUtility.ScaleDpiY(5);
+                //The version lines are long, so they get most of the width; the startup
+                //messages are short.
+                int left = clientRectangle.Left + TextMargin + clientRectangle.Width / 4;
+                return Rectangle.FromLTRB(left, bottom - BandHeight, clientRectangle.Right - TextMargin, bottom);
             }
         }
 
@@ -225,44 +256,105 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
             Close();
         }
 
+        private static readonly Color MessageColor = Color.FromArgb(204, 204, 204);
+
+        /// <summary>
+        /// Draws text with a soft dark outline, so it stays readable over any artwork, light or
+        /// dark, without putting a box behind it.
+        /// </summary>
+        private static void DrawOutlinedString(Graphics g, string text, Font font, Color color, float x, float y, StringFormat format)
+        {
+            using (Brush shadow = new SolidBrush(Color.FromArgb(150, Color.Black)))
+            {
+                float d = FormUtility.ScaleDpiX(1);
+                g.DrawString(text, font, shadow, x - d, y, format);
+                g.DrawString(text, font, shadow, x + d, y, format);
+                g.DrawString(text, font, shadow, x, y - d, format);
+                g.DrawString(text, font, shadow, x, y + d, format);
+            }
+            using (Brush brush = new SolidBrush(color))
+            {
+                g.DrawString(text, font, brush, x, y, format);
+            }
+        }
+
+        private static void DrawOutlinedString(Graphics g, string text, Font font, Color color, Rectangle bounds, StringFormat format)
+        {
+            using (Brush shadow = new SolidBrush(Color.FromArgb(150, Color.Black)))
+            {
+                int d = FormUtility.ScaleDpiX(1);
+                foreach (Point offset in new Point[4]
+                {
+                    new Point(-d, 0),
+                    new Point(d, 0),
+                    new Point(0, -d),
+                    new Point(0, d)
+                })
+                {
+                    Rectangle r = bounds;
+                    r.Offset(offset);
+                    g.DrawString(text, font, shadow, r, format);
+                }
+            }
+            using (Brush brush = new SolidBrush(color))
+            {
+                g.DrawString(text, font, brush, bounds, format);
+            }
+        }
+
         protected override void OnPaint(PaintEventArgs e)
         {
             base.OnPaint(e);
-            Rectangle rectangle = base.ClientRectangle.Pad(0, 0, FormUtility.ScaleDpiX(13), FormUtility.ScaleDpiY(17));
             Assembly entryAssembly = Assembly.GetEntryAssembly();
             AssemblyCopyrightAttribute assemblyCopyrightAttribute = Attribute.GetCustomAttribute(entryAssembly, typeof(AssemblyCopyrightAttribute)) as AssemblyCopyrightAttribute;
-            string str = assemblyCopyrightAttribute.Copyright + "\n";
-            str = $"{str}V {Application.ProductVersion}{GitVersion.GetCurrentVersionInfo()}";
-            str += $" {Marshal.SizeOf(typeof(IntPtr)) * 8} bit";
-            Size size = e.Graphics.MeasureString(str, Font).ToSize();
-            using (StringFormat stringFormat = new StringFormat
+            string bits = $"{Marshal.SizeOf(typeof(IntPtr)) * 8} bit";
+            string buildInfo = GitVersion.GetBuildInfo();
+            //Two lines, so it fits the band: the copyright, then the version.
+            string version = string.IsNullOrEmpty(buildInfo)
+                ? $"V {Application.ProductVersion}{GitVersion.GetCurrentVersionInfo()} {bits}"
+                : $"{buildInfo}{GitVersion.GetCurrentVersionInfo()} {bits} - based on Community Edition V {Application.ProductVersion}";
+            string str = assemblyCopyrightAttribute.Copyright + "\n" + version;
+            using (StringFormat rightFormat = new StringFormat
             {
-                Alignment = StringAlignment.Far
+                Alignment = StringAlignment.Far,
+                LineAlignment = StringAlignment.Far,
+                Trimming = StringTrimming.EllipsisCharacter
             })
             {
-                e.Graphics.DrawString(str, Font, Brushes.White, rectangle.Width - FormUtility.ScaleDpiX(8), rectangle.Height - size.Height - FormUtility.ScaleDpiY(6), stringFormat);
-                using (Brush brush = new SolidBrush(progressColor))
+                //Without this a long version line wraps onto a third line, which pushes the
+                //copyright out of the top of its box and cuts it in half.
+                rightFormat.FormatFlags |= StringFormatFlags.NoWrap;
+                DrawOutlinedString(e.Graphics, str, Font, Color.White, VersionBounds, rightFormat);
+            }
+            using (Brush brush = new SolidBrush(progressColor))
+            {
+                Rectangle progressBounds = ProgressBounds;
+                progressBounds.Width = progress * progressBounds.Width / 100;
+                e.Graphics.FillRectangle(brush, progressBounds);
+            }
+            if (!string.IsNullOrEmpty(message))
+            {
+                using (StringFormat leftFormat = new StringFormat
                 {
-                    Rectangle progressBounds = ProgressBounds;
-                    progressBounds.Width = progress * (rectangle.Width - FormUtility.ScaleDpiX(4)) / 100;
-                    e.Graphics.FillRectangle(brush, progressBounds);
-                }
-                if (!string.IsNullOrEmpty(message))
+                    Alignment = StringAlignment.Near,
+                    LineAlignment = StringAlignment.Far,
+                    Trimming = StringTrimming.EllipsisCharacter
+                })
                 {
-                    int num = 128;
-                    int num2 = num / messageLines;
-                    Rectangle messageBounds = MessageBounds;
-                    stringFormat.LineAlignment = StringAlignment.Far;
-                    string[] array = message.Split('\n').AsEnumerable().Reverse().Take(messageLines)
-                        .ToArray();
-                    foreach (string s in array)
+                    leftFormat.FormatFlags |= StringFormatFlags.NoWrap;
+                    //Newest message at the bottom, older ones stacked above it and fading out.
+                    //However many lines the band has room for, up to MessageLines.
+                    string[] lines = message.Split('\n');
+                    int count = Math.Max(1, Math.Min(messageLines, BandHeight / Math.Max(1, Font.Height)));
+                    count = Math.Min(count, lines.Length);
+                    Rectangle bounds = MessageBounds;
+                    int alpha = 220;
+                    int fade = alpha / (count + 1);
+                    for (int i = 0; i < count; i++)
                     {
-                        using (Brush brush2 = new SolidBrush(Color.FromArgb(num, Color.Black)))
-                        {
-                            e.Graphics.DrawString(s, Font, brush2, messageBounds, stringFormat);
-                        }
-                        messageBounds.Height -= Font.Height;
-                        num -= num2;
+                        DrawOutlinedString(e.Graphics, lines[lines.Length - 1 - i], Font, Color.FromArgb(alpha, MessageColor), bounds, leftFormat);
+                        bounds.Height -= Font.Height;
+                        alpha -= fade;
                     }
                 }
             }
