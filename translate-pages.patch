@@ -1,0 +1,862 @@
+diff --git a/ComicRack.Engine.Display.Forms/ComicDisplayControl.cs b/ComicRack.Engine.Display.Forms/ComicDisplayControl.cs
+index 2cf3abf..3246a82 100644
+--- a/ComicRack.Engine.Display.Forms/ComicDisplayControl.cs
++++ b/ComicRack.Engine.Display.Forms/ComicDisplayControl.cs
+@@ -253,6 +253,15 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
+ 
+ 		private static Bitmap magnifierArt;
+ 
++		//Page translation through the ComicTranslator helper (see PageTranslationService).
++		private PageTranslationService pageTranslator;
++
++		private bool translatePages;
++
++		private string translationServerUrl = "http://127.0.0.1:8790";
++
++		private TextOverlay translateOverlay;
++
+ 		private readonly NavigationOverlay navigationOverlay;
+ 
+ 		private readonly OverlayPanel gestureOverlay;
+@@ -713,6 +722,70 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
+ 			}
+ 		}
+ 
++		/// <summary>
++		/// Shows pages translated by the ComicTranslator helper. Pages appear as they are
++		/// until their translation arrives, which then replaces them on screen.
++		/// </summary>
++		[Browsable(false)]
++		[DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
++		public bool TranslatePages
++		{
++			get
++			{
++				return translatePages;
++			}
++			set
++			{
++				if (translatePages == value)
++				{
++					return;
++				}
++				translatePages = value;
++				if (value)
++				{
++					if (pageTranslator == null)
++					{
++						pageTranslator = new PageTranslationService
++						{
++							ServerUrl = translationServerUrl
++						};
++						pageTranslator.PageFinished += pageTranslator_PageFinished;
++					}
++				}
++				else
++				{
++					//Forget everything, so turning translation back on picks up any settings
++					//changed in the helper meanwhile.
++					pageTranslator?.Clear();
++				}
++				UpdateTranslateOverlay();
++				Invalidate();
++			}
++		}
++
++		[Browsable(false)]
++		[DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
++		public string TranslationServerUrl
++		{
++			get
++			{
++				return translationServerUrl;
++			}
++			set
++			{
++				translationServerUrl = string.IsNullOrWhiteSpace(value) ? "http://127.0.0.1:8790" : value.Trim();
++				if (pageTranslator != null)
++				{
++					pageTranslator.ServerUrl = translationServerUrl;
++				}
++			}
++		}
++
++		public void ToggleTranslatePages()
++		{
++			TranslatePages = !TranslatePages;
++		}
++
+ 		[DefaultValue(true)]
+ 		public bool AutoHideMagnifier
+ 		{
+@@ -1184,6 +1257,14 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
+ 				Visible = false
+ 			};
+ 			overlayManager.Panels.Add(messageOverlay);
++			translateOverlay = new TextOverlay(messageSize.Width, messageSize.Height, ContentAlignment.TopLeft, Font)
++			{
++				Enabled = false,
++				AutoAlign = true,
++				Visible = false,
++				MaxSize = new Size(800, 160).ScaleDpi()
++			};
++			overlayManager.Panels.Add(translateOverlay);
+ 			navigationOverlay = new NavigationOverlay(new Size(500, NavigationOverlayDefaultHeight).ScaleDpi())
+ 			{
+ 				Visible = false
+@@ -1210,6 +1291,12 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
+ 			{
+ 				Book = null;
+ 			}
++			if (disposing && pageTranslator != null)
++			{
++				pageTranslator.PageFinished -= pageTranslator_PageFinished;
++				pageTranslator.Dispose();
++				pageTranslator = null;
++			}
+ 			overlayManager.Panels.Dispose();
+ 			overlayManager.Dispose();
+ 			base.Dispose(disposing);
+@@ -1886,6 +1973,16 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
+ 				lastValidKey = pageKey;
+ 				firstPageHasBeenLoaded = true;
+ 				page2.Tag = true;
++				if (translatePages)
++				{
++					IItemLock<PageImage> translated = GetTranslatedPage(page, pageKey, page2.Item);
++					if (translated != null)
++					{
++						page2.Dispose();
++						translated.Tag = true;
++						return translated;
++					}
++				}
+ 				return page2;
+ 			}
+ 			if (lastValidKey != null)
+@@ -1895,6 +1992,117 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
+ 			return page2 ?? new ItemLock<PageImage>(null);
+ 		}
+ 
++		/// <summary>
++		/// The translated version of a page when it is ready, otherwise null (and the page is
++		/// asked for). Pages on screen go to the front of the queue, followed by the next few
++		/// that are already loaded, so turning the page usually finds them done.
++		/// </summary>
++		private IItemLock<PageImage> GetTranslatedPage(int page, PageKey key, PageImage original)
++		{
++			PageTranslationService service = pageTranslator;
++			if (service == null || original == null || original.Merged)
++			{
++				return null;
++			}
++			bool shown = page == CurrentPage || (TwoPageDisplay && page == NextPage);
++			if (shown)
++			{
++				RequestTranslationAhead(service, page);
++			}
++			PageImage done = service.GetResult(key);
++			if (done != null)
++			{
++				return new ItemLock<PageImage>(done);
++			}
++			if (shown || !service.IsKnown(key))
++			{
++				service.Request(key, original, shown ? 0 : 5);
++			}
++			return null;
++		}
++
++		private void RequestTranslationAhead(PageTranslationService service, int page)
++		{
++			for (int i = 1; i <= 3; i++)
++			{
++				int next = SeekPage(page, i);
++				if (next < 0)
++				{
++					break;
++				}
++				PageKey key = GetPageKey(next);
++				if (key == null || service.IsKnown(key))
++				{
++					continue;
++				}
++				using (IItemLock<PageImage> itemLock = pagePool.GetPage(key, onlyMemory: true))
++				{
++					if (itemLock != null && itemLock.Item != null && !itemLock.Item.Merged)
++					{
++						service.Request(key, itemLock.Item, i);
++					}
++				}
++			}
++		}
++
++		private void pageTranslator_PageFinished(object sender, PageTranslationService.PageKeyEventArgs e)
++		{
++			if (!base.IsHandleCreated || base.IsDisposed)
++			{
++				return;
++			}
++			try
++			{
++				BeginInvoke((Action)delegate
++				{
++					if (!IsValid || !translatePages)
++					{
++						return;
++					}
++					UpdateTranslateOverlay();
++					if (object.Equals(e.Key, GetPageKey(CurrentPage)) || (TwoPageDisplay && object.Equals(e.Key, GetPageKey(NextPage))) || !DisplayedPages.Where((int dp) => object.Equals(e.Key, GetPageKey(dp))).IsEmpty())
++					{
++						Invalidate();
++					}
++				});
++			}
++			catch (InvalidOperationException)
++			{
++				//The window went away meanwhile.
++			}
++		}
++
++		/// <summary>
++		/// The small note at the top left while translating: "Translating..." while the page
++		/// on screen is waiting, or what went wrong.
++		/// </summary>
++		private void UpdateTranslateOverlay()
++		{
++			if (translateOverlay == null)
++			{
++				return;
++			}
++			string text = null;
++			PageTranslationService service = pageTranslator;
++			if (translatePages && service != null && IsValid)
++			{
++				string problem = service.Status;
++				if (!string.IsNullOrEmpty(problem))
++				{
++					text = problem;
++				}
++				else if (service.IsWaiting(GetPageKey(CurrentPage)) || (TwoPageDisplay && service.IsWaiting(GetPageKey(NextPage))))
++				{
++					text = TR.Messages["TranslatingPage", "Translating..."];
++				}
++			}
++			if (translateOverlay.Text != text)
++			{
++				translateOverlay.Text = text;
++			}
++			translateOverlay.Visible = !string.IsNullOrEmpty(text);
++		}
++
+ 		/// <summary>
+ 		/// Makes sure the deeper read ahead will run, without putting it off again. Restarting the
+ 		/// timer on every page meant that reading at any normal pace kept pushing it back, so the
+@@ -2677,6 +2885,7 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
+ 			{
+ 				UpdateLoadPageOverlay();
+ 			}
++			UpdateTranslateOverlay();
+ 			overlayManager.Draw(e.Graphics);
+ 			if (blindOut)
+ 			{
+diff --git a/ComicRack.Engine.Display.Forms/PageTranslationService.cs b/ComicRack.Engine.Display.Forms/PageTranslationService.cs
+new file mode 100644
+index 0000000..a2ea448
+--- /dev/null
++++ b/ComicRack.Engine.Display.Forms/PageTranslationService.cs
+@@ -0,0 +1,429 @@
++using System;
++using System.Collections.Generic;
++using System.IO;
++using System.Linq;
++using System.Net;
++using System.Text;
++using System.Threading;
++using cYo.Common.Drawing;
++using cYo.Projects.ComicRack.Engine.IO;
++
++namespace cYo.Projects.ComicRack.Engine.Display.Forms
++{
++	/// <summary>
++	/// Talks to the ComicTranslator helper (a small local web service): sends it page images
++	/// and keeps the translated pages it sends back. One background thread does the work, the
++	/// page being read first and the pages after it next, so by the time a page is turned its
++	/// translation is usually ready.
++	///
++	/// Everything here is safe to call from the paint code: asking for a page that is not
++	/// translated yet only records the request and returns straight away.
++	/// </summary>
++	public class PageTranslationService : IDisposable
++	{
++		private enum State
++		{
++			Pending,
++			Working,
++			Done,
++			NoText,
++			Failed
++		}
++
++		private class Entry
++		{
++			public State State;
++
++			public byte[] Source;
++
++			public PageImage Result;
++
++			public int Priority;
++
++			public long Order;
++
++			public DateTime Finished;
++
++			public DateTime LastUsed;
++		}
++
++		//How many translated pages to keep in memory (about 1 MB each).
++		private const int MaxDone = 40;
++
++		//How many untranslated pages may wait; older read-ahead requests give way.
++		private const int MaxPending = 6;
++
++		private static readonly TimeSpan RetryAfter = TimeSpan.FromSeconds(15);
++
++		private readonly Dictionary<PageKey, Entry> entries = new Dictionary<PageKey, Entry>();
++
++		private readonly object sync = new object();
++
++		private readonly AutoResetEvent signal = new AutoResetEvent(false);
++
++		private Thread worker;
++
++		private volatile bool stopping;
++
++		private long order;
++
++		private string status;
++
++		private DateTime serverDownUntil = DateTime.MinValue;
++
++		public string ServerUrl { get; set; } = "http://127.0.0.1:8790";
++
++		/// <summary>
++		/// Raised on the background thread when a page has been translated (or found to
++		/// have no text, or failed), with the page's key.
++		/// </summary>
++		public event EventHandler<PageKeyEventArgs> PageFinished;
++
++		public class PageKeyEventArgs : EventArgs
++		{
++			public PageKey Key { get; }
++
++			public PageKeyEventArgs(PageKey key)
++			{
++				Key = key;
++			}
++		}
++
++		/// <summary>
++		/// The last problem talking to the helper, or null while all is well.
++		/// </summary>
++		public string Status
++		{
++			get
++			{
++				lock (sync)
++				{
++					return status;
++				}
++			}
++		}
++
++		/// <summary>
++		/// The translated page, or null when it is not ready (or has no text to translate).
++		/// </summary>
++		public PageImage GetResult(PageKey key)
++		{
++			if (key == null)
++			{
++				return null;
++			}
++			lock (sync)
++			{
++				if (entries.TryGetValue(key, out Entry entry) && entry.State == State.Done)
++				{
++					entry.LastUsed = DateTime.UtcNow;
++					return entry.Result;
++				}
++			}
++			return null;
++		}
++
++		public bool IsWaiting(PageKey key)
++		{
++			if (key == null)
++			{
++				return false;
++			}
++			lock (sync)
++			{
++				return entries.TryGetValue(key, out Entry entry) && (entry.State == State.Pending || entry.State == State.Working);
++			}
++		}
++
++		/// <summary>
++		/// True when the page needs no request: already done, waiting, or recently failed.
++		/// Lets callers skip the work of getting the page's bytes.
++		/// </summary>
++		public bool IsKnown(PageKey key)
++		{
++			lock (sync)
++			{
++				if (!entries.TryGetValue(key, out Entry entry))
++				{
++					return false;
++				}
++				return entry.State != State.Failed || DateTime.UtcNow - entry.Finished < RetryAfter;
++			}
++		}
++
++		/// <summary>
++		/// Asks for a page to be translated. Lower priority numbers go first; asking again
++		/// for a waiting page with a lower number moves it forward.
++		/// </summary>
++		public void Request(PageKey key, PageImage image, int priority)
++		{
++			if (key == null || image == null || stopping)
++			{
++				return;
++			}
++			lock (sync)
++			{
++				if (entries.TryGetValue(key, out Entry existing))
++				{
++					if (existing.State == State.Pending && priority < existing.Priority)
++					{
++						existing.Priority = priority;
++						existing.Order = ++order;
++					}
++					if (existing.State != State.Failed || DateTime.UtcNow - existing.Finished < RetryAfter)
++					{
++						return;
++					}
++				}
++			}
++			//Outside the lock: may encode the page when its original format is not one the
++			//helper can read.
++			byte[] data = GetUploadBytes(image);
++			if (data == null)
++			{
++				return;
++			}
++			lock (sync)
++			{
++				entries[key] = new Entry
++				{
++					State = State.Pending,
++					Source = data,
++					Priority = priority,
++					Order = ++order,
++					LastUsed = DateTime.UtcNow
++				};
++				TrimPending();
++				EnsureWorker();
++			}
++			signal.Set();
++		}
++
++		/// <summary>
++		/// Forgets every translated and waiting page, e.g. when translation is turned off,
++		/// so turning it on again picks up changed settings.
++		/// </summary>
++		public void Clear()
++		{
++			lock (sync)
++			{
++				entries.Clear();
++				status = null;
++				serverDownUntil = DateTime.MinValue;
++			}
++		}
++
++		public void Dispose()
++		{
++			stopping = true;
++			signal.Set();
++		}
++
++		private static byte[] GetUploadBytes(PageImage image)
++		{
++			try
++			{
++				byte[] data = image.Data;
++				if (IsReadableFormat(data))
++				{
++					return data;
++				}
++				return image.Bitmap?.ImageToJpegBytes(95);
++			}
++			catch (Exception)
++			{
++				return null;
++			}
++		}
++
++		//JPEG, PNG, WebP, BMP and GIF are read by the helper as they are; anything else
++		//(JPEG XL, AVIF, HEIF...) is sent as a JPEG made from the decoded page.
++		private static bool IsReadableFormat(byte[] d)
++		{
++			if (d == null || d.Length < 12)
++			{
++				return false;
++			}
++			if (d[0] == 0xFF && d[1] == 0xD8)
++			{
++				return true;
++			}
++			if (d[0] == 0x89 && d[1] == 0x50 && d[2] == 0x4E && d[3] == 0x47)
++			{
++				return true;
++			}
++			if (d[0] == 'R' && d[1] == 'I' && d[2] == 'F' && d[3] == 'F' && d[8] == 'W' && d[9] == 'E' && d[10] == 'B' && d[11] == 'P')
++			{
++				return true;
++			}
++			if (d[0] == 'B' && d[1] == 'M')
++			{
++				return true;
++			}
++			return d[0] == 'G' && d[1] == 'I' && d[2] == 'F';
++		}
++
++		private void TrimPending()
++		{
++			List<KeyValuePair<PageKey, Entry>> pending = entries.Where((KeyValuePair<PageKey, Entry> kv) => kv.Value.State == State.Pending).OrderBy((KeyValuePair<PageKey, Entry> kv) => kv.Value.Priority).ThenByDescending((KeyValuePair<PageKey, Entry> kv) => kv.Value.Order).ToList();
++			foreach (KeyValuePair<PageKey, Entry> kv in pending.Skip(MaxPending))
++			{
++				entries.Remove(kv.Key);
++			}
++			List<KeyValuePair<PageKey, Entry>> done = entries.Where((KeyValuePair<PageKey, Entry> kv) => kv.Value.State == State.Done || kv.Value.State == State.NoText).OrderByDescending((KeyValuePair<PageKey, Entry> kv) => kv.Value.LastUsed).ToList();
++			foreach (KeyValuePair<PageKey, Entry> kv in done.Skip(MaxDone))
++			{
++				entries.Remove(kv.Key);
++			}
++		}
++
++		private void EnsureWorker()
++		{
++			if (worker != null)
++			{
++				return;
++			}
++			worker = new Thread(WorkerLoop)
++			{
++				IsBackground = true,
++				Name = "Page translation",
++				Priority = ThreadPriority.BelowNormal
++			};
++			worker.Start();
++		}
++
++		private void WorkerLoop()
++		{
++			while (!stopping)
++			{
++				PageKey key = null;
++				Entry entry = null;
++				lock (sync)
++				{
++					if (DateTime.UtcNow >= serverDownUntil)
++					{
++						KeyValuePair<PageKey, Entry> next = entries.Where((KeyValuePair<PageKey, Entry> kv) => kv.Value.State == State.Pending).OrderBy((KeyValuePair<PageKey, Entry> kv) => kv.Value.Priority).ThenByDescending((KeyValuePair<PageKey, Entry> kv) => kv.Value.Order).FirstOrDefault();
++						if (next.Value != null)
++						{
++							key = next.Key;
++							entry = next.Value;
++							entry.State = State.Working;
++						}
++					}
++				}
++				if (entry == null)
++				{
++					signal.WaitOne(1000);
++					continue;
++				}
++				Translate(key, entry);
++				PageFinished?.Invoke(this, new PageKeyEventArgs(key));
++			}
++		}
++
++		private void Translate(PageKey key, Entry entry)
++		{
++			State result = State.Failed;
++			PageImage image = null;
++			string problem = null;
++			bool serverDown = false;
++			try
++			{
++				HttpWebRequest request = (HttpWebRequest)WebRequest.Create(ServerUrl.TrimEnd('/') + "/translate");
++				request.Method = "POST";
++				request.ContentType = "application/octet-stream";
++				request.Proxy = null;
++				request.Timeout = 300000;
++				request.ReadWriteTimeout = 300000;
++				request.ContentLength = entry.Source.Length;
++				using (Stream s = request.GetRequestStream())
++				{
++					s.Write(entry.Source, 0, entry.Source.Length);
++				}
++				using (HttpWebResponse response = (HttpWebResponse)request.GetResponse())
++				{
++					if (response.StatusCode == HttpStatusCode.NoContent)
++					{
++						result = State.NoText;
++					}
++					else
++					{
++						byte[] bytes = ReadAll(response.GetResponseStream());
++						if (bytes.Length > 0)
++						{
++							image = PageImage.CreateFrom(bytes);
++							result = State.Done;
++						}
++						else
++						{
++							result = State.NoText;
++						}
++					}
++				}
++			}
++			catch (WebException ex)
++			{
++				if (ex.Response is HttpWebResponse response)
++				{
++					using (response)
++					{
++						try
++						{
++							problem = Encoding.UTF8.GetString(ReadAll(response.GetResponseStream())).Trim();
++						}
++						catch (Exception)
++						{
++						}
++						if (string.IsNullOrEmpty(problem))
++						{
++							problem = "Translation failed (" + (int)response.StatusCode + ")";
++						}
++					}
++				}
++				else
++				{
++					serverDown = true;
++					problem = "Translator not running at " + ServerUrl + " - start ComicTranslator\\run.bat";
++				}
++			}
++			catch (Exception ex)
++			{
++				problem = "Translation failed: " + ex.Message;
++			}
++			lock (sync)
++			{
++				//Cleared (translation turned off) while this page was out: forget it.
++				if (!entries.TryGetValue(key, out Entry current) || current != entry)
++				{
++					return;
++				}
++				entry.State = result;
++				entry.Result = image;
++				entry.Source = (result == State.Failed) ? entry.Source : null;
++				entry.Finished = DateTime.UtcNow;
++				entry.LastUsed = DateTime.UtcNow;
++				status = problem;
++				if (serverDown)
++				{
++					//Every waiting page would fail the same way; try again a little later.
++					serverDownUntil = DateTime.UtcNow + TimeSpan.FromSeconds(5);
++					foreach (Entry e in entries.Values.Where((Entry p) => p.State == State.Pending))
++					{
++						e.State = State.Failed;
++						e.Finished = DateTime.UtcNow;
++					}
++				}
++				TrimPending();
++			}
++		}
++
++		private static byte[] ReadAll(Stream stream)
++		{
++			using (MemoryStream ms = new MemoryStream())
++			{
++				stream.CopyTo(ms);
++				return ms.ToArray();
++			}
++		}
++	}
++}
+diff --git a/ComicRack/Config/Settings.cs b/ComicRack/Config/Settings.cs
+index d7f88f8..7c1ffe9 100644
+--- a/ComicRack/Config/Settings.cs
++++ b/ComicRack/Config/Settings.cs
+@@ -194,6 +194,8 @@ namespace cYo.Projects.ComicRack.Viewer.Config
+ 
+ 		private bool middleClickMagnifierAdded;
+ 
++		private string translatorServerUrl = "http://127.0.0.1:8790";
++
+ 		private string libraryBackgroundTexturePath = string.Empty;
+ 
+ 		private System.Windows.Forms.ImageLayout libraryBackgroundLayout = System.Windows.Forms.ImageLayout.Tile;
+@@ -1296,6 +1298,27 @@ namespace cYo.Projects.ComicRack.Viewer.Config
+ 		/// Set once the middle mouse button has been added to Toggle Magnifier in a saved
+ 		/// keyboard layout (see MainForm.AddMiddleClickMagnifierOnce).
+ 		/// </summary>
++		/// <summary>
++		/// Where the ComicTranslator helper listens (Translate Pages in the reader).
++		/// </summary>
++		[Browsable(false)]
++		[DefaultValue("http://127.0.0.1:8790")]
++		public string TranslatorServerUrl
++		{
++			get
++			{
++				return translatorServerUrl;
++			}
++			set
++			{
++				if (translatorServerUrl != value)
++				{
++					translatorServerUrl = value;
++					FireEvent(null);
++				}
++			}
++		}
++
+ 		[Browsable(false)]
+ 		[DefaultValue(false)]
+ 		public bool MiddleClickMagnifierAdded
+diff --git a/ComicRack/MainForm.cs b/ComicRack/MainForm.cs
+index 8bdca73..f3acd92 100644
+--- a/ComicRack/MainForm.cs
++++ b/ComicRack/MainForm.cs
+@@ -1447,6 +1447,24 @@ namespace cYo.Projects.ComicRack.Viewer
+ 				ComicDisplay.ImageAutoRotate = !ComicDisplay.ImageAutoRotate;
+ 			}, notContinuousLayout, () => ComicDisplay.ImageAutoRotate, miAutoRotate, tbAutoRotate);
+ 			commands.Add(ComicDisplay.ToggleMagnifier, true, () => ComicDisplay.MagnifierVisible, miMagnify, tbMagnify, cmMagnify);
++			ToolStripMenuItem miTranslatePages = new ToolStripMenuItem("&Translate Pages")
++			{
++				Name = "miTranslatePages",
++				ShortcutKeyDisplayString = "E"
++			};
++			ToolStripMenuItem miTranslationSettings = new ToolStripMenuItem("Translation Settings...")
++			{
++				Name = "miTranslationSettings"
++			};
++			ToolStripMenuItem cmTranslatePages = new ToolStripMenuItem("&Translate Pages")
++			{
++				Name = "cmTranslatePages",
++				ShortcutKeyDisplayString = "E"
++			};
++			InsertMenuItemsAfter(miMagnify, miTranslatePages, miTranslationSettings);
++			InsertMenuItemsAfter(cmMagnify, cmTranslatePages);
++			commands.Add(ToggleTranslatePages, true, () => readerControl != null && readerControl.TranslatePages, miTranslatePages, cmTranslatePages);
++			commands.Add(OpenTranslationSettings, miTranslationSettings);
+ 			commands.Add(ComicDisplay.TogglePaperTexture, true, () => !string.IsNullOrEmpty(ComicDisplay.PaperTexture), miPaperTexture);
+ 			commands.Add(delegate
+ 			{
+@@ -1678,6 +1696,7 @@ namespace cYo.Projects.ComicRack.Viewer
+ 				CommandKey.TouchPressAndTap,
+ 				CommandKey.MouseMiddle
+ 			}));
++			ComicDisplay.KeyboardMap.Commands.Add(new KeyboardCommand("ToggleTranslatePages", group, "Toggle Page Translation", ToggleTranslatePages, CommandKey.E));
+ 			ComicDisplay.KeyboardMap.Commands.Add(new KeyboardCommand("ToggleMenu", group, "Toggle Menu", delegate
+ 			{
+ 				MinimalGui = !MinimalGui;
+@@ -2977,6 +2996,46 @@ namespace cYo.Projects.ComicRack.Viewer
+ 			}
+ 		}
+ 
++		/// <summary>
++		/// The reader control itself, for features that only it has (page translation).
++		/// </summary>
++		private ComicDisplayControl readerControl;
++
++		private void ToggleTranslatePages()
++		{
++			if (ComicDisplay != null && readerControl != null)
++			{
++				readerControl.TranslatePages = !readerControl.TranslatePages;
++			}
++		}
++
++		private void OpenTranslationSettings()
++		{
++			string url = (readerControl != null) ? readerControl.TranslationServerUrl : Program.Settings.TranslatorServerUrl;
++			try
++			{
++				System.Diagnostics.Process.Start(url);
++			}
++			catch (Exception)
++			{
++				MessageBox.Show(this, "Could not open " + url, "Translation Settings", MessageBoxButtons.OK, MessageBoxIcon.Information);
++			}
++		}
++
++		private static void InsertMenuItemsAfter(ToolStripItem anchor, params ToolStripItem[] items)
++		{
++			ToolStrip owner = anchor?.Owner;
++			if (owner == null)
++			{
++				return;
++			}
++			int index = owner.Items.IndexOf(anchor);
++			foreach (ToolStripItem item in items)
++			{
++				owner.Items.Insert(++index, item);
++			}
++		}
++
+ 		private void ToggleUndockReader()
+ 		{
+ 			if (!ReaderUndocked)
+@@ -4443,6 +4502,8 @@ namespace cYo.Projects.ComicRack.Viewer
+ 			readerContainer.Controls.Add(pageDisplay);
+ 			readerContainer.Controls.SetChildIndex(pageDisplay, 0);
+ 			readerContainer.Controls.SetChildIndex(quickOpenView, 0);
++			readerControl = pageDisplay;
++			pageDisplay.TranslationServerUrl = Program.Settings.TranslatorServerUrl;
+ 			ComicDisplay comicDisplay = new ComicDisplay(pageDisplay);
+ 			FormUtility.ServiceTranslation[pageDisplay] = comicDisplay;
+ 			return comicDisplay;
+diff --git a/ComicRack/Output/Changes.txt b/ComicRack/Output/Changes.txt
+index 37ab986..6193e79 100644
+--- a/ComicRack/Output/Changes.txt
++++ b/ComicRack/Output/Changes.txt
+@@ -1,4 +1,4 @@
+-﻿orbitdesign Build 1.71 (based on Community Edition 0.9.184):
++﻿orbitdesign Build 1.72 (based on Community Edition 0.9.184):
+ 
+ * 1.1 FIX: Hardware acceleration stability. Fixed OpenGL extension detection, replaced the deprecated automatic mip map generation that crashed some drivers, checked texture uploads for errors, and added a startup guard that switches hardware acceleration off for one session if ComicRack failed to start last time.
+ * 1.2 NEW: Direct2D renderer for the reader. Used by default when hardware acceleration is on, with OpenGL and then software rendering as fallbacks. Handles graphics device resets, uses high quality cubic sampling for "Enable Hardware Filters", and supports paper textures. Start with -hwgl to use the old OpenGL renderer.
+@@ -71,6 +71,7 @@
+ * 1.69 CHANGE: The Glass magnifier now uses the engraved magnifying glass artwork: the zoomed view sits inside its ring, with the handle hanging off to the lower right. The lens is still the 15% larger round view (the artwork scales to fit it). The Simple style keeps its plain round rim, and renderers without hardware acceleration keep the rectangular frame.
+ * 1.70 CHANGE: Updated the magnifier artwork and gave it a soft drop shadow, cast down and to the right, outside the lens.
+ * 1.71 CHANGE: The Recent Books list in the File menu now keeps the last 30 books (was 20). Also made picking a book from that list always open the book you clicked, even if some of the books above it have since been deleted or moved.
++* 1.72 NEW: Translate Pages (E, or View / right-click menu > Translate Pages). With the separate ComicTranslator helper running, pages are sent to it and come back with the speech bubbles cleaned and the translation lettered in, replacing the page on screen. The page on screen goes first and the next three pages follow, so turning the page usually finds the translation ready. Reading and translating can use a local Ollama model (any language, including vertical Japanese) or Google Translate, chosen on the helper's settings page (View > Translation Settings...). Translated pages are cached, so a book reads instantly the second time.
+ 
+ 
+ Community Edition Build 0.9.184:
+diff --git a/ComicRack/Properties/AssemblyInfo.cs b/ComicRack/Properties/AssemblyInfo.cs
+index eadeb38..02bdf97 100644
+--- a/ComicRack/Properties/AssemblyInfo.cs
++++ b/ComicRack/Properties/AssemblyInfo.cs
+@@ -25,7 +25,7 @@ using System.Runtime.Versioning;
+ // Our own build number, shown in the About box and crash reports. The second number counts the
+ // changes made on top of Community Edition; add one for each new change (see Changes.txt).
+ [assembly: AssemblyMetadata("BuildName", "orbitdesign")]
+-[assembly: AssemblyMetadata("BuildVersion", "1.71")]
++[assembly: AssemblyMetadata("BuildVersion", "1.72")]
+ [assembly: AssemblyDelaySign(false)]
+ [assembly: AssemblyKeyName("")]
+ [assembly: AssemblyVersion("1.0.*")]
