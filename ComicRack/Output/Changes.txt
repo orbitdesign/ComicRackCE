@@ -1,4 +1,4 @@
-﻿orbitdesign Build 1.86 (based on Community Edition 0.9.184):
+﻿orbitdesign Build 1.87 (based on Community Edition 0.9.184):
 
 * 1.1 FIX: Hardware acceleration stability. Fixed OpenGL extension detection, replaced the deprecated automatic mip map generation that crashed some drivers, checked texture uploads for errors, and added a startup guard that switches hardware acceleration off for one session if ComicRack failed to start last time.
 * 1.2 NEW: Direct2D renderer for the reader. Used by default when hardware acceleration is on, with OpenGL and then software rendering as fallbacks. Handles graphics device resets, uses high quality cubic sampling for "Enable Hardware Filters", and supports paper textures. Start with -hwgl to use the old OpenGL renderer.
@@ -86,6 +86,7 @@
 * 1.84 NEW: Translate ahead button on the toolbars, next to the translator and power buttons. Its menu translates the next 5, 10, 15, 25 or 50 pages, the rest of the book, or the whole book in the background so the pages are ready when you get to them, shows how far it has got (also in the reader's status panel) and can be stopped. Each menu entry has its own small picture. Pages already translated are skipped, and it stops when you open another book.
 * 1.85 FIX: After using the translate ahead menu (or the other translation buttons) the toolbar kept the keyboard, so shortcut keys such as E no longer reached the reader. The keyboard now goes back to the reader after these buttons are used. The translate ahead picture now has light pages and a coloured arrow, so it shows on the dark toolbar.
 * 1.86 NEW: Merge boxes in the translation editor. Select two or more boxes (Ctrl-click), right-click and choose Merge into one box: the translation then wraps inside the whole shape made by their areas, which suits a bubble made of two. The old boxes are hidden and left alone, the merged box can be moved and is saved with the book, and Split the merged box again undoes it. Needs ComicTranslator 1.10.
+* 1.87 NEW: Bubbles made of more than one piece of text are lettered in a matching shape automatically (needs ComicTranslator 1.11). When a bubble's outline cannot be followed, the area for the translation is grown from the original text itself (staggered columns give a stepped shape, two lobes give an L), and pieces of text that sit close together on the same paper with no line between them are lettered as one box. The editor shows such text as a single box.
 
 
 Community Edition Build 0.9.184:

@@ -66,6 +66,12 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 		/// <summary>Where the lettering is: the user's rectangle, else what the helper used, else the original text.</summary>
 		public bool IsMergedAway => !string.IsNullOrEmpty(MergedInto);
 
+		/// <summary>Set by the helper when it lettered this box's text together with a neighbour's (same bubble); never sent back.</summary>
+		public string AutoMergedInto { get; set; } = "";
+
+		/// <summary>Not shown in the editor: folded into a merged box, by the user or by the helper.</summary>
+		public bool IsHidden => IsMergedAway || !string.IsNullOrEmpty(AutoMergedInto);
+
 		public int[] Area
 		{
 			get
@@ -160,6 +166,7 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 				TextEdited = GetBool(e, "text_edited"),
 				Rect = GetInts(e, "rect"),
 				MergedInto = GetString(e, "merged_into"),
+				AutoMergedInto = GetString(e, "auto_merged_into"),
 				Size = GetDouble(e, "size"),
 				Rotation = GetDouble(e, "rotation"),
 				Skip = GetBool(e, "skip"),

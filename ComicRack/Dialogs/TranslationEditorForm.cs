@@ -95,7 +95,7 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			public bool AddMode { get; set; }
 
 			/// <summary>The boxes that show: those folded into a merged box are hidden.</summary>
-			public IEnumerable<TranslationBox> Visible => Boxes.Where((TranslationBox b) => !b.IsMergedAway);
+			public IEnumerable<TranslationBox> Visible => Boxes.Where((TranslationBox b) => !b.IsHidden);
 
 			private List<int[]> startShape;
 
@@ -211,7 +211,7 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 				for (int i = 0; i < Boxes.Count; i++)
 				{
 					TranslationBox box = Boxes[i];
-					if (box.IsMergedAway)
+					if (box.IsHidden)
 					{
 						continue;
 					}
@@ -336,7 +336,7 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 				double bestArea = double.MaxValue;
 				foreach (TranslationBox b in Boxes)
 				{
-					if (b.IsMergedAway)
+					if (b.IsHidden)
 					{
 						continue;
 					}
