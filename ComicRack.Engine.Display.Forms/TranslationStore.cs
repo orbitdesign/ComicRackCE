@@ -294,6 +294,7 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 				match.Align = edit.Align;
 				match.Rotation = edit.Rotation;
 				match.Skip = edit.Skip;
+				match.MergedInto = edit.MergedInto;
 				any = true;
 			}
 			return any;

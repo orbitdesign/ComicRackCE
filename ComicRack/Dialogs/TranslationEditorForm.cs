@@ -94,6 +94,11 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 
 			public bool AddMode { get; set; }
 
+			/// <summary>The boxes that show: those folded into a merged box are hidden.</summary>
+			public IEnumerable<TranslationBox> Visible => Boxes.Where((TranslationBox b) => !b.IsMergedAway);
+
+			private List<int[]> startShape;
+
 			public bool IsDragging => drag != Drag.None;
 
 			public string Message { get; set; }
@@ -202,9 +207,15 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 					g.DrawImage(image, new RectangleF(pan.X, pan.Y, imageSize.Width * zoom, imageSize.Height * zoom));
 				}
 				g.SmoothingMode = SmoothingMode.AntiAlias;
+				int number = 0;
 				for (int i = 0; i < Boxes.Count; i++)
 				{
 					TranslationBox box = Boxes[i];
+					if (box.IsMergedAway)
+					{
+						continue;
+					}
+					number++;
 					bool selected = box == Selected || Extra.Contains(box);
 					RectangleF r = ToScreen(box.Skip ? box.Src : AreaOf(box));
 					Color color = box.Skip ? Color.Gray : (box.Manual ? Color.FromArgb(70, 150, 255) : Color.FromArgb(60, 200, 90));
@@ -232,19 +243,27 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 								g.DrawRectangle(faint, r.X, r.Y, r.Width, r.Height);
 							}
 						}
+						else if (box.Shape != null && !box.Skip)
+						{
+							foreach (int[] part in box.Shape)
+							{
+								RectangleF pr = ToScreen(part);
+								g.DrawRectangle(pen, pr.X, pr.Y, pr.Width, pr.Height);
+							}
+						}
 						else
 						{
 							g.DrawRectangle(pen, r.X, r.Y, r.Width, r.Height);
 						}
 					}
-					string tag = (i + 1).ToString();
+					string tag = number.ToString();
 					SizeF ts = g.MeasureString(tag, Font);
 					using (SolidBrush fill = new SolidBrush(color))
 					{
 						g.FillRectangle(fill, r.Left, r.Top - ts.Height + 1, ts.Width + 2, ts.Height - 1);
 					}
 					g.DrawString(tag, Font, Brushes.Black, r.Left + 1, r.Top - ts.Height);
-					if (box == Selected && Extra.Count == 0 && !box.Skip)
+					if (box == Selected && Extra.Count == 0 && !box.Skip && box.Shape == null)
 					{
 						PointF top = new PointF(r.Left + r.Width / 2f, r.Top);
 						PointF knob = RotationHandle(box);
@@ -317,6 +336,10 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 				double bestArea = double.MaxValue;
 				foreach (TranslationBox b in Boxes)
 				{
+					if (b.IsMergedAway)
+					{
+						continue;
+					}
 					int[] r = b.Skip ? b.Src : AreaOf(b);
 					if (ip.X >= r[0] && ip.X <= r[2] && ip.Y >= r[1] && ip.Y <= r[3])
 					{
@@ -392,7 +415,7 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 					}
 					return;
 				}
-				if (Selected != null && Extra.Count == 0 && !Selected.Skip)
+				if (Selected != null && Extra.Count == 0 && !Selected.Skip && Selected.Shape == null)
 				{
 					if (HitRotation(Selected, e.Location))
 					{
@@ -427,6 +450,7 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 				drag = kind;
 				dragStart = ToImage(at);
 				startRect = (int[])AreaOf(Selected).Clone();
+				startShape = Selected.Shape?.Select((int[] part) => (int[])part.Clone()).ToList();
 			}
 
 			protected override void OnMouseMove(MouseEventArgs e)
@@ -461,7 +485,7 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 
 			private Cursor CursorAt(Point p)
 			{
-				if (Selected != null && !Selected.Skip)
+				if (Selected != null && !Selected.Skip && Selected.Shape == null)
 				{
 					if (HitRotation(Selected, p))
 					{
@@ -496,6 +520,13 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 				int dx = (int)Math.Round(at.X - dragStart.X);
 				int dy = (int)Math.Round(at.Y - dragStart.Y);
 				int[] r = (int[])startRect.Clone();
+				if (drag == Drag.Move && startShape != null)
+				{
+					Selected.Shape = startShape.Select((int[] part) => new[] { part[0] + dx, part[1] + dy, part[2] + dx, part[3] + dy }).ToList();
+					BoxChanging?.Invoke(this, EventArgs.Empty);
+					Invalidate();
+					return;
+				}
 				if (drag == Drag.Move)
 				{
 					r[0] += dx;
@@ -644,12 +675,7 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 				{
 					return;
 				}
-				int[] r = (int[])AreaOf(Selected).Clone();
-				r[0] += dx;
-				r[2] += dx;
-				r[1] += dy;
-				r[3] += dy;
-				Selected.Rect = r;
+				Selected.MoveBy(dx, dy);
 				e.Handled = true;
 				BoxChanging?.Invoke(this, EventArgs.Empty);
 				BoxChanged?.Invoke(this, EventArgs.Empty);
@@ -895,7 +921,8 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 				{
 					return;
 				}
-				List<TranslationBox> picked = lstBoxes.SelectedIndices.Cast<int>().Where((int i) => i < canvas.Boxes.Count).Select((int i) => canvas.Boxes[i]).ToList();
+				List<TranslationBox> shown = canvas.Visible.ToList();
+				List<TranslationBox> picked = lstBoxes.SelectedIndices.Cast<int>().Where((int i) => i < shown.Count).Select((int i) => shown[i]).ToList();
 				canvas.Selected = picked.FirstOrDefault();
 				canvas.Extra.Clear();
 				foreach (TranslationBox other in picked.Skip(1))
@@ -1236,16 +1263,17 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			loading = true;
 			lstBoxes.BeginUpdate();
 			lstBoxes.Items.Clear();
-			for (int i = 0; i < canvas.Boxes.Count; i++)
+			List<TranslationBox> listed = canvas.Visible.ToList();
+			for (int i = 0; i < listed.Count; i++)
 			{
-				TranslationBox b = canvas.Boxes[i];
+				TranslationBox b = listed[i];
 				string text = (b.Translation ?? "").Replace("\r", " ").Replace("\n", " ");
-				lstBoxes.Items.Add((i + 1) + ".  " + (b.Skip ? "[original] " : "") + (b.Manual ? "[added] " : "") + (text.Length > 60 ? text.Substring(0, 60) + "..." : text));
+				lstBoxes.Items.Add((i + 1) + ".  " + (b.Skip ? "[original] " : "") + (b.Shape != null ? "[merged] " : b.Manual ? "[added] " : "") + (text.Length > 60 ? text.Substring(0, 60) + "..." : text));
 			}
 			lstBoxes.ClearSelected();
 			foreach (TranslationBox sel in canvas.AllSelected)
 			{
-				int at = canvas.Boxes.IndexOf(sel);
+				int at = listed.IndexOf(sel);
 				if (at >= 0)
 				{
 					lstBoxes.SetSelected(at, true);
@@ -1429,7 +1457,80 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			};
 			menu.Items.Add(leave);
 			menu.Items.Add(again);
+			if (boxes.Count >= 2 && boxes.All((TranslationBox b) => b.Shape == null))
+			{
+				ToolStripMenuItem merge = new ToolStripMenuItem("Merge into one box (" + boxes.Count + " boxes)");
+				merge.Click += delegate { MergeBoxes(boxes); };
+				menu.Items.Add(merge);
+			}
+			if (boxes.Any((TranslationBox b) => b.Shape != null))
+			{
+				ToolStripMenuItem split = new ToolStripMenuItem("Split the merged box again");
+				split.Click += delegate
+				{
+					foreach (TranslationBox b in boxes.Where((TranslationBox x) => x.Shape != null).ToList())
+					{
+						Unmerge(b);
+					}
+				};
+				menu.Items.Add(split);
+			}
 			menu.Show(canvas, at);
+		}
+
+		/// <summary>
+		/// Folds several boxes into one whose area is the sum of theirs, so the translation wraps inside a bubble made of
+		/// two (or more). The new box starts with the translations in reading order; the old ones are hidden and left alone.
+		/// </summary>
+		private void MergeBoxes(List<TranslationBox> boxes)
+		{
+			List<TranslationBox> ordered = boxes.OrderBy((TranslationBox b) => b.Src[1]).ThenBy((TranslationBox b) => b.Src[0]).ToList();
+			TranslationBox merged = new TranslationBox
+			{
+				Id = TranslationStore.NewBoxId(),
+				Manual = true,
+				Src = new[] { ordered.Min((TranslationBox b) => b.Src[0]), ordered.Min((TranslationBox b) => b.Src[1]), ordered.Max((TranslationBox b) => b.Src[2]), ordered.Max((TranslationBox b) => b.Src[3]) },
+				Text = string.Join(" ", ordered.Select((TranslationBox b) => b.Text).Where((string t) => !string.IsNullOrWhiteSpace(t))),
+				Translation = string.Join(" ", ordered.Select((TranslationBox b) => (b.Translation ?? "").Trim()).Where((string t) => t.Length > 0)),
+				Shape = ordered.Select((TranslationBox b) => (int[])b.Area.Clone()).ToList()
+			};
+			int at = canvas.Boxes.IndexOf(ordered[0]);
+			foreach (TranslationBox b in ordered)
+			{
+				if (b.Manual)
+				{
+					canvas.Boxes.Remove(b);
+				}
+				else
+				{
+					b.Skip = true;
+					b.MergedInto = merged.Id;
+				}
+			}
+			canvas.Boxes.Insert(Math.Max(0, Math.Min(at, canvas.Boxes.Count)), merged);
+			canvas.Selected = merged;
+			canvas.Extra.Clear();
+			SyncList();
+			SyncControls();
+			canvas.Invalidate();
+			SetStatus("Merged " + boxes.Count + " boxes. Drag it to move; Read && translate again reads the whole area.".Replace("&&", "&"));
+			CommitNow();
+		}
+
+		private void Unmerge(TranslationBox merged)
+		{
+			foreach (TranslationBox b in canvas.Boxes.Where((TranslationBox x) => x.MergedInto == merged.Id).ToList())
+			{
+				b.MergedInto = "";
+				b.Skip = false;
+			}
+			canvas.Boxes.Remove(merged);
+			canvas.Selected = null;
+			canvas.Extra.Clear();
+			SyncList();
+			SyncControls();
+			canvas.Invalidate();
+			CommitNow();
 		}
 
 		private void DeleteSelected()
@@ -1437,6 +1538,11 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			TranslationBox box = canvas.Selected;
 			if (box == null || !box.Manual)
 			{
+				return;
+			}
+			if (box.Shape != null)
+			{
+				Unmerge(box);
 				return;
 			}
 			canvas.Boxes.Remove(box);
