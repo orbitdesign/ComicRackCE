@@ -750,6 +750,7 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 							ServerUrl = translationServerUrl
 						};
 						pageTranslator.PageFinished += pageTranslator_PageFinished;
+						pageTranslator.StateChanged += pageTranslator_StateChanged;
 					}
 				}
 				else
@@ -1309,7 +1310,12 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 			if (disposing && pageTranslator != null)
 			{
 				pageTranslator.PageFinished -= pageTranslator_PageFinished;
+				pageTranslator.StateChanged -= pageTranslator_StateChanged;
 				pageTranslator.Dispose();
+				foreach (Bitmap led in translateLeds.Values)
+				{
+					led.Dispose();
+				}
 				pageTranslator = null;
 			}
 			overlayManager.Panels.Dispose();
@@ -2031,7 +2037,7 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 			}
 			if (shown || !service.IsKnown(key))
 			{
-				service.Request(key, original, shown ? 0 : 5);
+				service.Request(key, original, shown ? 0 : 5, Book?.Comic);
 			}
 			return null;
 		}
@@ -2054,7 +2060,7 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 				{
 					if (itemLock != null && itemLock.Item != null && !itemLock.Item.Merged)
 					{
-						service.Request(key, itemLock.Item, i);
+						service.Request(key, itemLock.Item, i, Book?.Comic);
 					}
 				}
 			}
@@ -2087,9 +2093,76 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 			}
 		}
 
+		private void pageTranslator_StateChanged(object sender, EventArgs e)
+		{
+			if (!base.IsHandleCreated || base.IsDisposed)
+			{
+				return;
+			}
+			try
+			{
+				BeginInvoke((Action)delegate
+				{
+					UpdateTranslateOverlay();
+					Invalidate();
+				});
+			}
+			catch (InvalidOperationException)
+			{
+				//The window went away meanwhile.
+			}
+		}
+
+		/// <summary>Raised when what the status light and page count show may have changed.</summary>
+		public event EventHandler TranslationStatusChanged;
+
+		/// <summary>The helper's page translation, once translation has been turned on.</summary>
+		[Browsable(false)]
+		[DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+		public PageTranslationService TranslationService => pageTranslator;
+
+		/// <summary>What the book's translated pages and the user's changes are filed under.</summary>
+		[Browsable(false)]
+		[DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+		public string TranslationBookKey => IsValid ? TranslationStore.BookKeyOf(Book.Comic) : null;
+
+		/// <summary>The key of a page, for asking the translation service about it.</summary>
+		public PageKey GetTranslationPageKey(int page)
+		{
+			return GetPageKey(page);
+		}
+
+		/// <summary>The original, untranslated page (the caller disposes the lock).</summary>
+		public IItemLock<PageImage> GetOriginalPage(int page)
+		{
+			PageKey key = GetPageKey(page);
+			return key == null ? null : pagePool.GetPage(key, onlyMemory: false);
+		}
+
 		/// <summary>
-		/// The small note at the top left while translating: "Translating..." while the page
-		/// on screen is waiting, or what went wrong.
+		/// The translated pages of the book out of all its pages, whether the helper is busy, and the
+		/// last problem with it.
+		/// </summary>
+		public void GetTranslationStatus(out int translated, out int total, out bool busy, out string problem)
+		{
+			PageTranslationService service = pageTranslator;
+			translated = 0;
+			total = 0;
+			busy = false;
+			problem = null;
+			if (!translatePages || service == null || !IsValid)
+			{
+				return;
+			}
+			total = Book.ProviderPageCount;
+			translated = service.Store.TranslatedPageCount(TranslationBookKey);
+			busy = service.IsBusy;
+			problem = service.Status;
+		}
+
+		/// <summary>
+		/// The small note at the top left while translating: a status light (green when idle, amber while
+		/// working, red when the helper has a problem) with how many pages of the book are translated.
 		/// </summary>
 		private void UpdateTranslateOverlay()
 		{
@@ -2098,24 +2171,59 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 				return;
 			}
 			string text = null;
-			PageTranslationService service = pageTranslator;
-			if (translatePages && service != null && IsValid)
+			Bitmap led = null;
+			if (translatePages && pageTranslator != null && IsValid)
 			{
-				string problem = service.Status;
+				GetTranslationStatus(out int translated, out int total, out bool busy, out string problem);
 				if (!string.IsNullOrEmpty(problem))
 				{
 					text = problem;
+					led = GetLed(Color.FromArgb(220, 60, 50));
 				}
-				else if (service.IsWaiting(GetPageKey(CurrentPage)) || (TwoPageDisplay && service.IsWaiting(GetPageKey(NextPage))))
+				else
 				{
-					text = TR.Messages["TranslatingPage", "Translating..."];
+					bool onScreen = pageTranslator.IsWaiting(GetPageKey(CurrentPage)) || (TwoPageDisplay && pageTranslator.IsWaiting(GetPageKey(NextPage)));
+					text = (onScreen ? TR.Messages["TranslatingPage", "Translating..."] + "  " : "") + string.Format(TR.Messages["TranslatedPages", "Translated {0} / {1} pages"], translated, total);
+					led = GetLed(busy ? Color.FromArgb(240, 170, 30) : Color.FromArgb(70, 190, 90));
 				}
+			}
+			else if (translatePages)
+			{
+				led = GetLed(Color.Gray);
+			}
+			if (translateOverlay.Icon != led)
+			{
+				translateOverlay.Icon = led;
 			}
 			if (translateOverlay.Text != text)
 			{
 				translateOverlay.Text = text;
 			}
 			translateOverlay.Visible = !string.IsNullOrEmpty(text);
+			TranslationStatusChanged?.Invoke(this, EventArgs.Empty);
+		}
+
+		private readonly Dictionary<int, Bitmap> translateLeds = new Dictionary<int, Bitmap>();
+
+		private Bitmap GetLed(Color color)
+		{
+			if (!translateLeds.TryGetValue(color.ToArgb(), out Bitmap led))
+			{
+				int size = Math.Max(10, (int)(Font.GetHeight() * 0.9f));
+				led = new Bitmap(size, size);
+				using (Graphics g = Graphics.FromImage(led))
+				{
+					g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+					using (SolidBrush fill = new SolidBrush(color))
+					using (Pen rim = new Pen(Color.FromArgb(120, 0, 0, 0), 1f))
+					{
+						g.FillEllipse(fill, 1, 1, size - 3, size - 3);
+						g.DrawEllipse(rim, 1, 1, size - 3, size - 3);
+					}
+				}
+				translateLeds[color.ToArgb()] = led;
+			}
+			return led;
 		}
 
 		/// <summary>
