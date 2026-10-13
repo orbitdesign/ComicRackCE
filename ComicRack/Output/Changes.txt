@@ -83,7 +83,7 @@
 * 1.81 CHANGE: The cache options of Delete Translation Cache are now part of the editor panel (icon tiles with a description under them) instead of a separate window.
 * 1.82 NEW: Closing ComicRack also stops the translator helper and Ollama if they are running (switch it off with "Stop both when ComicRack closes" in the power button's menu). They are started again with the power button; if they are already running when ComicRack starts, the button picks them up and shows green.
 * 1.83 NEW: In the translation editor, select several boxes (Ctrl-click or Shift-click on the page, or select in the list) and right-click on the page for a menu: Leave the original text (a tick shows when all selected boxes already are, click again to translate them) and Read & translate again. Right-drag still pans the page.
-* 1.84 NEW: Translate ahead button on the toolbars, next to the translator and power buttons. Its menu translates the next 5, 10, 15, 25 or 50 pages, the rest of the book, or the whole book in the background so the pages are ready when you get to them, shows how far it has got (also in the reader's status panel) and can be stopped. Pages already translated are skipped, and it stops when you open another book.
+* 1.84 NEW: Translate ahead button on the toolbars, next to the translator and power buttons. Its menu translates the next 5, 10, 15, 25 or 50 pages, the rest of the book, or the whole book in the background so the pages are ready when you get to them, shows how far it has got (also in the reader's status panel) and can be stopped. Each menu entry has its own small picture. Pages already translated are skipped, and it stops when you open another book.
 
 
 Community Edition Build 0.9.184:
