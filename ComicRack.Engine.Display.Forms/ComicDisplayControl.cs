@@ -2172,8 +2172,9 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 			{
 				return;
 			}
-			total = Book.ProviderPageCount;
-			translated = service.Store.TranslatedPageCount(TranslationBookKey);
+			//The page list can still be loading (the count grows), so also use the count the book was last known to have.
+			total = Math.Max(Book.ProviderPageCount, Book.Comic.PageCount);
+			translated = Math.Min(service.Store.TranslatedPageCount(TranslationBookKey), total);
 			busy = service.IsBusy;
 			problem = service.Status;
 		}
@@ -2199,7 +2200,7 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 				else
 				{
 					bool onScreen = pageTranslator.IsWaiting(GetPageKey(CurrentPage)) || (TwoPageDisplay && pageTranslator.IsWaiting(GetPageKey(NextPage)));
-					text = (onScreen ? TR.Messages["TranslatingPage", "Translating..."] + " " : "") + string.Format(TR.Messages["TranslatedPagesShort", "{0}/{1}"], translated, total);
+					text = (onScreen ? TR.Messages["TranslatingPage", "Translating..."] + " " : "") + string.Format(TR.Messages["TranslatedPagesShort", "Translated {0}/{1}"], translated, total);
 				}
 			}
 			if (translateOverlay.Icon != null)
