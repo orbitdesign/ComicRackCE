@@ -2201,6 +2201,9 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 				{
 					bool onScreen = pageTranslator.IsWaiting(GetPageKey(CurrentPage)) || (TwoPageDisplay && pageTranslator.IsWaiting(GetPageKey(NextPage)));
 					text = (onScreen ? TR.Messages["TranslatingPage", "Translating..."] + " " : "") + string.Format(TR.Messages["TranslatedPagesShort", "Translated {0}/{1}"], translated, total);
+					//The panel is sized from a measurement that comes out a little short, which cut off the last digit: leave
+					//room that grows with the length of the text (so books with more pages are not cut off either).
+					text += new string(' ', Math.Max(3, text.Length / 5));
 				}
 			}
 			if (translateOverlay.Icon != null)
