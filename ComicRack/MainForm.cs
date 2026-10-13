@@ -964,6 +964,7 @@ namespace cYo.Projects.ComicRack.Viewer
 			miFileAutomation.Visible = miFileAutomation.DropDownItems.Count != 0;
 			mainMenuStrip.SendToBack();
 			statusStrip.Items.Insert(statusStrip.Items.Count - 1, thumbSize);
+			TranslationButtons.Install(mainToolStrip, 0, separatorBefore: false, separatorAfter: true);
 			thumbSize.TrackBar.Scroll += TrackBar_Scroll;
 			ThumbRenderer.DefaultRatingImage1 = Resources.StarYellow.ToOptimized();
 			ThumbRenderer.DefaultRatingImage2 = Resources.StarBlue.ToOptimized();
@@ -3032,7 +3033,9 @@ namespace cYo.Projects.ComicRack.Viewer
 		/// </summary>
 		private ComicDisplayControl readerControl;
 
-		private void ToggleTranslatePages()
+		internal ComicDisplayControl TranslationReader => readerControl;
+
+		internal void ToggleTranslatePages()
 		{
 			if (ComicDisplay != null && readerControl != null)
 			{
@@ -3042,11 +3045,7 @@ namespace cYo.Projects.ComicRack.Viewer
 
 		private TranslationEditorForm translationEditor;
 
-		private ToolStripDropDownButton tsTranslation;
-
-		private readonly Dictionary<int, Image> translationLeds = new Dictionary<int, Image>();
-
-		private void OpenTranslationEditor()
+		internal void OpenTranslationEditor()
 		{
 			if (readerControl == null || readerControl.Book == null)
 			{
@@ -3066,7 +3065,7 @@ namespace cYo.Projects.ComicRack.Viewer
 			translationEditor.Show(this);
 		}
 
-		private void OpenTranslationCache()
+		internal void OpenTranslationCache()
 		{
 			if (readerControl != null)
 			{
@@ -3074,7 +3073,7 @@ namespace cYo.Projects.ComicRack.Viewer
 			}
 		}
 
-		private void OpenTranslationExport()
+		internal void OpenTranslationExport()
 		{
 			if (readerControl != null)
 			{
@@ -3082,63 +3081,7 @@ namespace cYo.Projects.ComicRack.Viewer
 			}
 		}
 
-		/// <summary>
-		/// The status light in the status bar: green while idle, amber while pages are being translated, red
-		/// when the helper has a problem, with the number of pages of the open book translated. Clicking it
-		/// opens the translation options.
-		/// </summary>
-		private void CreateTranslationStatusButton(ComicDisplayControl reader)
-		{
-			tsTranslation = new ToolStripDropDownButton
-			{
-				Name = "tsTranslation",
-				DisplayStyle = ToolStripItemDisplayStyle.ImageAndText,
-				Visible = false,
-				ToolTipText = "Page translation - click for options"
-			};
-			tsTranslation.DropDownItems.Add(new ToolStripMenuItem("Edit Translated Text...", null, delegate { OpenTranslationEditor(); }));
-			tsTranslation.DropDownItems.Add(new ToolStripMenuItem("Delete Translation Cache...", null, delegate { OpenTranslationCache(); }));
-			tsTranslation.DropDownItems.Add(new ToolStripMenuItem("Export Translated Book...", null, delegate { OpenTranslationExport(); }));
-			tsTranslation.DropDownItems.Add(new ToolStripMenuItem("Translation Settings...", null, delegate { OpenTranslationSettings(); }));
-			tsTranslation.DropDownItems.Add(new ToolStripSeparator());
-			tsTranslation.DropDownItems.Add(new ToolStripMenuItem("Turn Translation Off", null, delegate { ToggleTranslatePages(); }));
-			statusStrip.Items.Insert(Math.Max(0, statusStrip.Items.IndexOf(tsBook)), tsTranslation);
-			reader.TranslationStatusChanged += delegate
-			{
-				UpdateTranslationStatusButton();
-			};
-		}
-
-		private void UpdateTranslationStatusButton()
-		{
-			if (tsTranslation == null || readerControl == null)
-			{
-				return;
-			}
-			readerControl.GetTranslationStatus(out int translated, out int total, out bool busy, out string problem);
-			tsTranslation.Visible = readerControl.TranslatePages && total > 0;
-			if (!tsTranslation.Visible)
-			{
-				return;
-			}
-			Color color = !string.IsNullOrEmpty(problem) ? Color.FromArgb(220, 60, 50) : (busy ? Color.FromArgb(240, 170, 30) : Color.FromArgb(70, 190, 90));
-			if (!translationLeds.TryGetValue(color.ToArgb(), out Image led))
-			{
-				Bitmap bitmap = new Bitmap(14, 14);
-				using (Graphics g = Graphics.FromImage(bitmap))
-				using (SolidBrush brush = new SolidBrush(color))
-				{
-					g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
-					g.FillEllipse(brush, 1, 1, 11, 11);
-				}
-				translationLeds[color.ToArgb()] = led = bitmap;
-			}
-			tsTranslation.Image = led;
-			tsTranslation.Text = "Translated " + translated + " / " + total;
-			tsTranslation.ToolTipText = !string.IsNullOrEmpty(problem) ? problem : (busy ? "Translating pages... click for options" : "Page translation is idle - click for options");
-		}
-
-		private void OpenTranslationSettings()
+		internal void OpenTranslationSettings()
 		{
 			string url = (readerControl != null) ? readerControl.TranslationServerUrl : Program.Settings.TranslatorServerUrl;
 			using (TranslationSettingsDialog dialog = new TranslationSettingsDialog(url, Program.Settings.TranslatorHelperFolder))
@@ -4642,7 +4585,11 @@ namespace cYo.Projects.ComicRack.Viewer
 			readerContainer.Controls.SetChildIndex(pageDisplay, 0);
 			readerContainer.Controls.SetChildIndex(quickOpenView, 0);
 			readerControl = pageDisplay;
-			CreateTranslationStatusButton(pageDisplay);
+			pageDisplay.TranslationStatusVisible = Program.Settings.TranslatorShowStatus;
+			pageDisplay.TranslationStatusChanged += delegate
+			{
+				TranslationButtons.RefreshAll();
+			};
 			pageDisplay.TranslationServerUrl = Program.Settings.TranslatorServerUrl;
 			ComicDisplay comicDisplay = new ComicDisplay(pageDisplay);
 			FormUtility.ServiceTranslation[pageDisplay] = comicDisplay;

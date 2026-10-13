@@ -2113,6 +2113,27 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 			}
 		}
 
+		private bool translationStatusVisible = true;
+
+		/// <summary>Whether the light and page count panel shows at the top left while translating.</summary>
+		[Browsable(false)]
+		[DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+		public bool TranslationStatusVisible
+		{
+			get
+			{
+				return translationStatusVisible;
+			}
+			set
+			{
+				if (translationStatusVisible != value)
+				{
+					translationStatusVisible = value;
+					UpdateTranslateOverlay();
+				}
+			}
+		}
+
 		/// <summary>Raised when what the status light and page count show may have changed.</summary>
 		public event EventHandler TranslationStatusChanged;
 
@@ -2199,7 +2220,7 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 			{
 				translateOverlay.Text = text;
 			}
-			translateOverlay.Visible = !string.IsNullOrEmpty(text);
+			translateOverlay.Visible = translationStatusVisible && !string.IsNullOrEmpty(text);
 			TranslationStatusChanged?.Invoke(this, EventArgs.Empty);
 		}
 
