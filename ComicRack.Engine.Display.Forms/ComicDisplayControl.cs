@@ -786,6 +786,21 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 			TranslatePages = !TranslatePages;
 		}
 
+		/// <summary>
+		/// Forgets the pages already translated, so the page on screen and the ones after it are
+		/// translated again with the helper's new settings.
+		/// </summary>
+		public void RefreshTranslations()
+		{
+			if (pageTranslator == null)
+			{
+				return;
+			}
+			pageTranslator.Clear();
+			UpdateTranslateOverlay();
+			Invalidate();
+		}
+
 		[DefaultValue(true)]
 		public bool AutoHideMagnifier
 		{
