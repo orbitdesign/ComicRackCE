@@ -67,6 +67,31 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 
 			public TranslationBox Selected { get; set; }
 
+			/// <summary>Further selected boxes besides Selected (Ctrl or Shift click adds or removes a box).</summary>
+			public HashSet<TranslationBox> Extra { get; } = new HashSet<TranslationBox>();
+
+			public IEnumerable<TranslationBox> AllSelected
+			{
+				get
+				{
+					if (Selected != null)
+					{
+						yield return Selected;
+					}
+					foreach (TranslationBox b in Extra)
+					{
+						if (b != Selected)
+						{
+							yield return b;
+						}
+					}
+				}
+			}
+
+			public event Action<Point> ContextRequested;
+
+			private bool panMoved;
+
 			public bool AddMode { get; set; }
 
 			public bool IsDragging => drag != Drag.None;
@@ -180,7 +205,7 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 				for (int i = 0; i < Boxes.Count; i++)
 				{
 					TranslationBox box = Boxes[i];
-					bool selected = box == Selected;
+					bool selected = box == Selected || Extra.Contains(box);
 					RectangleF r = ToScreen(box.Skip ? box.Src : AreaOf(box));
 					Color color = box.Skip ? Color.Gray : (box.Manual ? Color.FromArgb(70, 150, 255) : Color.FromArgb(60, 200, 90));
 					if (selected)
@@ -219,7 +244,7 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 						g.FillRectangle(fill, r.Left, r.Top - ts.Height + 1, ts.Width + 2, ts.Height - 1);
 					}
 					g.DrawString(tag, Font, Brushes.Black, r.Left + 1, r.Top - ts.Height);
-					if (selected && !box.Skip)
+					if (box == Selected && Extra.Count == 0 && !box.Skip)
 					{
 						PointF top = new PointF(r.Left + r.Width / 2f, r.Top);
 						PointF knob = RotationHandle(box);
@@ -312,10 +337,22 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 				Focus();
 				if (e.Button == MouseButtons.Right || e.Button == MouseButtons.Middle)
 				{
+					if (e.Button == MouseButtons.Right && !AddMode)
+					{
+						//A box under the pointer joins the selection when it is not in it yet.
+						TranslationBox under = HitBox(e.Location);
+						if (under != null && under != Selected && !Extra.Contains(under))
+						{
+							Selected = under;
+							Extra.Clear();
+							SelectionChanged?.Invoke(this, EventArgs.Empty);
+							Invalidate();
+						}
+					}
 					drag = Drag.Pan;
+					panMoved = false;
 					dragStart = e.Location;
 					panStart = pan;
-					Cursor = Cursors.SizeAll;
 					return;
 				}
 				if (e.Button != MouseButtons.Left || image == null)
@@ -329,7 +366,33 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 					drawing = new Rectangle(e.Location, Size.Empty);
 					return;
 				}
-				if (Selected != null && !Selected.Skip)
+				if ((ModifierKeys & (Keys.Control | Keys.Shift)) != 0)
+				{
+					TranslationBox toggled = HitBox(e.Location);
+					if (toggled != null)
+					{
+						if (Selected == null)
+						{
+							Selected = toggled;
+						}
+						else if (toggled == Selected)
+						{
+							Selected = Extra.FirstOrDefault();
+							if (Selected != null)
+							{
+								Extra.Remove(Selected);
+							}
+						}
+						else if (!Extra.Remove(toggled))
+						{
+							Extra.Add(toggled);
+						}
+						SelectionChanged?.Invoke(this, EventArgs.Empty);
+						Invalidate();
+					}
+					return;
+				}
+				if (Selected != null && Extra.Count == 0 && !Selected.Skip)
 				{
 					if (HitRotation(Selected, e.Location))
 					{
@@ -346,9 +409,10 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 					}
 				}
 				TranslationBox hit = HitBox(e.Location);
-				if (hit != Selected)
+				if (hit != Selected || Extra.Count > 0)
 				{
 					Selected = hit;
+					Extra.Clear();
 					SelectionChanged?.Invoke(this, EventArgs.Empty);
 					Invalidate();
 				}
@@ -371,6 +435,12 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 				switch (drag)
 				{
 				case Drag.Pan:
+					if (!panMoved && Math.Abs(e.X - dragStart.X) + Math.Abs(e.Y - dragStart.Y) < 5)
+					{
+						return;
+					}
+					panMoved = true;
+					Cursor = Cursors.SizeAll;
 					pan = new PointF(panStart.X + e.X - dragStart.X, panStart.Y + e.Y - dragStart.Y);
 					Invalidate();
 					return;
@@ -501,6 +571,11 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 				Drag kind = drag;
 				drag = Drag.None;
 				Cursor = Cursors.Default;
+				if (kind == Drag.Pan && e.Button == MouseButtons.Right && !panMoved && Selected != null)
+				{
+					ContextRequested?.Invoke(e.Location);
+					return;
+				}
 				switch (kind)
 				{
 				case Drag.Move:
@@ -716,7 +791,7 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			y += 38;
 			side.Controls.Add(new Label { Text = "Text boxes on this page:", Location = new Point(10, y), Size = new Size(300, 16) });
 			y += 18;
-			lstBoxes = new ListBox { Location = new Point(10, y), Size = new Size(318, 96), Name = "lstBoxes", IntegralHeight = false, HorizontalScrollbar = true };
+			lstBoxes = new ListBox { Location = new Point(10, y), Size = new Size(318, 96), Name = "lstBoxes", IntegralHeight = false, HorizontalScrollbar = true, SelectionMode = SelectionMode.MultiExtended };
 			side.Controls.Add(lstBoxes);
 			y += 104;
 			side.Controls.Add(new Label { Text = "Translation (you can retype it):", Location = new Point(10, y), Size = new Size(300, 16) });
@@ -791,7 +866,7 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			ShowCacheInfo();
 			side.Controls.Add(new Label
 			{
-				Text = "Drag a box to move it, its square handles to resize, the round handle to rotate (Shift: 5 degree steps). Arrow keys nudge. Wheel zooms, right-drag pans. Changes are saved with the book.",
+				Text = "Drag a box to move it, its square handles to resize, the round handle to rotate (Shift: 5 degree steps). Ctrl-click adds boxes to the selection; right-click for options. Arrow keys nudge. Wheel zooms, right-drag pans. Saved with the book.",
 				Location = new Point(10, y),
 				Size = new Size(318, 60),
 				ForeColor = dark ? Color.FromArgb(150, 150, 150) : Color.FromArgb(110, 110, 110)
@@ -813,13 +888,20 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 				Commit();
 			};
 			canvas.RegionDrawn += OnRegionDrawn;
+			canvas.ContextRequested += ShowBoxMenu;
 			lstBoxes.SelectedIndexChanged += delegate
 			{
 				if (loading)
 				{
 					return;
 				}
-				canvas.Selected = lstBoxes.SelectedIndex >= 0 && lstBoxes.SelectedIndex < canvas.Boxes.Count ? canvas.Boxes[lstBoxes.SelectedIndex] : null;
+				List<TranslationBox> picked = lstBoxes.SelectedIndices.Cast<int>().Where((int i) => i < canvas.Boxes.Count).Select((int i) => canvas.Boxes[i]).ToList();
+				canvas.Selected = picked.FirstOrDefault();
+				canvas.Extra.Clear();
+				foreach (TranslationBox other in picked.Skip(1))
+				{
+					canvas.Extra.Add(other);
+				}
 				SyncControls();
 				canvas.Invalidate();
 			};
@@ -1020,6 +1102,7 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			key = newPage >= 0 ? reader.GetTranslationPageKey(newPage) : null;
 			canvas.Boxes = new List<TranslationBox>();
 			canvas.Selected = null;
+			canvas.Extra.Clear();
 			state = null;
 			pendingCommit = false;
 			SetAddMode(false);
@@ -1075,9 +1158,15 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			canvas.SetImage(picture, width, height, keepView);
 			if (state != null && !canvas.IsDragging && !pendingCommit)
 			{
-				string selectedId = canvas.Selected?.Id;
+				List<string> selectedIds = canvas.AllSelected.Select((TranslationBox b) => b.Id).ToList();
 				canvas.Boxes = state.Boxes;
-				canvas.Selected = selectedId == null ? null : state.Boxes.FirstOrDefault((TranslationBox b) => b.Id == selectedId);
+				List<TranslationBox> again = state.Boxes.Where((TranslationBox b) => selectedIds.Contains(b.Id)).ToList();
+				canvas.Selected = again.FirstOrDefault();
+				canvas.Extra.Clear();
+				foreach (TranslationBox other in again.Skip(1))
+				{
+					canvas.Extra.Add(other);
+				}
 				SyncList();
 				SyncControls();
 			}
@@ -1153,7 +1242,15 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 				string text = (b.Translation ?? "").Replace("\r", " ").Replace("\n", " ");
 				lstBoxes.Items.Add((i + 1) + ".  " + (b.Skip ? "[original] " : "") + (b.Manual ? "[added] " : "") + (text.Length > 60 ? text.Substring(0, 60) + "..." : text));
 			}
-			lstBoxes.SelectedIndex = canvas.Selected == null ? -1 : canvas.Boxes.IndexOf(canvas.Selected);
+			lstBoxes.ClearSelected();
+			foreach (TranslationBox sel in canvas.AllSelected)
+			{
+				int at = canvas.Boxes.IndexOf(sel);
+				if (at >= 0)
+				{
+					lstBoxes.SetSelected(at, true);
+				}
+			}
 			lstBoxes.EndUpdate();
 			loading = was;
 		}
@@ -1294,6 +1391,45 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 					});
 				});
 			}
+		}
+
+		private ContextMenuStrip boxMenu;
+
+		/// <summary>Right click on the page: what can be done to the selected box or boxes.</summary>
+		private void ShowBoxMenu(Point at)
+		{
+			List<TranslationBox> boxes = canvas.AllSelected.ToList();
+			if (boxes.Count == 0)
+			{
+				return;
+			}
+			string many = boxes.Count > 1 ? " (" + boxes.Count + " boxes)" : "";
+			boxMenu?.Dispose();
+			ContextMenuStrip menu = boxMenu = new ContextMenuStrip();
+			ToolStripMenuItem leave = new ToolStripMenuItem("Leave the original text" + many) { Checked = boxes.All((TranslationBox b) => b.Skip) };
+			leave.Click += delegate
+			{
+				bool skip = !boxes.All((TranslationBox b) => b.Skip);
+				foreach (TranslationBox b in boxes)
+				{
+					b.Skip = skip;
+				}
+				SyncList();
+				SyncControls();
+				canvas.Invalidate();
+				CommitNow();
+			};
+			ToolStripMenuItem again = new ToolStripMenuItem("Read && translate again" + many);
+			again.Click += delegate
+			{
+				foreach (TranslationBox b in boxes)
+				{
+					ReadAgain(b, resetLayout: false);
+				}
+			};
+			menu.Items.Add(leave);
+			menu.Items.Add(again);
+			menu.Show(canvas, at);
 		}
 
 		private void DeleteSelected()
