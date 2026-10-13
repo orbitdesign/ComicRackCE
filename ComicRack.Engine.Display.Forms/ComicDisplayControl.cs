@@ -1278,7 +1278,8 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 				Enabled = false,
 				AutoAlign = true,
 				Visible = false,
-				MaxSize = new Size(800, 160).ScaleDpi()
+				MaxSize = new Size(800, 160).ScaleDpi(),
+				MinSize = new Size(30, 18).ScaleDpi()
 			};
 			overlayManager.Panels.Add(translateOverlay);
 			navigationOverlay = new NavigationOverlay(new Size(500, NavigationOverlayDefaultHeight).ScaleDpi())
@@ -1312,10 +1313,6 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 				pageTranslator.PageFinished -= pageTranslator_PageFinished;
 				pageTranslator.StateChanged -= pageTranslator_StateChanged;
 				pageTranslator.Dispose();
-				foreach (Bitmap led in translateLeds.Values)
-				{
-					led.Dispose();
-				}
 				pageTranslator = null;
 			}
 			overlayManager.Panels.Dispose();
@@ -2182,8 +2179,8 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 		}
 
 		/// <summary>
-		/// The small note at the top left while translating: a status light (green when idle, amber while
-		/// working, red when the helper has a problem) with how many pages of the book are translated.
+		/// The small note at the top left while translating: how many pages of the book are translated
+		/// (the status light is on the toolbar button), or what went wrong.
 		/// </summary>
 		private void UpdateTranslateOverlay()
 		{
@@ -2192,29 +2189,22 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 				return;
 			}
 			string text = null;
-			Bitmap led = null;
 			if (translatePages && pageTranslator != null && IsValid)
 			{
 				GetTranslationStatus(out int translated, out int total, out bool busy, out string problem);
 				if (!string.IsNullOrEmpty(problem))
 				{
 					text = problem;
-					led = GetLed(Color.FromArgb(220, 60, 50));
 				}
 				else
 				{
 					bool onScreen = pageTranslator.IsWaiting(GetPageKey(CurrentPage)) || (TwoPageDisplay && pageTranslator.IsWaiting(GetPageKey(NextPage)));
-					text = (onScreen ? TR.Messages["TranslatingPage", "Translating..."] + "  " : "") + string.Format(TR.Messages["TranslatedPages", "Translated {0} / {1} pages"], translated, total);
-					led = GetLed(busy ? Color.FromArgb(240, 170, 30) : Color.FromArgb(70, 190, 90));
+					text = (onScreen ? TR.Messages["TranslatingPage", "Translating..."] + " " : "") + string.Format(TR.Messages["TranslatedPagesShort", "{0}/{1}"], translated, total);
 				}
 			}
-			else if (translatePages)
+			if (translateOverlay.Icon != null)
 			{
-				led = GetLed(Color.Gray);
-			}
-			if (translateOverlay.Icon != led)
-			{
-				translateOverlay.Icon = led;
+				translateOverlay.Icon = null;
 			}
 			if (translateOverlay.Text != text)
 			{
@@ -2222,29 +2212,6 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 			}
 			translateOverlay.Visible = translationStatusVisible && !string.IsNullOrEmpty(text);
 			TranslationStatusChanged?.Invoke(this, EventArgs.Empty);
-		}
-
-		private readonly Dictionary<int, Bitmap> translateLeds = new Dictionary<int, Bitmap>();
-
-		private Bitmap GetLed(Color color)
-		{
-			if (!translateLeds.TryGetValue(color.ToArgb(), out Bitmap led))
-			{
-				int size = Math.Max(10, (int)(Font.GetHeight() * 0.9f));
-				led = new Bitmap(size, size);
-				using (Graphics g = Graphics.FromImage(led))
-				{
-					g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
-					using (SolidBrush fill = new SolidBrush(color))
-					using (Pen rim = new Pen(Color.FromArgb(120, 0, 0, 0), 1f))
-					{
-						g.FillEllipse(fill, 1, 1, size - 3, size - 3);
-						g.DrawEllipse(rim, 1, 1, size - 3, size - 3);
-					}
-				}
-				translateLeds[color.ToArgb()] = led;
-			}
-			return led;
 		}
 
 		/// <summary>

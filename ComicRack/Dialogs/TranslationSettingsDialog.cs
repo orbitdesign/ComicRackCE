@@ -39,6 +39,7 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			["right_to_left"] = "Reading direction",
 			["font"] = "Font",
 			["uppercase"] = "Upper case",
+			["match_style"] = "Match the original lettering",
 			["batch_size"] = "Pages per request",
 			["ollama_timeout"] = "Wait up to",
 			["jpeg_quality"] = "Image quality",
@@ -102,6 +103,8 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 		private Button btBrowseFont;
 
 		private CheckBox chkUpper;
+
+		private CheckBox chkMatch;
 
 		private NumericUpDown nudBatch;
 
@@ -272,15 +275,17 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			cboTarget.SelectedIndexChanged += delegate { Edited(); };
 			cboDirection.SelectedIndexChanged += delegate { Edited(); };
 
-			GroupBox lettering = Group(languages, "Lettering", 8, 138, 556, 116);
+			GroupBox lettering = Group(languages, "Lettering", 8, 138, 556, 160);
 			Place(lettering, "Font:", 14, 27);
 			cboFont = new ComboBoxEx { Location = new Point(70, 24), Size = new Size(402, 21), DropDownStyle = ComboBoxStyle.DropDown, Name = "cboFont" };
 			btBrowseFont = new Button { Text = "Browse...", Location = new Point(478, 22), Size = new Size(68, 24), Name = "btBrowseFont" };
 			chkUpper = new CheckBox { Text = "Upper case, like comic lettering", Location = new Point(70, 54), AutoSize = true, Name = "chkUpper" };
-			lettering.Controls.AddRange(new Control[] { cboFont, btBrowseFont, chkUpper });
-			Hint(lettering, 70, 80, 470, 30).Text = "The default is Comic Sans Bold, or the first font in the helper's fonts folder.";
+			chkMatch = new CheckBox { Text = "Match the original lettering (size, weight, style, colour)", Location = new Point(70, 78), AutoSize = true, Name = "chkMatch" };
+			lettering.Controls.AddRange(new Control[] { cboFont, btBrowseFont, chkUpper, chkMatch });
+			Hint(lettering, 70, 104, 470, 48).Text = "With matching on, each text keeps the size and look of the original and the closest installed font is chosen (leave Font empty; fonts you put in the helper's fonts folder are tried too). Signs and titles are set along their original lines.";
 			cboFont.TextChanged += delegate { Edited(); };
 			chkUpper.CheckedChanged += delegate { Edited(); };
+			chkMatch.CheckedChanged += delegate { Edited(); };
 			btBrowseFont.Click += delegate { BrowseFont(); };
 
 			// --- Speed and storage ---
@@ -460,6 +465,7 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			cboFont.Text = string.IsNullOrEmpty(font) ? DefaultFontText : (known != null ? known.Label : font);
 
 			chkUpper.Checked = s.GetBool("uppercase");
+			chkMatch.Checked = !s.Config.ContainsKey("match_style") || s.GetBool("match_style");
 			SetNumber(nudBatch, s.GetInt("batch_size", 8));
 			SetNumber(nudTimeout, s.GetInt("ollama_timeout", 180));
 			SetNumber(nudQuality, s.GetInt("jpeg_quality", 92));
@@ -569,6 +575,7 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 				["right_to_left"] = ChoiceValue(cboDirection),
 				["font"] = font == DefaultFontText ? string.Empty : (knownFont != null ? knownFont.Value : font),
 				["uppercase"] = chkUpper.Checked,
+				["match_style"] = chkMatch.Checked,
 				["batch_size"] = (int)nudBatch.Value,
 				["ollama_timeout"] = (int)nudTimeout.Value,
 				["jpeg_quality"] = (int)nudQuality.Value,
