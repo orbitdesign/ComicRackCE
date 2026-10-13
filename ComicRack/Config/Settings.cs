@@ -196,6 +196,8 @@ namespace cYo.Projects.ComicRack.Viewer.Config
 
 		private string translatorServerUrl = "http://127.0.0.1:8790";
 
+		private string translatorHelperFolder = string.Empty;
+
 		private string libraryBackgroundTexturePath = string.Empty;
 
 		private System.Windows.Forms.ImageLayout libraryBackgroundLayout = System.Windows.Forms.ImageLayout.Tile;
@@ -1314,6 +1316,28 @@ namespace cYo.Projects.ComicRack.Viewer.Config
 				if (translatorServerUrl != value)
 				{
 					translatorServerUrl = value;
+					FireEvent(null);
+				}
+			}
+		}
+
+		/// <summary>
+		/// The ComicTranslator folder (the one with run.bat), so the Translation Settings window
+		/// can start the helper.
+		/// </summary>
+		[Browsable(false)]
+		[DefaultValue("")]
+		public string TranslatorHelperFolder
+		{
+			get
+			{
+				return translatorHelperFolder;
+			}
+			set
+			{
+				if (translatorHelperFolder != value)
+				{
+					translatorHelperFolder = value ?? string.Empty;
 					FireEvent(null);
 				}
 			}

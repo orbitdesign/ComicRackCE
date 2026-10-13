@@ -1461,10 +1461,14 @@ namespace cYo.Projects.ComicRack.Viewer
 				Name = "cmTranslatePages",
 				ShortcutKeyDisplayString = "E"
 			};
+			ToolStripMenuItem cmTranslationSettings = new ToolStripMenuItem("Translation Settings...")
+			{
+				Name = "cmTranslationSettings"
+			};
 			InsertMenuItemsAfter(miMagnify, miTranslatePages, miTranslationSettings);
-			InsertMenuItemsAfter(cmMagnify, cmTranslatePages);
+			InsertMenuItemsAfter(cmMagnify, cmTranslatePages, cmTranslationSettings);
 			commands.Add(ToggleTranslatePages, true, () => readerControl != null && readerControl.TranslatePages, miTranslatePages, cmTranslatePages);
-			commands.Add(OpenTranslationSettings, miTranslationSettings);
+			commands.Add(OpenTranslationSettings, miTranslationSettings, cmTranslationSettings);
 			commands.Add(ComicDisplay.TogglePaperTexture, true, () => !string.IsNullOrEmpty(ComicDisplay.PaperTexture), miPaperTexture);
 			commands.Add(delegate
 			{
@@ -3012,13 +3016,23 @@ namespace cYo.Projects.ComicRack.Viewer
 		private void OpenTranslationSettings()
 		{
 			string url = (readerControl != null) ? readerControl.TranslationServerUrl : Program.Settings.TranslatorServerUrl;
-			try
+			using (TranslationSettingsDialog dialog = new TranslationSettingsDialog(url, Program.Settings.TranslatorHelperFolder))
 			{
-				System.Diagnostics.Process.Start(url);
-			}
-			catch (Exception)
-			{
-				MessageBox.Show(this, "Could not open " + url, "Translation Settings", MessageBoxButtons.OK, MessageBoxIcon.Information);
+				dialog.SettingsApplied += delegate
+				{
+					//The helper now translates differently, so pages already done are redone.
+					if (!string.IsNullOrEmpty(dialog.ServerUrl))
+					{
+						Program.Settings.TranslatorServerUrl = dialog.ServerUrl;
+					}
+					if (readerControl != null)
+					{
+						readerControl.TranslationServerUrl = Program.Settings.TranslatorServerUrl;
+						readerControl.RefreshTranslations();
+					}
+				};
+				dialog.ShowDialog(this);
+				Program.Settings.TranslatorHelperFolder = dialog.HelperFolder;
 			}
 		}
 
