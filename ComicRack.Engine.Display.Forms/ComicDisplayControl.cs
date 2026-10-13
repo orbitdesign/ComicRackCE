@@ -253,6 +253,15 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 
 		private static Bitmap magnifierArt;
 
+		//Page translation through the ComicTranslator helper (see PageTranslationService).
+		private PageTranslationService pageTranslator;
+
+		private bool translatePages;
+
+		private string translationServerUrl = "http://127.0.0.1:8790";
+
+		private TextOverlay translateOverlay;
+
 		private readonly NavigationOverlay navigationOverlay;
 
 		private readonly OverlayPanel gestureOverlay;
@@ -711,6 +720,70 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 				magnifierNominalSize = value;
 				ApplyMagnifierSize();
 			}
+		}
+
+		/// <summary>
+		/// Shows pages translated by the ComicTranslator helper. Pages appear as they are
+		/// until their translation arrives, which then replaces them on screen.
+		/// </summary>
+		[Browsable(false)]
+		[DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+		public bool TranslatePages
+		{
+			get
+			{
+				return translatePages;
+			}
+			set
+			{
+				if (translatePages == value)
+				{
+					return;
+				}
+				translatePages = value;
+				if (value)
+				{
+					if (pageTranslator == null)
+					{
+						pageTranslator = new PageTranslationService
+						{
+							ServerUrl = translationServerUrl
+						};
+						pageTranslator.PageFinished += pageTranslator_PageFinished;
+					}
+				}
+				else
+				{
+					//Forget everything, so turning translation back on picks up any settings
+					//changed in the helper meanwhile.
+					pageTranslator?.Clear();
+				}
+				UpdateTranslateOverlay();
+				Invalidate();
+			}
+		}
+
+		[Browsable(false)]
+		[DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+		public string TranslationServerUrl
+		{
+			get
+			{
+				return translationServerUrl;
+			}
+			set
+			{
+				translationServerUrl = string.IsNullOrWhiteSpace(value) ? "http://127.0.0.1:8790" : value.Trim();
+				if (pageTranslator != null)
+				{
+					pageTranslator.ServerUrl = translationServerUrl;
+				}
+			}
+		}
+
+		public void ToggleTranslatePages()
+		{
+			TranslatePages = !TranslatePages;
 		}
 
 		[DefaultValue(true)]
@@ -1184,6 +1257,14 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 				Visible = false
 			};
 			overlayManager.Panels.Add(messageOverlay);
+			translateOverlay = new TextOverlay(messageSize.Width, messageSize.Height, ContentAlignment.TopLeft, Font)
+			{
+				Enabled = false,
+				AutoAlign = true,
+				Visible = false,
+				MaxSize = new Size(800, 160).ScaleDpi()
+			};
+			overlayManager.Panels.Add(translateOverlay);
 			navigationOverlay = new NavigationOverlay(new Size(500, NavigationOverlayDefaultHeight).ScaleDpi())
 			{
 				Visible = false
@@ -1209,6 +1290,12 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 			if (disposing)
 			{
 				Book = null;
+			}
+			if (disposing && pageTranslator != null)
+			{
+				pageTranslator.PageFinished -= pageTranslator_PageFinished;
+				pageTranslator.Dispose();
+				pageTranslator = null;
 			}
 			overlayManager.Panels.Dispose();
 			overlayManager.Dispose();
@@ -1886,6 +1973,16 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 				lastValidKey = pageKey;
 				firstPageHasBeenLoaded = true;
 				page2.Tag = true;
+				if (translatePages)
+				{
+					IItemLock<PageImage> translated = GetTranslatedPage(page, pageKey, page2.Item);
+					if (translated != null)
+					{
+						page2.Dispose();
+						translated.Tag = true;
+						return translated;
+					}
+				}
 				return page2;
 			}
 			if (lastValidKey != null)
@@ -1893,6 +1990,117 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 				page2 = pagePool.GetPage(lastValidKey, onlyMemory: false);
 			}
 			return page2 ?? new ItemLock<PageImage>(null);
+		}
+
+		/// <summary>
+		/// The translated version of a page when it is ready, otherwise null (and the page is
+		/// asked for). Pages on screen go to the front of the queue, followed by the next few
+		/// that are already loaded, so turning the page usually finds them done.
+		/// </summary>
+		private IItemLock<PageImage> GetTranslatedPage(int page, PageKey key, PageImage original)
+		{
+			PageTranslationService service = pageTranslator;
+			if (service == null || original == null || original.Merged)
+			{
+				return null;
+			}
+			bool shown = page == CurrentPage || (TwoPageDisplay && page == NextPage);
+			if (shown)
+			{
+				RequestTranslationAhead(service, page);
+			}
+			PageImage done = service.GetResult(key);
+			if (done != null)
+			{
+				return new ItemLock<PageImage>(done);
+			}
+			if (shown || !service.IsKnown(key))
+			{
+				service.Request(key, original, shown ? 0 : 5);
+			}
+			return null;
+		}
+
+		private void RequestTranslationAhead(PageTranslationService service, int page)
+		{
+			for (int i = 1; i <= 3; i++)
+			{
+				int next = SeekPage(page, i);
+				if (next < 0)
+				{
+					break;
+				}
+				PageKey key = GetPageKey(next);
+				if (key == null || service.IsKnown(key))
+				{
+					continue;
+				}
+				using (IItemLock<PageImage> itemLock = pagePool.GetPage(key, onlyMemory: true))
+				{
+					if (itemLock != null && itemLock.Item != null && !itemLock.Item.Merged)
+					{
+						service.Request(key, itemLock.Item, i);
+					}
+				}
+			}
+		}
+
+		private void pageTranslator_PageFinished(object sender, PageTranslationService.PageKeyEventArgs e)
+		{
+			if (!base.IsHandleCreated || base.IsDisposed)
+			{
+				return;
+			}
+			try
+			{
+				BeginInvoke((Action)delegate
+				{
+					if (!IsValid || !translatePages)
+					{
+						return;
+					}
+					UpdateTranslateOverlay();
+					if (object.Equals(e.Key, GetPageKey(CurrentPage)) || (TwoPageDisplay && object.Equals(e.Key, GetPageKey(NextPage))) || !DisplayedPages.Where((int dp) => object.Equals(e.Key, GetPageKey(dp))).IsEmpty())
+					{
+						Invalidate();
+					}
+				});
+			}
+			catch (InvalidOperationException)
+			{
+				//The window went away meanwhile.
+			}
+		}
+
+		/// <summary>
+		/// The small note at the top left while translating: "Translating..." while the page
+		/// on screen is waiting, or what went wrong.
+		/// </summary>
+		private void UpdateTranslateOverlay()
+		{
+			if (translateOverlay == null)
+			{
+				return;
+			}
+			string text = null;
+			PageTranslationService service = pageTranslator;
+			if (translatePages && service != null && IsValid)
+			{
+				string problem = service.Status;
+				if (!string.IsNullOrEmpty(problem))
+				{
+					text = problem;
+				}
+				else if (service.IsWaiting(GetPageKey(CurrentPage)) || (TwoPageDisplay && service.IsWaiting(GetPageKey(NextPage))))
+				{
+					text = TR.Messages["TranslatingPage", "Translating..."];
+				}
+			}
+			if (translateOverlay.Text != text)
+			{
+				translateOverlay.Text = text;
+			}
+			translateOverlay.Visible = !string.IsNullOrEmpty(text);
 		}
 
 		/// <summary>
@@ -2677,6 +2885,7 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 			{
 				UpdateLoadPageOverlay();
 			}
+			UpdateTranslateOverlay();
 			overlayManager.Draw(e.Graphics);
 			if (blindOut)
 			{

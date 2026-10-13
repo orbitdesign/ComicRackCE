@@ -194,6 +194,8 @@ namespace cYo.Projects.ComicRack.Viewer.Config
 
 		private bool middleClickMagnifierAdded;
 
+		private string translatorServerUrl = "http://127.0.0.1:8790";
+
 		private string libraryBackgroundTexturePath = string.Empty;
 
 		private System.Windows.Forms.ImageLayout libraryBackgroundLayout = System.Windows.Forms.ImageLayout.Tile;
@@ -1296,6 +1298,27 @@ namespace cYo.Projects.ComicRack.Viewer.Config
 		/// Set once the middle mouse button has been added to Toggle Magnifier in a saved
 		/// keyboard layout (see MainForm.AddMiddleClickMagnifierOnce).
 		/// </summary>
+		/// <summary>
+		/// Where the ComicTranslator helper listens (Translate Pages in the reader).
+		/// </summary>
+		[Browsable(false)]
+		[DefaultValue("http://127.0.0.1:8790")]
+		public string TranslatorServerUrl
+		{
+			get
+			{
+				return translatorServerUrl;
+			}
+			set
+			{
+				if (translatorServerUrl != value)
+				{
+					translatorServerUrl = value;
+					FireEvent(null);
+				}
+			}
+		}
+
 		[Browsable(false)]
 		[DefaultValue(false)]
 		public bool MiddleClickMagnifierAdded

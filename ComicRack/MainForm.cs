@@ -1447,6 +1447,24 @@ namespace cYo.Projects.ComicRack.Viewer
 				ComicDisplay.ImageAutoRotate = !ComicDisplay.ImageAutoRotate;
 			}, notContinuousLayout, () => ComicDisplay.ImageAutoRotate, miAutoRotate, tbAutoRotate);
 			commands.Add(ComicDisplay.ToggleMagnifier, true, () => ComicDisplay.MagnifierVisible, miMagnify, tbMagnify, cmMagnify);
+			ToolStripMenuItem miTranslatePages = new ToolStripMenuItem("&Translate Pages")
+			{
+				Name = "miTranslatePages",
+				ShortcutKeyDisplayString = "E"
+			};
+			ToolStripMenuItem miTranslationSettings = new ToolStripMenuItem("Translation Settings...")
+			{
+				Name = "miTranslationSettings"
+			};
+			ToolStripMenuItem cmTranslatePages = new ToolStripMenuItem("&Translate Pages")
+			{
+				Name = "cmTranslatePages",
+				ShortcutKeyDisplayString = "E"
+			};
+			InsertMenuItemsAfter(miMagnify, miTranslatePages, miTranslationSettings);
+			InsertMenuItemsAfter(cmMagnify, cmTranslatePages);
+			commands.Add(ToggleTranslatePages, true, () => readerControl != null && readerControl.TranslatePages, miTranslatePages, cmTranslatePages);
+			commands.Add(OpenTranslationSettings, miTranslationSettings);
 			commands.Add(ComicDisplay.TogglePaperTexture, true, () => !string.IsNullOrEmpty(ComicDisplay.PaperTexture), miPaperTexture);
 			commands.Add(delegate
 			{
@@ -1678,6 +1696,7 @@ namespace cYo.Projects.ComicRack.Viewer
 				CommandKey.TouchPressAndTap,
 				CommandKey.MouseMiddle
 			}));
+			ComicDisplay.KeyboardMap.Commands.Add(new KeyboardCommand("ToggleTranslatePages", group, "Toggle Page Translation", ToggleTranslatePages, CommandKey.E));
 			ComicDisplay.KeyboardMap.Commands.Add(new KeyboardCommand("ToggleMenu", group, "Toggle Menu", delegate
 			{
 				MinimalGui = !MinimalGui;
@@ -2974,6 +2993,46 @@ namespace cYo.Projects.ComicRack.Viewer
 					{
 					}
 				}
+			}
+		}
+
+		/// <summary>
+		/// The reader control itself, for features that only it has (page translation).
+		/// </summary>
+		private ComicDisplayControl readerControl;
+
+		private void ToggleTranslatePages()
+		{
+			if (ComicDisplay != null && readerControl != null)
+			{
+				readerControl.TranslatePages = !readerControl.TranslatePages;
+			}
+		}
+
+		private void OpenTranslationSettings()
+		{
+			string url = (readerControl != null) ? readerControl.TranslationServerUrl : Program.Settings.TranslatorServerUrl;
+			try
+			{
+				System.Diagnostics.Process.Start(url);
+			}
+			catch (Exception)
+			{
+				MessageBox.Show(this, "Could not open " + url, "Translation Settings", MessageBoxButtons.OK, MessageBoxIcon.Information);
+			}
+		}
+
+		private static void InsertMenuItemsAfter(ToolStripItem anchor, params ToolStripItem[] items)
+		{
+			ToolStrip owner = anchor?.Owner;
+			if (owner == null)
+			{
+				return;
+			}
+			int index = owner.Items.IndexOf(anchor);
+			foreach (ToolStripItem item in items)
+			{
+				owner.Items.Insert(++index, item);
 			}
 		}
 
@@ -4443,6 +4502,8 @@ namespace cYo.Projects.ComicRack.Viewer
 			readerContainer.Controls.Add(pageDisplay);
 			readerContainer.Controls.SetChildIndex(pageDisplay, 0);
 			readerContainer.Controls.SetChildIndex(quickOpenView, 0);
+			readerControl = pageDisplay;
+			pageDisplay.TranslationServerUrl = Program.Settings.TranslatorServerUrl;
 			ComicDisplay comicDisplay = new ComicDisplay(pageDisplay);
 			FormUtility.ServiceTranslation[pageDisplay] = comicDisplay;
 			return comicDisplay;
