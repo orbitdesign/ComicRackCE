@@ -392,14 +392,45 @@ namespace cYo.Projects.ComicRack.Viewer
 
 		private static void KillOllama()
 		{
-			//The tray app first, or it starts the server again.
-			foreach (string name in new[] { "ollama app", "ollama", "ollama_llama_server" })
+			//The tray app and the server first, with everything they started (taskkill /T), or the tray app starts
+			//the server again. Then any model runner left behind: the runner (llama-server.exe in current versions)
+			//holds the model in video memory and carries on after its parent has gone.
+			foreach (string name in new[] { "ollama app", "ollama" })
 			{
 				foreach (Process p in Process.GetProcessesByName(name))
 				{
 					try
 					{
-						p.Kill();
+						using (Process kill = Process.Start(new ProcessStartInfo("taskkill", "/PID " + p.Id + " /T /F") { CreateNoWindow = true, UseShellExecute = false }))
+						{
+							kill.WaitForExit(8000);
+						}
+					}
+					catch (Exception)
+					{
+					}
+					p.Dispose();
+				}
+			}
+			foreach (string name in new[] { "llama-server", "ollama_llama_server", "ollama-runner" })
+			{
+				foreach (Process p in Process.GetProcessesByName(name))
+				{
+					try
+					{
+						//Only runners that belong to Ollama.
+						string path = null;
+						try
+						{
+							path = p.MainModule?.FileName;
+						}
+						catch (Exception)
+						{
+						}
+						if (path == null || path.IndexOf("ollama", StringComparison.OrdinalIgnoreCase) >= 0)
+						{
+							p.Kill();
+						}
 					}
 					catch (Exception)
 					{
