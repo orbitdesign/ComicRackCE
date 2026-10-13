@@ -2201,14 +2201,18 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 				{
 					bool onScreen = pageTranslator.IsWaiting(GetPageKey(CurrentPage)) || (TwoPageDisplay && pageTranslator.IsWaiting(GetPageKey(NextPage)));
 					text = (onScreen ? TR.Messages["TranslatingPage", "Translating..."] + " " : "") + string.Format(TR.Messages["TranslatedPagesShort", "Translated {0}/{1}"], translated, total);
-					//The panel is sized from a measurement that comes out a little short, which cut off the last digit: leave
-					//room that grows with the length of the text (so books with more pages are not cut off either).
-					text += new string(' ', Math.Max(3, text.Length / 5));
 				}
 			}
 			if (translateOverlay.Icon != null)
 			{
 				translateOverlay.Icon = null;
+			}
+			if (!string.IsNullOrEmpty(text))
+			{
+				//Room for the whole text, whatever the page count: the panel is never narrower than the words and
+				//a margin (its own measurement left the last digit cut off).
+				int wanted = TextRenderer.MeasureText(text, translateOverlay.Font).Width + new Size(26, 0).ScaleDpi().Width;
+				translateOverlay.MinSize = new Size(wanted, translateOverlay.MinSize.Height);
 			}
 			if (translateOverlay.Text != text)
 			{
@@ -3812,6 +3816,7 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 				RebuildContinuousLayout(CaptureContinuousViewportAnchor());
 			}
 			UpdateNavigationOverlay(redraw: true);
+			UpdateTranslateOverlay();
 			Invalidate();
 		}
 
