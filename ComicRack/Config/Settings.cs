@@ -200,6 +200,8 @@ namespace cYo.Projects.ComicRack.Viewer.Config
 
 		private bool translatorShowStatus = true;
 
+		private bool translatorStopOnExit = true;
+
 		private string libraryBackgroundTexturePath = string.Empty;
 
 		private System.Windows.Forms.ImageLayout libraryBackgroundLayout = System.Windows.Forms.ImageLayout.Tile;
@@ -1340,6 +1342,27 @@ namespace cYo.Projects.ComicRack.Viewer.Config
 				if (translatorHelperFolder != value)
 				{
 					translatorHelperFolder = value ?? string.Empty;
+					FireEvent(null);
+				}
+			}
+		}
+
+		/// <summary>
+		/// Stop the ComicTranslator helper and Ollama when ComicRack is closed (they are started again from the toolbar).
+		/// </summary>
+		[Browsable(false)]
+		[DefaultValue(true)]
+		public bool TranslatorStopOnExit
+		{
+			get
+			{
+				return translatorStopOnExit;
+			}
+			set
+			{
+				if (translatorStopOnExit != value)
+				{
+					translatorStopOnExit = value;
 					FireEvent(null);
 				}
 			}

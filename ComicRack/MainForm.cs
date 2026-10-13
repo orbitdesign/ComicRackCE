@@ -1140,6 +1140,10 @@ namespace cYo.Projects.ComicRack.Viewer
 			Program.Settings.PageFilter = ComicDisplay.PageFilter;
 			Program.Settings.ReaderKeyboardMapping.Clear();
 			Program.Settings.ReaderKeyboardMapping.AddRange(ComicDisplay.KeyboardMap.GetKeyMapping());
+			if (Program.Settings.TranslatorStopOnExit)
+			{
+				TranslationServices.StopOnExit();
+			}
 			Program.NetworkManager.BroadcastStop();
 			if (readerForm != null)
 			{

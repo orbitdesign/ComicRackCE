@@ -139,6 +139,47 @@ namespace cYo.Projects.ComicRack.Viewer
 			});
 		}
 
+		/// <summary>
+		/// Called as ComicRack closes: ends the helper and Ollama (and its model runner) if they are running, and
+		/// waits for that, so nothing is left holding video memory. Quick when there is nothing to stop.
+		/// </summary>
+		public static void StopOnExit()
+		{
+			try
+			{
+				//Quick checks only (a closed port answers at once), so closing is not held up when nothing is running.
+				if (PortOpen(HelperUrl))
+				{
+					KillHelper();
+				}
+				if (Process.GetProcessesByName("ollama").Length > 0 || Process.GetProcessesByName("ollama app").Length > 0 || Process.GetProcessesByName("llama-server").Length > 0)
+				{
+					KillOllama();
+				}
+			}
+			catch (Exception)
+			{
+				//Closing must never fail because of this.
+			}
+		}
+
+		private static bool PortOpen(string url)
+		{
+			try
+			{
+				Uri uri = new Uri(url);
+				using (System.Net.Sockets.TcpClient client = new System.Net.Sockets.TcpClient())
+				{
+					IAsyncResult result = client.BeginConnect(uri.Host, uri.Port, null, null);
+					return result.AsyncWaitHandle.WaitOne(400) && client.Connected;
+				}
+			}
+			catch (Exception)
+			{
+				return false;
+			}
+		}
+
 		// ---- both together ----
 
 		/// <summary>Stops both when either is running, otherwise starts both.</summary>
@@ -471,6 +512,8 @@ namespace cYo.Projects.ComicRack.Viewer
 
 			public ToolStripMenuItem StateItem;
 
+			public ToolStripMenuItem ExitItem;
+
 			public TranslationLed TranslatorLed = (TranslationLed)(-1);
 
 			public TranslationLed ServicesLed = (TranslationLed)(-1);
@@ -537,7 +580,15 @@ namespace cYo.Projects.ComicRack.Viewer
 			pair.Services.DropDownItems.Add(new ToolStripSeparator());
 			pair.Services.DropDownItems.Add(pair.HelperItem);
 			pair.Services.DropDownItems.Add(pair.OllamaItem);
-			pair.Services.DropDownOpening += delegate { Update(pair); };
+			pair.Services.DropDownItems.Add(new ToolStripSeparator());
+			pair.ExitItem = new ToolStripMenuItem("Stop both when ComicRack closes");
+			pair.ExitItem.Click += delegate { Program.Settings.TranslatorStopOnExit = !Program.Settings.TranslatorStopOnExit; };
+			pair.Services.DropDownItems.Add(pair.ExitItem);
+			pair.Services.DropDownOpening += delegate
+			{
+				pair.ExitItem.Checked = Program.Settings.TranslatorStopOnExit;
+				Update(pair);
+			};
 
 			List<ToolStripItem> items = new List<ToolStripItem>();
 			if (separatorBefore)
