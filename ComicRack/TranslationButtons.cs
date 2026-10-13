@@ -609,15 +609,16 @@ namespace cYo.Projects.ComicRack.Viewer
 			pair.AheadState = new ToolStripMenuItem { Enabled = false };
 			pair.Ahead.DropDownItems.Add(pair.AheadState);
 			pair.Ahead.DropDownItems.Add(new ToolStripSeparator());
+			int menuSize = Math.Max(16, strip.ImageScalingSize.Height);
 			foreach (int n in new[] { 5, 10, 15, 25, 50 })
 			{
 				int count = n;
-				pair.Ahead.DropDownItems.Add(new ToolStripMenuItem("Next " + count + " pages", null, delegate { Main?.TranslationReader?.StartPreTranslate(count); }));
+				pair.Ahead.DropDownItems.Add(new ToolStripMenuItem("Next " + count + " pages", GetMenuIcon(MenuIcon.Pages, count.ToString(), menuSize), delegate { Main?.TranslationReader?.StartPreTranslate(count); }));
 			}
-			pair.Ahead.DropDownItems.Add(new ToolStripMenuItem("The rest of the book", null, delegate { Main?.TranslationReader?.StartPreTranslate(0); }));
-			pair.Ahead.DropDownItems.Add(new ToolStripMenuItem("The whole book", null, delegate { Main?.TranslationReader?.StartPreTranslate(0, fromStart: true); }));
+			pair.Ahead.DropDownItems.Add(new ToolStripMenuItem("The rest of the book", GetMenuIcon(MenuIcon.Rest, null, menuSize), delegate { Main?.TranslationReader?.StartPreTranslate(0); }));
+			pair.Ahead.DropDownItems.Add(new ToolStripMenuItem("The whole book", GetMenuIcon(MenuIcon.Book, null, menuSize), delegate { Main?.TranslationReader?.StartPreTranslate(0, fromStart: true); }));
 			pair.Ahead.DropDownItems.Add(new ToolStripSeparator());
-			pair.AheadStop = new ToolStripMenuItem("Stop translating ahead", null, delegate { Main?.TranslationReader?.StopPreTranslate(); });
+			pair.AheadStop = new ToolStripMenuItem("Stop translating ahead", GetMenuIcon(MenuIcon.Stop, null, menuSize), delegate { Main?.TranslationReader?.StopPreTranslate(); });
 			pair.Ahead.DropDownItems.Add(pair.AheadStop);
 			pair.Ahead.DropDownOpening += delegate { Update(pair); };
 
@@ -799,6 +800,103 @@ namespace cYo.Projects.ComicRack.Viewer
 					else
 					{
 						DrawPower(g, size, ColorOf(led));
+					}
+				}
+				icons[key] = bmp;
+				return bmp;
+			}
+		}
+
+		private enum MenuIcon
+		{
+			Pages,
+			Rest,
+			Book,
+			Stop
+		}
+
+		//Small pictures for the translate-ahead menu: readable on a light or a dark menu.
+		private static Bitmap GetMenuIcon(MenuIcon kind, string number, int size)
+		{
+			string key = "m" + (int)kind + (number ?? "") + "-" + size;
+			lock (icons)
+			{
+				if (icons.TryGetValue(key, out Bitmap cached))
+				{
+					return cached;
+				}
+				Bitmap bmp = new Bitmap(size, size);
+				using (Graphics g = Graphics.FromImage(bmp))
+				{
+					g.SmoothingMode = SmoothingMode.AntiAlias;
+					g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;
+					float u = size / 16f;
+					Color paper = Color.FromArgb(240, 240, 244);
+					Color rim = Color.FromArgb(70, 70, 78);
+					Color accent = Color.FromArgb(245, 175, 30);
+					using (Pen rimPen = new Pen(rim, Math.Max(1f, u)))
+					using (SolidBrush paperBrush = new SolidBrush(paper))
+					using (SolidBrush accentBrush = new SolidBrush(accent))
+					using (Pen accentPen = new Pen(accent, Math.Max(1.6f, 2f * u)) { StartCap = LineCap.Round, EndCap = LineCap.Round, LineJoin = LineJoin.Round })
+					{
+						switch (kind)
+						{
+						case MenuIcon.Pages:
+							{
+								//A page with the number of pages on it.
+								RectangleF back = new RectangleF(4 * u, 0.8f * u, 10.5f * u, 13.5f * u);
+								RectangleF front = new RectangleF(1 * u, 2.8f * u, 10.5f * u, 13f * u);
+								g.FillRectangle(paperBrush, back);
+								g.DrawRectangle(rimPen, back.X, back.Y, back.Width, back.Height);
+								g.FillRectangle(paperBrush, front);
+								g.DrawRectangle(rimPen, front.X, front.Y, front.Width, front.Height);
+								using (Font font = new Font("Segoe UI", Math.Max(6f, (number.Length > 1 ? 7.6f : 10f) * u), FontStyle.Bold, GraphicsUnit.Pixel))
+								using (StringFormat sf = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center })
+								using (SolidBrush ink = new SolidBrush(Color.FromArgb(40, 40, 46)))
+								{
+									g.DrawString(number, font, ink, new RectangleF(front.X, front.Y + 0.5f * u, front.Width, front.Height), sf);
+								}
+								break;
+							}
+						case MenuIcon.Rest:
+							{
+								//One page, an arrow and a bar: on to the end.
+								RectangleF page = new RectangleF(1 * u, 2 * u, 7 * u, 12 * u);
+								g.FillRectangle(paperBrush, page);
+								g.DrawRectangle(rimPen, page.X, page.Y, page.Width, page.Height);
+								g.DrawLine(accentPen, 9.5f * u, 8 * u, 13 * u, 8 * u);
+								g.DrawLine(accentPen, 11 * u, 5.8f * u, 13.2f * u, 8 * u);
+								g.DrawLine(accentPen, 11 * u, 10.2f * u, 13.2f * u, 8 * u);
+								g.DrawLine(accentPen, 15 * u, 4.5f * u, 15 * u, 11.5f * u);
+								break;
+							}
+						case MenuIcon.Book:
+							{
+								PointF[] left = { new PointF(0.8f * u, 3.5f * u), new PointF(7.7f * u, 5 * u), new PointF(7.7f * u, 14 * u), new PointF(0.8f * u, 12.5f * u) };
+								PointF[] right = { new PointF(15.2f * u, 3.5f * u), new PointF(8.3f * u, 5 * u), new PointF(8.3f * u, 14 * u), new PointF(15.2f * u, 12.5f * u) };
+								g.FillPolygon(paperBrush, left);
+								g.FillPolygon(paperBrush, right);
+								g.DrawPolygon(rimPen, left);
+								g.DrawPolygon(rimPen, right);
+								using (Pen line = new Pen(Color.FromArgb(150, rim), Math.Max(1f, u)))
+								{
+									g.DrawLine(line, 2.5f * u, 6.5f * u, 6 * u, 7.3f * u);
+									g.DrawLine(line, 2.5f * u, 9 * u, 6 * u, 9.8f * u);
+									g.DrawLine(line, 13.5f * u, 6.5f * u, 10 * u, 7.3f * u);
+									g.DrawLine(line, 13.5f * u, 9 * u, 10 * u, 9.8f * u);
+								}
+								break;
+							}
+						default:
+							{
+								using (SolidBrush red = new SolidBrush(Color.FromArgb(220, 65, 55)))
+								{
+									g.FillRectangle(red, 3.5f * u, 3.5f * u, 9 * u, 9 * u);
+									g.DrawRectangle(rimPen, 3.5f * u, 3.5f * u, 9 * u, 9 * u);
+								}
+								break;
+							}
+						}
 					}
 				}
 				icons[key] = bmp;
