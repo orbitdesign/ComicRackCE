@@ -32,6 +32,15 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 		/// <summary>The area the translation must stay inside, when the user placed it; otherwise null.</summary>
 		public int[] Rect { get; set; }
 
+		/// <summary>
+		/// Several rectangles that together make the area the translation must stay inside (boxes merged into one, for a
+		/// bubble made of two): the text wraps inside the whole shape. Null for an ordinary box.
+		/// </summary>
+		public List<int[]> Shape { get; set; }
+
+		/// <summary>The id of the merged box this one was folded into; the box is then hidden and left alone.</summary>
+		public string MergedInto { get; set; } = "";
+
 		/// <summary>Font size in pixels; 0 lets the helper choose.</summary>
 		public double Size { get; set; }
 
@@ -52,10 +61,34 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 		public bool HasManualSettings => Rect != null || Size > 0 || Rotation != 0 || Skip || TextEdited || !string.Equals(Align, "center", StringComparison.OrdinalIgnoreCase);
 
 		/// <summary>True when this box differs from what the helper found, so it is kept with the book.</summary>
-		public bool IsEdited => Manual || HasManualSettings;
+		public bool IsEdited => Manual || HasManualSettings || Shape != null || !string.IsNullOrEmpty(MergedInto);
 
 		/// <summary>Where the lettering is: the user's rectangle, else what the helper used, else the original text.</summary>
-		public int[] Area => Rect ?? Bounds ?? Src;
+		public bool IsMergedAway => !string.IsNullOrEmpty(MergedInto);
+
+		public int[] Area
+		{
+			get
+			{
+				if (Shape != null && Shape.Count > 0)
+				{
+					return new[] { Shape.Min((int[] r) => r[0]), Shape.Min((int[] r) => r[1]), Shape.Max((int[] r) => r[2]), Shape.Max((int[] r) => r[3]) };
+				}
+				return Rect ?? Bounds ?? Src;
+			}
+		}
+
+		/// <summary>Moves the box (its area and shape) by the given distance in page pixels.</summary>
+		public void MoveBy(int dx, int dy)
+		{
+			if (Shape != null)
+			{
+				Shape = Shape.Select((int[] r) => new[] { r[0] + dx, r[1] + dy, r[2] + dx, r[3] + dy }).ToList();
+				return;
+			}
+			int[] a = (int[])Area.Clone();
+			Rect = new[] { a[0] + dx, a[1] + dy, a[2] + dx, a[3] + dy };
+		}
 
 		public TranslationBox Clone()
 		{
@@ -63,6 +96,7 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 			b.Src = (int[])Src.Clone();
 			b.Rect = (int[])Rect?.Clone();
 			b.Bounds = (int[])Bounds?.Clone();
+			b.Shape = Shape?.Select((int[] r) => (int[])r.Clone()).ToList();
 			return b;
 		}
 
@@ -89,6 +123,24 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 			{
 				WriteInts(w, "rect", Rect);
 			}
+			if (Shape != null && Shape.Count > 0)
+			{
+				w.WriteStartArray("shape");
+				foreach (int[] r in Shape)
+				{
+					w.WriteStartArray();
+					foreach (int v in r)
+					{
+						w.WriteNumberValue(v);
+					}
+					w.WriteEndArray();
+				}
+				w.WriteEndArray();
+			}
+			if (IsMergedAway)
+			{
+				w.WriteString("merged_into", MergedInto);
+			}
 			w.WriteNumber("size", Size);
 			w.WriteString("align", Align ?? "center");
 			w.WriteNumber("rotation", Rotation);
@@ -107,12 +159,29 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 				Manual = GetBool(e, "manual"),
 				TextEdited = GetBool(e, "text_edited"),
 				Rect = GetInts(e, "rect"),
+				MergedInto = GetString(e, "merged_into"),
 				Size = GetDouble(e, "size"),
 				Rotation = GetDouble(e, "rotation"),
 				Skip = GetBool(e, "skip"),
 				Bounds = GetInts(e, "bounds"),
 				AutoSize = GetDouble(e, "auto_size")
 			};
+			if (e.TryGetProperty("shape", out JsonElement shape) && shape.ValueKind == JsonValueKind.Array)
+			{
+				List<int[]> rects = new List<int[]>();
+				foreach (JsonElement r in shape.EnumerateArray())
+				{
+					if (r.ValueKind == JsonValueKind.Array)
+					{
+						int[] values = r.EnumerateArray().Where((JsonElement x) => x.ValueKind == JsonValueKind.Number).Select((JsonElement x) => (int)Math.Round(x.GetDouble())).ToArray();
+						if (values.Length == 4)
+						{
+							rects.Add(values);
+						}
+					}
+				}
+				b.Shape = rects.Count > 0 ? rects : null;
+			}
 			string align = GetString(e, "align");
 			b.Align = (align == "left" || align == "right") ? align : "center";
 			return b;

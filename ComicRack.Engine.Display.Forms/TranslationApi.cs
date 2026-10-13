@@ -45,13 +45,14 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 					w.WriteEndObject();
 				}
 				PageAnalysis rendered = ReadPage(Send("/api/render", ms.ToArray(), "application/json", 300000));
-				//The helper does not echo this flag back.
-				foreach (TranslationBox sent in boxes.Where((TranslationBox b) => b.TextEdited))
+				//The helper does not echo these two back.
+				foreach (TranslationBox sent in boxes.Where((TranslationBox b) => b.TextEdited || b.IsMergedAway))
 				{
 					TranslationBox got = rendered.Boxes.FirstOrDefault((TranslationBox b) => b.Id == sent.Id);
 					if (got != null)
 					{
-						got.TextEdited = true;
+						got.TextEdited = got.TextEdited || sent.TextEdited;
+						got.MergedInto = sent.MergedInto;
 					}
 				}
 				return rendered;
