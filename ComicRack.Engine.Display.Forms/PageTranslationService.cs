@@ -2,8 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Net;
-using System.Text;
 using System.Threading;
 using cYo.Common.Drawing;
 using cYo.Projects.ComicRack.Engine.IO;
@@ -11,10 +9,33 @@ using cYo.Projects.ComicRack.Engine.IO;
 namespace cYo.Projects.ComicRack.Engine.Display.Forms
 {
 	/// <summary>
+	/// What the editor needs to know about a translated page: its boxes and its finished picture.
+	/// </summary>
+	public class TranslationPageState
+	{
+		public int Width { get; set; }
+
+		public int Height { get; set; }
+
+		public string Sha { get; set; }
+
+		public List<TranslationBox> Boxes { get; set; } = new List<TranslationBox>();
+
+		/// <summary>The finished page (a JPEG), or null when the page is shown as it is.</summary>
+		public byte[] Image { get; set; }
+
+		/// <summary>True while the page is waiting to be translated or drawn again.</summary>
+		public bool Waiting { get; set; }
+	}
+
+	/// <summary>
 	/// Talks to the ComicTranslator helper (a small local web service): sends it page images
 	/// and keeps the translated pages it sends back. One background thread does the work, the
 	/// page being read first and the pages after it next, so by the time a page is turned its
 	/// translation is usually ready.
+	///
+	/// Besides the finished picture the service keeps each page's text boxes. Changes the user makes
+	/// to them are saved with the book (see TranslationStore) and drawn again by the helper.
 	///
 	/// Everything here is safe to call from the paint code: asking for a page that is not
 	/// translated yet only records the request and returns straight away.
@@ -38,6 +59,8 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 
 			public PageImage Result;
 
+			public byte[] ResultBytes;
+
 			public int Priority;
 
 			public long Order;
@@ -45,6 +68,24 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 			public DateTime Finished;
 
 			public DateTime LastUsed;
+
+			public List<TranslationBox> Boxes;
+
+			public string Sha;
+
+			public int Width;
+
+			public int Height;
+
+			//Set when the page only has to be drawn again from Boxes.
+			public bool RenderOnly;
+
+			//Counts edits, so a result that was overtaken by a newer edit is not kept.
+			public int Version;
+
+			public string BookKey;
+
+			public int ImageIndex;
 		}
 
 		//How many translated pages to keep in memory (about 1 MB each).
@@ -73,11 +114,24 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 
 		public string ServerUrl { get; set; } = "http://127.0.0.1:8790";
 
+		/// <summary>Where the user's changes and the list of translated pages are kept.</summary>
+		public TranslationStore Store { get; }
+
+		public PageTranslationService(TranslationStore store = null)
+		{
+			Store = store ?? new TranslationStore(TranslationStore.DefaultFolder);
+		}
+
 		/// <summary>
 		/// Raised on the background thread when a page has been translated (or found to
 		/// have no text, or failed), with the page's key.
 		/// </summary>
 		public event EventHandler<PageKeyEventArgs> PageFinished;
+
+		/// <summary>
+		/// Raised on a background thread when pages were forgotten, so the reader asks for them again.
+		/// </summary>
+		public event EventHandler StateChanged;
 
 		public class PageKeyEventArgs : EventArgs
 		{
@@ -103,8 +157,21 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 			}
 		}
 
+		/// <summary>True while any page is being translated or waiting to be.</summary>
+		public bool IsBusy
+		{
+			get
+			{
+				lock (sync)
+				{
+					return entries.Values.Any((Entry e) => e.State == State.Pending || e.State == State.Working);
+				}
+			}
+		}
+
 		/// <summary>
-		/// The translated page, or null when it is not ready (or has no text to translate).
+		/// The translated page, or null when it is not ready (or has no text to translate). While a
+		/// page is drawn again after an edit, the previous picture stays on screen.
 		/// </summary>
 		public PageImage GetResult(PageKey key)
 		{
@@ -114,7 +181,7 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 			}
 			lock (sync)
 			{
-				if (entries.TryGetValue(key, out Entry entry) && entry.State == State.Done)
+				if (entries.TryGetValue(key, out Entry entry) && entry.State != State.Failed && entry.State != State.NoText && entry.Result != null)
 				{
 					entry.LastUsed = DateTime.UtcNow;
 					return entry.Result;
@@ -152,10 +219,39 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 		}
 
 		/// <summary>
+		/// The boxes and picture of a page that has been translated, for the editor; null when the
+		/// page is not translated yet.
+		/// </summary>
+		public TranslationPageState GetState(PageKey key)
+		{
+			if (key == null)
+			{
+				return null;
+			}
+			lock (sync)
+			{
+				if (!entries.TryGetValue(key, out Entry entry) || entry.Boxes == null)
+				{
+					return null;
+				}
+				entry.LastUsed = DateTime.UtcNow;
+				return new TranslationPageState
+				{
+					Width = entry.Width,
+					Height = entry.Height,
+					Sha = entry.Sha,
+					Boxes = entry.Boxes.Select((TranslationBox b) => b.Clone()).ToList(),
+					Image = entry.ResultBytes,
+					Waiting = entry.State == State.Pending || entry.State == State.Working
+				};
+			}
+		}
+
+		/// <summary>
 		/// Asks for a page to be translated. Lower priority numbers go first; asking again
 		/// for a waiting page with a lower number moves it forward.
 		/// </summary>
-		public void Request(PageKey key, PageImage image, int priority)
+		public void Request(PageKey key, PageImage image, int priority, ComicBook book = null)
 		{
 			if (key == null || image == null || stopping)
 			{
@@ -183,6 +279,11 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 			{
 				return;
 			}
+			string bookKey = TranslationStore.BookKeyOf(book);
+			if (bookKey != null)
+			{
+				Store.Describe(bookKey, book.Caption, book.FilePath);
+			}
 			lock (sync)
 			{
 				entries[key] = new Entry
@@ -191,7 +292,9 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 					Source = data,
 					Priority = priority,
 					Order = ++order,
-					LastUsed = DateTime.UtcNow
+					LastUsed = DateTime.UtcNow,
+					BookKey = bookKey,
+					ImageIndex = key.Index
 				};
 				TrimPending();
 				EnsureWorker();
@@ -200,8 +303,152 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 		}
 
 		/// <summary>
-		/// Forgets every translated and waiting page, e.g. when translation is turned off,
-		/// so turning it on again picks up changed settings.
+		/// Saves the user's changes of a translated page with the book and draws the page again.
+		/// The page's original image is needed to draw it. Returns false when the page is not known.
+		/// </summary>
+		public bool Edit(PageKey key, PageImage original, IEnumerable<TranslationBox> boxes)
+		{
+			if (key == null || original == null || stopping)
+			{
+				return false;
+			}
+			byte[] data = GetUploadBytes(original);
+			if (data == null)
+			{
+				return false;
+			}
+			List<TranslationBox> list = boxes.Select((TranslationBox b) => b.Clone()).ToList();
+			lock (sync)
+			{
+				if (!entries.TryGetValue(key, out Entry entry) || entry.Boxes == null)
+				{
+					return false;
+				}
+				entry.Boxes = list;
+				entry.Source = data;
+				entry.RenderOnly = true;
+				entry.Version++;
+				entry.Priority = -1;
+				entry.Order = ++order;
+				entry.State = State.Pending;
+				Store.SetEdits(entry.BookKey, entry.ImageIndex, entry.Sha, list);
+				EnsureWorker();
+			}
+			signal.Set();
+			return true;
+		}
+
+		/// <summary>
+		/// Reads and translates the text inside a rectangle of the page (in page pixels). The result
+		/// arrives on a background thread, with an error text when it failed.
+		/// </summary>
+		public void ReadRegion(PageImage original, int[] rect, Action<TranslationRegion, string> done)
+		{
+			byte[] data = original == null ? null : GetUploadBytes(original);
+			string url = ServerUrl;
+			ThreadPool.QueueUserWorkItem(delegate
+			{
+				try
+				{
+					if (data == null)
+					{
+						throw new TranslationApiException("The page could not be read.", serverDown: false);
+					}
+					done(new TranslationApi(url).ReadRegion(data, rect), null);
+				}
+				catch (Exception ex)
+				{
+					done(null, ex.Message);
+				}
+			});
+		}
+
+		/// <summary>
+		/// Forgets one page: the helper's stored copy, what is kept in memory and the book's record of
+		/// it (including the user's changes unless they are kept). The page is translated again when next shown.
+		/// </summary>
+		public void ForgetPage(PageKey key, string bookKeyOfPage, bool keepEdits)
+		{
+			if (key == null)
+			{
+				return;
+			}
+			string bookKey;
+			string sha;
+			lock (sync)
+			{
+				entries.TryGetValue(key, out Entry entry);
+				bookKey = entry?.BookKey ?? bookKeyOfPage;
+				sha = entry?.Sha ?? Store.GetSha(bookKey, key.Index);
+			}
+			int index = key.Index;
+			Forget(sha == null ? new string[0] : new[] { sha }, delegate
+			{
+				lock (sync)
+				{
+					entries.Remove(key);
+				}
+				Store.ForgetPage(bookKey, index, keepEdits);
+			});
+		}
+
+		/// <summary>
+		/// Forgets every translated page of a book, in the helper, in memory and in the book's record.
+		/// </summary>
+		public void ForgetBook(string bookKey, bool keepEdits)
+		{
+			if (bookKey == null)
+			{
+				return;
+			}
+			List<string> shas = Store.GetShas(bookKey);
+			lock (sync)
+			{
+				shas.AddRange(entries.Values.Where((Entry e) => e.BookKey == bookKey && e.Sha != null).Select((Entry e) => e.Sha));
+			}
+			Forget(shas.Distinct(), delegate
+			{
+				lock (sync)
+				{
+					foreach (PageKey k in entries.Where((KeyValuePair<PageKey, Entry> kv) => kv.Value.BookKey == bookKey).Select((KeyValuePair<PageKey, Entry> kv) => kv.Key).ToList())
+					{
+						entries.Remove(k);
+					}
+				}
+				Store.ForgetBook(bookKey, keepEdits);
+			});
+		}
+
+		private void Forget(IEnumerable<string> shas, Action then)
+		{
+			List<string> list = shas.ToList();
+			string url = ServerUrl;
+			ThreadPool.QueueUserWorkItem(delegate
+			{
+				string problem = null;
+				try
+				{
+					if (list.Count > 0)
+					{
+						new TranslationApi(url).Forget(list);
+					}
+				}
+				catch (Exception ex)
+				{
+					problem = ex.Message;
+				}
+				then();
+				lock (sync)
+				{
+					status = problem;
+				}
+				StateChanged?.Invoke(this, EventArgs.Empty);
+			});
+		}
+
+		/// <summary>
+		/// Forgets every translated and waiting page from memory, e.g. when translation is turned off,
+		/// so turning it on again picks up changed settings. What is saved with books stays.
 		/// </summary>
 		public void Clear()
 		{
@@ -219,7 +466,8 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 			signal.Set();
 		}
 
-		private static byte[] GetUploadBytes(PageImage image)
+		/// <summary>The bytes of a page as the helper reads them: the original file data when it is a common format.</summary>
+		public static byte[] GetUploadBytes(PageImage image)
 		{
 			try
 			{
@@ -265,7 +513,7 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 
 		private void TrimPending()
 		{
-			List<KeyValuePair<PageKey, Entry>> pending = entries.Where((KeyValuePair<PageKey, Entry> kv) => kv.Value.State == State.Pending).OrderBy((KeyValuePair<PageKey, Entry> kv) => kv.Value.Priority).ThenByDescending((KeyValuePair<PageKey, Entry> kv) => kv.Value.Order).ToList();
+			List<KeyValuePair<PageKey, Entry>> pending = entries.Where((KeyValuePair<PageKey, Entry> kv) => kv.Value.State == State.Pending && !kv.Value.RenderOnly).OrderBy((KeyValuePair<PageKey, Entry> kv) => kv.Value.Priority).ThenByDescending((KeyValuePair<PageKey, Entry> kv) => kv.Value.Order).ToList();
 			foreach (KeyValuePair<PageKey, Entry> kv in pending.Skip(MaxPending))
 			{
 				entries.Remove(kv.Key);
@@ -324,71 +572,59 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 		private void Translate(PageKey key, Entry entry)
 		{
 			State result = State.Failed;
-			PageImage image = null;
+			PageAnalysis page = null;
 			string problem = null;
 			bool serverDown = false;
+			byte[] source;
+			bool renderOnly;
+			List<TranslationBox> boxes;
+			int version;
+			lock (sync)
+			{
+				source = entry.Source;
+				renderOnly = entry.RenderOnly;
+				boxes = entry.Boxes?.Select((TranslationBox b) => b.Clone()).ToList();
+				version = entry.Version;
+			}
 			try
 			{
-				HttpWebRequest request = (HttpWebRequest)WebRequest.Create(ServerUrl.TrimEnd('/') + "/translate");
-				request.Method = "POST";
-				request.ContentType = "application/octet-stream";
-				request.Proxy = null;
-				request.Timeout = 300000;
-				request.ReadWriteTimeout = 300000;
-				request.ContentLength = entry.Source.Length;
-				using (Stream s = request.GetRequestStream())
+				TranslationApi api = new TranslationApi(ServerUrl);
+				if (renderOnly)
 				{
-					s.Write(entry.Source, 0, entry.Source.Length);
-				}
-				using (HttpWebResponse response = (HttpWebResponse)request.GetResponse())
-				{
-					if (response.StatusCode == HttpStatusCode.NoContent)
-					{
-						result = State.NoText;
-					}
-					else
-					{
-						byte[] bytes = ReadAll(response.GetResponseStream());
-						if (bytes.Length > 0)
-						{
-							image = PageImage.CreateFrom(bytes);
-							result = State.Done;
-						}
-						else
-						{
-							result = State.NoText;
-						}
-					}
-				}
-			}
-			catch (WebException ex)
-			{
-				if (ex.Response is HttpWebResponse response)
-				{
-					using (response)
-					{
-						try
-						{
-							problem = Encoding.UTF8.GetString(ReadAll(response.GetResponseStream())).Trim();
-						}
-						catch (Exception)
-						{
-						}
-						if (string.IsNullOrEmpty(problem))
-						{
-							problem = "Translation failed (" + (int)response.StatusCode + ")";
-						}
-					}
+					page = api.Render(source, boxes);
 				}
 				else
 				{
-					serverDown = true;
-					problem = "Translator not running at " + ServerUrl + " - start ComicTranslator\\run.bat";
+					page = api.Analyze(source);
+					List<TranslationBox> edits = Store.GetEdits(entry.BookKey, entry.ImageIndex);
+					if (edits.Count > 0 && TranslationStore.Merge(page.Boxes, edits))
+					{
+						page = api.Render(source, page.Boxes);
+					}
 				}
+				result = page.Changed ? State.Done : State.NoText;
+			}
+			catch (TranslationApiException ex)
+			{
+				serverDown = ex.ServerDown;
+				problem = ex.Message;
 			}
 			catch (Exception ex)
 			{
 				problem = "Translation failed: " + ex.Message;
+			}
+			PageImage image = null;
+			if (result == State.Done)
+			{
+				try
+				{
+					image = PageImage.CreateFrom(page.Image);
+				}
+				catch (Exception ex)
+				{
+					result = State.Failed;
+					problem = "The translated page could not be read: " + ex.Message;
+				}
 			}
 			lock (sync)
 			{
@@ -397,13 +633,36 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 				{
 					return;
 				}
-				entry.State = result;
-				entry.Result = image;
-				entry.Source = (result == State.Failed) ? entry.Source : null;
 				entry.Finished = DateTime.UtcNow;
 				entry.LastUsed = DateTime.UtcNow;
 				status = problem;
-				if (serverDown)
+				if (entry.Version != version)
+				{
+					//Edited while it was being drawn: that edit is already waiting, this picture is out of date.
+					entry.State = State.Pending;
+					return;
+				}
+				if (page != null && result != State.Failed)
+				{
+					entry.Boxes = page.Boxes;
+					entry.Sha = page.Sha;
+					entry.Width = page.Width;
+					entry.Height = page.Height;
+					entry.Result = image;
+					entry.ResultBytes = result == State.Done ? page.Image : null;
+					entry.Source = null;
+					entry.RenderOnly = false;
+					Store.RecordPage(entry.BookKey, entry.ImageIndex, page.Sha);
+				}
+				else if (renderOnly)
+				{
+					//A failed redraw keeps the old picture and boxes; the edit itself is saved.
+					entry.RenderOnly = false;
+					entry.Source = null;
+					result = entry.Result != null ? State.Done : State.NoText;
+				}
+				entry.State = result;
+				if (result == State.Failed && serverDown)
 				{
 					//Every waiting page would fail the same way; try again a little later.
 					serverDownUntil = DateTime.UtcNow + TimeSpan.FromSeconds(5);
@@ -414,15 +673,6 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 					}
 				}
 				TrimPending();
-			}
-		}
-
-		private static byte[] ReadAll(Stream stream)
-		{
-			using (MemoryStream ms = new MemoryStream())
-			{
-				stream.CopyTo(ms);
-				return ms.ToArray();
 			}
 		}
 	}

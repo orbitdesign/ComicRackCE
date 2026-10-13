@@ -198,6 +198,8 @@ namespace cYo.Projects.ComicRack.Viewer.Config
 
 		private string translatorHelperFolder = string.Empty;
 
+		private bool translatorShowStatus = true;
+
 		private string libraryBackgroundTexturePath = string.Empty;
 
 		private System.Windows.Forms.ImageLayout libraryBackgroundLayout = System.Windows.Forms.ImageLayout.Tile;
@@ -1338,6 +1340,27 @@ namespace cYo.Projects.ComicRack.Viewer.Config
 				if (translatorHelperFolder != value)
 				{
 					translatorHelperFolder = value ?? string.Empty;
+					FireEvent(null);
+				}
+			}
+		}
+
+		/// <summary>
+		/// Whether the translation status panel (light and translated page count) shows at the top left of the reader.
+		/// </summary>
+		[Browsable(false)]
+		[DefaultValue(true)]
+		public bool TranslatorShowStatus
+		{
+			get
+			{
+				return translatorShowStatus;
+			}
+			set
+			{
+				if (translatorShowStatus != value)
+				{
+					translatorShowStatus = value;
 					FireEvent(null);
 				}
 			}
