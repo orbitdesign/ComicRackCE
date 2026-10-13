@@ -2200,7 +2200,7 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 				else
 				{
 					bool onScreen = pageTranslator.IsWaiting(GetPageKey(CurrentPage)) || (TwoPageDisplay && pageTranslator.IsWaiting(GetPageKey(NextPage)));
-					text = (onScreen ? TR.Messages["TranslatingPage", "Translating..."] + " " : "") + string.Format(TR.Messages["TranslatedPagesShort", "Translated {0}/{1}"], translated, total);
+					text = (onScreen ? TR.Messages["TranslatingPage", "Translating..."] + " " : "") + string.Format(TR.Messages["TranslatedPagesShort", "Translated {0}/{1}"], translated, total) + "   ";   //trailing room: the panel was cut off at the last digit
 				}
 			}
 			if (translateOverlay.Icon != null)
