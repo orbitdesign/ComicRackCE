@@ -85,6 +85,9 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 
 			public string BookKey;
 
+			//Asked for by pre-translating: not dropped to make room for the page being read.
+			public bool Keep;
+
 			public int ImageIndex;
 		}
 
@@ -153,6 +156,18 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 				lock (sync)
 				{
 					return status;
+				}
+			}
+		}
+
+		/// <summary>How many pages are waiting or being translated.</summary>
+		public int PendingCount
+		{
+			get
+			{
+				lock (sync)
+				{
+					return entries.Values.Count((Entry e) => e.State == State.Pending || e.State == State.Working);
 				}
 			}
 		}
@@ -251,7 +266,7 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 		/// Asks for a page to be translated. Lower priority numbers go first; asking again
 		/// for a waiting page with a lower number moves it forward.
 		/// </summary>
-		public void Request(PageKey key, PageImage image, int priority, ComicBook book = null)
+		public void Request(PageKey key, PageImage image, int priority, ComicBook book = null, bool keep = false)
 		{
 			if (key == null || image == null || stopping)
 			{
@@ -294,7 +309,8 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 					Order = ++order,
 					LastUsed = DateTime.UtcNow,
 					BookKey = bookKey,
-					ImageIndex = key.Index
+					ImageIndex = key.Index,
+					Keep = keep
 				};
 				TrimPending();
 				EnsureWorker();
@@ -513,7 +529,7 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 
 		private void TrimPending()
 		{
-			List<KeyValuePair<PageKey, Entry>> pending = entries.Where((KeyValuePair<PageKey, Entry> kv) => kv.Value.State == State.Pending && !kv.Value.RenderOnly).OrderBy((KeyValuePair<PageKey, Entry> kv) => kv.Value.Priority).ThenByDescending((KeyValuePair<PageKey, Entry> kv) => kv.Value.Order).ToList();
+			List<KeyValuePair<PageKey, Entry>> pending = entries.Where((KeyValuePair<PageKey, Entry> kv) => kv.Value.State == State.Pending && !kv.Value.RenderOnly && !kv.Value.Keep).OrderBy((KeyValuePair<PageKey, Entry> kv) => kv.Value.Priority).ThenByDescending((KeyValuePair<PageKey, Entry> kv) => kv.Value.Order).ToList();
 			foreach (KeyValuePair<PageKey, Entry> kv in pending.Skip(MaxPending))
 			{
 				entries.Remove(kv.Key);

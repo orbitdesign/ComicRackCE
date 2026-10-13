@@ -514,6 +514,14 @@ namespace cYo.Projects.ComicRack.Viewer
 
 			public ToolStripMenuItem ExitItem;
 
+			public ToolStripDropDownButton Ahead;
+
+			public ToolStripMenuItem AheadState;
+
+			public ToolStripMenuItem AheadStop;
+
+			public int AheadLed = -1;
+
 			public TranslationLed TranslatorLed = (TranslationLed)(-1);
 
 			public TranslationLed ServicesLed = (TranslationLed)(-1);
@@ -590,6 +598,29 @@ namespace cYo.Projects.ComicRack.Viewer
 				Update(pair);
 			};
 
+			pair.Ahead = new ToolStripDropDownButton
+			{
+				Name = "tbTranslateAhead",
+				DisplayStyle = ToolStripItemDisplayStyle.Image,
+				AutoToolTip = false,
+				Text = "Translate pages ahead",
+				ToolTipText = "Translate pages ahead of reading"
+			};
+			pair.AheadState = new ToolStripMenuItem { Enabled = false };
+			pair.Ahead.DropDownItems.Add(pair.AheadState);
+			pair.Ahead.DropDownItems.Add(new ToolStripSeparator());
+			foreach (int n in new[] { 5, 10, 15, 25, 50 })
+			{
+				int count = n;
+				pair.Ahead.DropDownItems.Add(new ToolStripMenuItem("Next " + count + " pages", null, delegate { Main?.TranslationReader?.StartPreTranslate(count); }));
+			}
+			pair.Ahead.DropDownItems.Add(new ToolStripMenuItem("The rest of the book", null, delegate { Main?.TranslationReader?.StartPreTranslate(0); }));
+			pair.Ahead.DropDownItems.Add(new ToolStripMenuItem("The whole book", null, delegate { Main?.TranslationReader?.StartPreTranslate(0, fromStart: true); }));
+			pair.Ahead.DropDownItems.Add(new ToolStripSeparator());
+			pair.AheadStop = new ToolStripMenuItem("Stop translating ahead", null, delegate { Main?.TranslationReader?.StopPreTranslate(); });
+			pair.Ahead.DropDownItems.Add(pair.AheadStop);
+			pair.Ahead.DropDownOpening += delegate { Update(pair); };
+
 			List<ToolStripItem> items = new List<ToolStripItem>();
 			if (separatorBefore)
 			{
@@ -597,6 +628,7 @@ namespace cYo.Projects.ComicRack.Viewer
 			}
 			items.Add(pair.Translator);
 			items.Add(pair.Services);
+			items.Add(pair.Ahead);
 			if (separatorAfter)
 			{
 				items.Add(new ToolStripSeparator());
@@ -707,6 +739,20 @@ namespace cYo.Projects.ComicRack.Viewer
 				p.ServicesLed = sled;
 				p.Services.Image = GetIcon(false, sled, size);
 			}
+			bool ahead = reader != null && reader.IsPreTranslating;
+			int aheadState = ahead ? 1 : 0;
+			if (aheadState != p.AheadLed || size != p.Size)
+			{
+				p.AheadLed = aheadState;
+				p.Ahead.Image = GetAheadIcon(ahead ? TranslationLed.Busy : TranslationLed.Off, size);
+			}
+			if (reader != null)
+			{
+				reader.GetPreTranslateProgress(out int aheadDone, out int aheadTotal);
+				p.AheadState.Text = ahead ? "Translating ahead: " + aheadDone + " of " + aheadTotal + " pages" : "Translate the pages after this one before you get to them";
+				p.Ahead.ToolTipText = ahead ? "Translating ahead: " + aheadDone + " of " + aheadTotal + " pages. Click to change or stop." : "Translate pages ahead of reading (5, 10, 15... or the whole book)";
+			}
+			p.AheadStop.Enabled = ahead;
 			p.Size = size;
 			string state = "Translator helper: " + (helper ? "running" : "stopped") + ".  Ollama: " + (ollama ? "running" : "stopped") + ".";
 			p.StateItem.Text = state;
@@ -757,6 +803,51 @@ namespace cYo.Projects.ComicRack.Viewer
 				}
 				icons[key] = bmp;
 				return bmp;
+			}
+		}
+
+		private static Bitmap GetAheadIcon(TranslationLed led, int size)
+		{
+			string key = "a" + (int)led + "-" + size;
+			lock (icons)
+			{
+				if (icons.TryGetValue(key, out Bitmap cached))
+				{
+					return cached;
+				}
+				Bitmap bmp = new Bitmap(size, size);
+				using (Graphics g = Graphics.FromImage(bmp))
+				{
+					g.SmoothingMode = SmoothingMode.AntiAlias;
+					DrawPagesAhead(g, size, ColorOf(led));
+				}
+				icons[key] = bmp;
+				return bmp;
+			}
+		}
+
+		//Two pages with an arrow running on past them: the pages ahead.
+		private static void DrawPagesAhead(Graphics g, int s, Color color)
+		{
+			float u = s / 16f;
+			using (SolidBrush fill = new SolidBrush(color))
+			using (Pen rim = new Pen(Color.FromArgb(150, 20, 20, 20), Math.Max(1f, u * 0.8f)))
+			{
+				RectangleF back = new RectangleF(5 * u, 1.5f * u, 8 * u, 11 * u);
+				RectangleF front = new RectangleF(1.5f * u, 4 * u, 8 * u, 11 * u);
+				using (SolidBrush faint = new SolidBrush(Color.FromArgb(120, color)))
+				{
+					g.FillRectangle(faint, back);
+				}
+				g.DrawRectangle(rim, back.X, back.Y, back.Width, back.Height);
+				g.FillRectangle(fill, front);
+				g.DrawRectangle(rim, front.X, front.Y, front.Width, front.Height);
+			}
+			using (Pen arrow = new Pen(Color.FromArgb(235, 255, 255, 255), Math.Max(1.2f, 1.5f * u)) { StartCap = LineCap.Round, EndCap = LineCap.Round })
+			{
+				g.DrawLine(arrow, 3.5f * u, 9.5f * u, 8 * u, 9.5f * u);
+				g.DrawLine(arrow, 6.5f * u, 7.3f * u, 8.2f * u, 9.5f * u);
+				g.DrawLine(arrow, 6.5f * u, 11.7f * u, 8.2f * u, 9.5f * u);
 			}
 		}
 

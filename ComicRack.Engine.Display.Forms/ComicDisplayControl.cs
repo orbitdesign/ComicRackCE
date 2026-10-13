@@ -511,6 +511,7 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 					comicBookNavigator.PagePart = (PageLayout == PageLayoutMode.Continuous) ? ImagePartInfo.Empty : base.ImageVisiblePart;
 					comicBookNavigator.RightToLeftReading = (base.RightToLeftReading ? YesNo.Yes : YesNo.No);
 				}
+				StopPreTranslate();
 				book = value;
 				continuousPageSizes.Clear();
 				continuousLayout = null;
@@ -2131,6 +2132,150 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 			}
 		}
 
+		private System.Threading.CancellationTokenSource preTranslate;
+
+		private int preTranslateDone;
+
+		private int preTranslateTotal;
+
+		/// <summary>True while pages ahead are being translated in the background.</summary>
+		[Browsable(false)]
+		[DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+		public bool IsPreTranslating => preTranslate != null;
+
+		/// <summary>Pages handed over so far and in all, for the current pre-translating run.</summary>
+		public void GetPreTranslateProgress(out int done, out int total)
+		{
+			done = preTranslateDone;
+			total = preTranslateTotal;
+		}
+
+		/// <summary>
+		/// Translates pages in the background before they are read: the given number of pages after the one on screen,
+		/// or all the rest of the book (count 0), or the whole book from its first page (fromStart).
+		/// </summary>
+		public void StartPreTranslate(int count, bool fromStart = false)
+		{
+			StopPreTranslate();
+			if (!IsValid)
+			{
+				return;
+			}
+			TranslatePages = true;
+			PageTranslationService service = pageTranslator;
+			if (service == null)
+			{
+				return;
+			}
+			int first = fromStart ? 0 : CurrentPage;
+			int last = Book.ProviderPageCount - 1;
+			if (count > 0)
+			{
+				last = Math.Min(last, first + count);
+			}
+			//Keys are made here, on the interface thread; the loading of the pages happens on a background thread.
+			List<PageKey> keys = new List<PageKey>();
+			for (int page = first; page <= last; page++)
+			{
+				PageKey key = GetPageKey(page);
+				if (key != null)
+				{
+					keys.Add(key);
+				}
+			}
+			ComicBook comic = Book.Comic;
+			string bookKey = TranslationBookKey;
+			IPagePool pool = pagePool;
+			ComicBookNavigator navigator = Book;
+			System.Threading.CancellationTokenSource cts = new System.Threading.CancellationTokenSource();
+			preTranslate = cts;
+			preTranslateDone = 0;
+			preTranslateTotal = keys.Count;
+			Thread thread = new Thread((ThreadStart)delegate
+			{
+				try
+				{
+					foreach (PageKey key in keys)
+					{
+						if (cts.IsCancellationRequested)
+						{
+							break;
+						}
+						//A few pages at a time, so the queue (and its page images) stay small.
+						while (!cts.IsCancellationRequested && service.PendingCount >= 3)
+						{
+							Thread.Sleep(400);
+						}
+						if (cts.IsCancellationRequested)
+						{
+							break;
+						}
+						if (!service.IsKnown(key) && !service.Store.IsTranslated(bookKey, key.Index))
+						{
+							//In memory or on the disk cache when it is there, otherwise read from the book.
+							using (IItemLock<PageImage> loaded = pool.GetPage(key, onlyMemory: false) ?? pool.GetPage(key, navigator, false))
+							{
+								if (loaded?.Item != null)
+								{
+									service.Request(key, loaded.Item, 8, comic, keep: true);
+								}
+							}
+						}
+						preTranslateDone++;
+						RaisePreTranslateChanged();
+					}
+				}
+				catch (Exception)
+				{
+					//The book was closed or the pool disposed while running.
+				}
+				finally
+				{
+					if (preTranslate == cts)
+					{
+						preTranslate = null;
+					}
+					RaisePreTranslateChanged();
+				}
+			})
+			{
+				IsBackground = true,
+				Name = "Pre-translate pages",
+				Priority = ThreadPriority.BelowNormal
+			};
+			thread.Start();
+			UpdateTranslateOverlay();
+		}
+
+		public void StopPreTranslate()
+		{
+			System.Threading.CancellationTokenSource cts = preTranslate;
+			if (cts != null)
+			{
+				cts.Cancel();
+				preTranslate = null;
+			}
+			UpdateTranslateOverlay();
+		}
+
+		private void RaisePreTranslateChanged()
+		{
+			if (!base.IsHandleCreated || base.IsDisposed)
+			{
+				return;
+			}
+			try
+			{
+				BeginInvoke((Action)delegate
+				{
+					UpdateTranslateOverlay();
+				});
+			}
+			catch (InvalidOperationException)
+			{
+			}
+		}
+
 		/// <summary>Raised when what the status light and page count show may have changed.</summary>
 		public event EventHandler TranslationStatusChanged;
 
@@ -2154,7 +2299,7 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 		public IItemLock<PageImage> GetOriginalPage(int page)
 		{
 			PageKey key = GetPageKey(page);
-			return key == null ? null : pagePool.GetPage(key, onlyMemory: false);
+			return key == null ? null : (pagePool.GetPage(key, onlyMemory: false) ?? pagePool.GetPage(key, Book, false));
 		}
 
 		/// <summary>
@@ -2201,6 +2346,10 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 				{
 					bool onScreen = pageTranslator.IsWaiting(GetPageKey(CurrentPage)) || (TwoPageDisplay && pageTranslator.IsWaiting(GetPageKey(NextPage)));
 					text = (onScreen ? TR.Messages["TranslatingPage", "Translating..."] + " " : "") + string.Format(TR.Messages["TranslatedPagesShort", "Translated {0}/{1}"], translated, total);
+					if (preTranslate != null && preTranslateTotal > 0)
+					{
+						text += string.Format("   (getting ahead: {0}/{1})", preTranslateDone, preTranslateTotal);
+					}
 				}
 			}
 			if (translateOverlay.Icon != null)
