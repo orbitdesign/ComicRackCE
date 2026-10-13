@@ -175,11 +175,19 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 				}
 			}
 			Color ink = isChecked && Enabled ? accent : fg;
-			DrawIcon(g, new RectangleF(Width / 2f - 20, 8, 40, 40), ink, fg, dark ? back : Color.White);
-			using (StringFormat sf = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center })
+			//The icon is drawn in a 40 x 40 square and scaled to the tile's height.
+			float icon = Math.Min(40f, Height - 34f);
+			float scale = icon / 40f;
+			GraphicsState state = g.Save();
+			g.TranslateTransform(Width / 2f - icon / 2f, 6f);
+			g.ScaleTransform(scale, scale);
+			DrawIcon(g, new RectangleF(0, 0, 40, 40), ink, fg, dark ? back : Color.White);
+			g.Restore(state);
+			using (StringFormat sf = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center, Trimming = StringTrimming.EllipsisCharacter })
 			using (SolidBrush text = new SolidBrush(fg))
 			{
-				g.DrawString(Caption, Font, text, new RectangleF(2, 52, Width - 4, Height - 56), sf);
+				float top = 6f + icon + 2f;
+				g.DrawString(Caption, Font, text, new RectangleF(2, top, Width - 4, Height - top - 3), sf);
 			}
 		}
 
@@ -680,6 +688,33 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 	/// <summary>The entry points the menus and the editor window use.</summary>
 	public static class TranslationTools
 	{
+		/// <summary>Forgets translations: one box (through readAgain), the page on screen or the whole book.</summary>
+		public static void ApplyCache(IWin32Window owner, ComicDisplayControl reader, TranslationCacheScope scope, bool deleteEdits, TranslationBox selected, Action<TranslationBox, bool> readAgain)
+		{
+			PageTranslationService service = reader.TranslationService;
+			if (service == null || reader.Book == null)
+			{
+				MessageBox.Show(owner, "Turn on Translate Pages and open a book first.", "Delete Translation Cache", MessageBoxButtons.OK, MessageBoxIcon.Information);
+				return;
+			}
+			string bookKey = reader.TranslationBookKey;
+			switch (scope)
+			{
+			case TranslationCacheScope.Box:
+				readAgain?.Invoke(selected, deleteEdits);
+				break;
+			case TranslationCacheScope.Page:
+				service.ForgetPage(reader.GetTranslationPageKey(reader.CurrentPage), bookKey, !deleteEdits);
+				break;
+			case TranslationCacheScope.Book:
+				if (MessageBox.Show(owner, "Forget the translation of every page of this book" + (deleteEdits ? " and all your own changes" : "") + "?", "Delete Translation Cache", MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes)
+				{
+					service.ForgetBook(bookKey, !deleteEdits);
+				}
+				break;
+			}
+		}
+
 		public static void ShowCacheDialog(IWin32Window owner, ComicDisplayControl reader, TranslationBox selected, Action<TranslationBox, bool> readAgain)
 		{
 			PageTranslationService service = reader.TranslationService;

@@ -622,7 +622,17 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 
 		private Button btAgain;
 
-		private Button btCache;
+		private ChoiceTile tileBox;
+
+		private ChoiceTile tilePage;
+
+		private ChoiceTile tileBook;
+
+		private ChoiceTile tileEdits;
+
+		private Label lblCacheInfo;
+
+		private Button btDeleteCache;
 
 		private Button btExport;
 
@@ -706,14 +716,14 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			y += 38;
 			side.Controls.Add(new Label { Text = "Text boxes on this page:", Location = new Point(10, y), Size = new Size(300, 16) });
 			y += 18;
-			lstBoxes = new ListBox { Location = new Point(10, y), Size = new Size(318, 118), Name = "lstBoxes", IntegralHeight = false, HorizontalScrollbar = true };
+			lstBoxes = new ListBox { Location = new Point(10, y), Size = new Size(318, 96), Name = "lstBoxes", IntegralHeight = false, HorizontalScrollbar = true };
 			side.Controls.Add(lstBoxes);
-			y += 126;
+			y += 104;
 			side.Controls.Add(new Label { Text = "Translation (you can retype it):", Location = new Point(10, y), Size = new Size(300, 16) });
 			y += 18;
-			txtTranslation = new TextBox { Location = new Point(10, y), Size = new Size(318, 78), Multiline = true, ScrollBars = ScrollBars.Vertical, Name = "txtTranslation", AcceptsReturn = true };
+			txtTranslation = new TextBox { Location = new Point(10, y), Size = new Size(318, 64), Multiline = true, ScrollBars = ScrollBars.Vertical, Name = "txtTranslation", AcceptsReturn = true };
 			side.Controls.Add(txtTranslation);
-			y += 88;
+			y += 74;
 			side.Controls.Add(new Label { Text = "Font size:", Location = new Point(10, y + 3), Size = new Size(64, 16) });
 			chkAuto = new CheckBox { Text = "Auto", Location = new Point(78, y), Size = new Size(54, 22), Name = "chkAuto" };
 			nudSize = new NumericUpDown { Location = new Point(136, y), Size = new Size(80, 22), DecimalPlaces = 1, Increment = 0.5m, Minimum = 3m, Maximum = 2000m, Value = 40m, Name = "nudSize" };
@@ -737,15 +747,53 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			btAgain = new Button { Text = "Read && translate again", Location = new Point(166, y), Size = new Size(162, 28), Name = "btAgain" };
 			side.Controls.AddRange(new Control[] { btReset, btAgain });
 			y += 42;
-			btCache = new Button { Text = "Delete cache...", Location = new Point(10, y), Size = new Size(150, 28), Name = "btCache" };
-			btExport = new Button { Text = "Export book...", Location = new Point(166, y), Size = new Size(162, 28), Name = "btExport" };
-			side.Controls.AddRange(new Control[] { btCache, btExport });
-			y += 40;
+			btExport = new Button { Text = "Export book...", Location = new Point(10, y), Size = new Size(318, 28), Name = "btExport" };
+			side.Controls.Add(btExport);
+			y += 38;
+			side.Controls.Add(new Label { Text = "Delete translation cache (read and translate again):", Location = new Point(10, y), Size = new Size(318, 16) });
+			y += 18;
+			tileBox = new ChoiceTile(ChoiceTile.IconKind.Box, "This box") { Location = new Point(10, y), Size = new Size(70, 66), Enabled = false, Name = "tileBox" };
+			tilePage = new ChoiceTile(ChoiceTile.IconKind.Page, "This page") { Location = new Point(84, y), Size = new Size(70, 66), Checked = true, Name = "tilePage" };
+			tileBook = new ChoiceTile(ChoiceTile.IconKind.Book, "Whole book") { Location = new Point(158, y), Size = new Size(70, 66), Name = "tileBook" };
+			tileEdits = new ChoiceTile(ChoiceTile.IconKind.Edits, "My edits too") { Location = new Point(258, y), Size = new Size(70, 66), IsSwitch = true, Name = "tileEdits" };
+			side.Controls.AddRange(new Control[] { tileBox, tilePage, tileBook, tileEdits });
+			side.Controls.Add(new Label { Text = "+", Location = new Point(230, y + 20), Size = new Size(26, 24), TextAlign = ContentAlignment.MiddleCenter, ForeColor = dark ? Color.FromArgb(150, 150, 150) : Color.FromArgb(110, 110, 110) });
+			tileBox.Description = "This box: the selected box is read and translated again. Its position, size and style stay unless My edits too is on. (Select a box first.)";
+			tilePage.Description = "This page: the page on screen is read again by the vision model and translated again.";
+			tileBook.Description = "Whole book: every page is read and translated again as you read it. This can take a while.";
+			tileEdits.Description = "My edits too: also delete what you changed by hand (moved, resized, retyped and added boxes). Off keeps them and applies them again.";
+			y += 72;
+			lblCacheInfo = new Label { Location = new Point(10, y), Size = new Size(318, 44), Name = "lblCacheInfo", ForeColor = dark ? Color.FromArgb(150, 150, 150) : Color.FromArgb(110, 110, 110) };
+			side.Controls.Add(lblCacheInfo);
+			y += 46;
+			btDeleteCache = new Button { Text = "Delete selected cache", Location = new Point(10, y), Size = new Size(318, 28), Name = "btDeleteCache" };
+			side.Controls.Add(btDeleteCache);
+			y += 38;
+			foreach (ChoiceTile tile in new[] { tileBox, tilePage, tileBook, tileEdits })
+			{
+				ChoiceTile t = tile;
+				t.Hovered += delegate { ShowCacheInfo(); };
+				t.CheckedChanged += delegate
+				{
+					if (!t.IsSwitch && t.Checked)
+					{
+						foreach (ChoiceTile other in new[] { tileBox, tilePage, tileBook })
+						{
+							if (other != t)
+							{
+								other.Checked = false;
+							}
+						}
+					}
+					ShowCacheInfo();
+				};
+			}
+			ShowCacheInfo();
 			side.Controls.Add(new Label
 			{
-				Text = "Drag a box to move it; drag its square handles to resize and the round handle to rotate (hold Shift for 5 degree steps). Arrow keys nudge the box. Mouse wheel zooms, right-drag pans. Changes are saved with the book.",
+				Text = "Drag a box to move it, its square handles to resize, the round handle to rotate (Shift: 5 degree steps). Arrow keys nudge. Wheel zooms, right-drag pans. Changes are saved with the book.",
 				Location = new Point(10, y),
-				Size = new Size(318, 90),
+				Size = new Size(318, 60),
 				ForeColor = dark ? Color.FromArgb(150, 150, 150) : Color.FromArgb(110, 110, 110)
 			});
 
@@ -858,7 +906,11 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 				}
 			};
 			btAgain.Click += delegate { ReadAgain(canvas.Selected, resetLayout: false); };
-			btCache.Click += delegate { TranslationTools.ShowCacheDialog(this, reader, canvas.Selected, ReadAgain); };
+			btDeleteCache.Click += delegate
+			{
+				TranslationCacheScope scope = tileBox.Checked ? TranslationCacheScope.Box : (tileBook.Checked ? TranslationCacheScope.Book : TranslationCacheScope.Page);
+				TranslationTools.ApplyCache(this, reader, scope, tileEdits.Checked, canvas.Selected, ReadAgain);
+			};
 			btExport.Click += delegate { TranslationTools.ShowExportDialog(this, reader); };
 		}
 
@@ -1052,6 +1104,21 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 
 		// ---- editing -----------------------------------------------------------------------
 
+		//The tile under the mouse says what it does; otherwise the current choice does.
+		private void ShowCacheInfo()
+		{
+			ChoiceTile hot = null;
+			foreach (ChoiceTile tile in new[] { tileBox, tilePage, tileBook, tileEdits })
+			{
+				if (tile.ClientRectangle.Contains(tile.PointToClient(Cursor.Position)) && tile.IsHot)
+				{
+					hot = tile;
+				}
+			}
+			ChoiceTile shown = hot ?? (tileBox.Checked ? tileBox : (tileBook.Checked ? tileBook : tilePage));
+			lblCacheInfo.Text = shown.Description;
+		}
+
 		private void SetStatus(string text)
 		{
 			lblStatus.Text = text;
@@ -1099,6 +1166,14 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			bool has = box != null;
 			txtTranslation.Enabled = chkAuto.Enabled = cboAlign.Enabled = nudRotation.Enabled = chkSkip.Enabled = btReset.Enabled = btAgain.Enabled = has;
 			btDelete.Enabled = has && box.Manual;
+			if (tileBox != null)
+			{
+				tileBox.Enabled = has;
+				if (!has && tileBox.Checked)
+				{
+					tilePage.Checked = true;
+				}
+			}
 			nudSize.Enabled = has && !chkAuto.Checked;
 			if (has)
 			{
