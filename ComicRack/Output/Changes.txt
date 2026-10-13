@@ -1,4 +1,4 @@
-﻿orbitdesign Build 1.82 (based on Community Edition 0.9.184):
+﻿orbitdesign Build 1.83 (based on Community Edition 0.9.184):
 
 * 1.1 FIX: Hardware acceleration stability. Fixed OpenGL extension detection, replaced the deprecated automatic mip map generation that crashed some drivers, checked texture uploads for errors, and added a startup guard that switches hardware acceleration off for one session if ComicRack failed to start last time.
 * 1.2 NEW: Direct2D renderer for the reader. Used by default when hardware acceleration is on, with OpenGL and then software rendering as fallbacks. Handles graphics device resets, uses high quality cubic sampling for "Enable Hardware Filters", and supports paper textures. Start with -hwgl to use the old OpenGL renderer.
@@ -82,6 +82,7 @@
 * 1.80 FIX: The page count in the reader's status panel was cut off at its last digit (85 showed as 8). The panel is now as wide as its text needs, whatever the page count, and updates when a book has finished loading its page list.
 * 1.81 CHANGE: The cache options of Delete Translation Cache are now part of the editor panel (icon tiles with a description under them) instead of a separate window.
 * 1.82 NEW: Closing ComicRack also stops the translator helper and Ollama if they are running (switch it off with "Stop both when ComicRack closes" in the power button's menu). They are started again with the power button; if they are already running when ComicRack starts, the button picks them up and shows green.
+* 1.83 NEW: In the translation editor, select several boxes (Ctrl-click or Shift-click on the page, or select in the list) and right-click on the page for a menu: Leave the original text (a tick shows when all selected boxes already are, click again to translate them) and Read & translate again. Right-drag still pans the page.
 
 
 Community Edition Build 0.9.184:
