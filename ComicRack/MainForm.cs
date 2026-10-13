@@ -1096,6 +1096,22 @@ namespace cYo.Projects.ComicRack.Viewer
 			}
 		}
 
+		/// <summary>
+		/// Gives the keyboard back to the reader (or the library when that is what is shown) after a toolbar button was
+		/// used, so shortcut keys such as E keep working.
+		/// </summary>
+		internal void RestoreKeyboardFocus()
+		{
+			if (!mainViewContainer.Expanded)
+			{
+				ComicDisplay.Focus();
+			}
+			else
+			{
+				mainView.Focus();
+			}
+		}
+
 		protected override void OnFormClosing(FormClosingEventArgs e)
 		{
 			base.OnFormClosing(e);

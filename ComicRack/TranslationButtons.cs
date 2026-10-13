@@ -622,6 +622,16 @@ namespace cYo.Projects.ComicRack.Viewer
 			pair.Ahead.DropDownItems.Add(pair.AheadStop);
 			pair.Ahead.DropDownOpening += delegate { Update(pair); };
 
+			//After a button or one of its menu entries was used, the keyboard goes back to the reader (the toolbar kept it,
+			//and then shortcut keys such as E no longer reached the reader).
+			foreach (ToolStripItem button in new ToolStripItem[] { pair.Translator, pair.Services, pair.Ahead })
+			{
+				ToolStripDropDownItem dropDownButton = (ToolStripDropDownItem)button;
+				dropDownButton.DropDownClosed += delegate { GiveKeyboardBack(strip); };
+				dropDownButton.DropDownItemClicked += delegate { GiveKeyboardBack(strip); };
+				dropDownButton.Click += delegate { GiveKeyboardBack(strip); };
+			}
+
 			List<ToolStripItem> items = new List<ToolStripItem>();
 			if (separatorBefore)
 			{
@@ -657,6 +667,20 @@ namespace cYo.Projects.ComicRack.Viewer
 				TranslationServices.StartWatching();
 			}
 			Update(pair);
+		}
+
+		private static void GiveKeyboardBack(ToolStrip strip)
+		{
+			try
+			{
+				if (!strip.IsDisposed && strip.IsHandleCreated)
+				{
+					strip.BeginInvoke((Action)delegate { Main?.RestoreKeyboardFocus(); });
+				}
+			}
+			catch (Exception)
+			{
+			}
 		}
 
 		/// <summary>Brings every button up to date; safe to call from any thread.</summary>
@@ -924,28 +948,37 @@ namespace cYo.Projects.ComicRack.Viewer
 			}
 		}
 
-		//Two pages with an arrow running on past them: the pages ahead.
-		private static void DrawPagesAhead(Graphics g, int s, Color color)
+		//Two light pages with an arrow running on past them: the pages ahead. The pages stay light whatever the state,
+		//so they show on a dark bar; the arrow carries the state (blue idle, amber while running).
+		private static void DrawPagesAhead(Graphics g, int s, Color state)
 		{
 			float u = s / 16f;
-			using (SolidBrush fill = new SolidBrush(color))
-			using (Pen rim = new Pen(Color.FromArgb(150, 20, 20, 20), Math.Max(1f, u * 0.8f)))
+			Color arrowColor = state == ColorOf(TranslationLed.Busy) ? state : Color.FromArgb(95, 175, 235);
+			RectangleF back = new RectangleF(5.5f * u, 1f * u, 8.5f * u, 11.5f * u);
+			RectangleF front = new RectangleF(1.5f * u, 4f * u, 8.5f * u, 11.5f * u);
+			using (SolidBrush backFill = new SolidBrush(Color.FromArgb(205, 205, 212)))
+			using (SolidBrush frontFill = new SolidBrush(Color.FromArgb(244, 244, 248)))
+			using (Pen rim = new Pen(Color.FromArgb(60, 60, 68), Math.Max(1f, 0.9f * u)))
 			{
-				RectangleF back = new RectangleF(5 * u, 1.5f * u, 8 * u, 11 * u);
-				RectangleF front = new RectangleF(1.5f * u, 4 * u, 8 * u, 11 * u);
-				using (SolidBrush faint = new SolidBrush(Color.FromArgb(120, color)))
-				{
-					g.FillRectangle(faint, back);
-				}
+				g.FillRectangle(backFill, back);
 				g.DrawRectangle(rim, back.X, back.Y, back.Width, back.Height);
-				g.FillRectangle(fill, front);
+				g.FillRectangle(frontFill, front);
 				g.DrawRectangle(rim, front.X, front.Y, front.Width, front.Height);
 			}
-			using (Pen arrow = new Pen(Color.FromArgb(235, 255, 255, 255), Math.Max(1.2f, 1.5f * u)) { StartCap = LineCap.Round, EndCap = LineCap.Round })
+			using (Pen line = new Pen(Color.FromArgb(150, 90, 90, 100), Math.Max(1f, u)))
 			{
-				g.DrawLine(arrow, 3.5f * u, 9.5f * u, 8 * u, 9.5f * u);
-				g.DrawLine(arrow, 6.5f * u, 7.3f * u, 8.2f * u, 9.5f * u);
-				g.DrawLine(arrow, 6.5f * u, 11.7f * u, 8.2f * u, 9.5f * u);
+				g.DrawLine(line, 3.2f * u, 6.5f * u, 8.3f * u, 6.5f * u);
+				g.DrawLine(line, 3.2f * u, 8.5f * u, 8.3f * u, 8.5f * u);
+			}
+			using (Pen halo = new Pen(Color.FromArgb(200, 20, 20, 24), Math.Max(2.4f, 3.2f * u)) { StartCap = LineCap.Round, EndCap = LineCap.Round })
+			using (Pen arrow = new Pen(arrowColor, Math.Max(1.6f, 2f * u)) { StartCap = LineCap.Round, EndCap = LineCap.Round })
+			{
+				foreach (Pen pen in new[] { halo, arrow })
+				{
+					g.DrawLine(pen, 7f * u, 12.3f * u, 14f * u, 12.3f * u);
+					g.DrawLine(pen, 11.4f * u, 9.7f * u, 14.2f * u, 12.3f * u);
+					g.DrawLine(pen, 11.4f * u, 14.9f * u, 14.2f * u, 12.3f * u);
+				}
 			}
 		}
 
