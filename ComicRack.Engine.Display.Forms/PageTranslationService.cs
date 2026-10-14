@@ -122,7 +122,7 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 
 		public PageTranslationService(TranslationStore store = null)
 		{
-			Store = store ?? new TranslationStore(TranslationStore.DefaultFolder);
+			Store = store ?? TranslationStore.Shared;
 		}
 
 		/// <summary>

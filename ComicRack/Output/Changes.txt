@@ -1,4 +1,4 @@
-﻿orbitdesign Build 1.92 (based on Community Edition 0.9.184):
+﻿orbitdesign Build 1.93 (based on Community Edition 0.9.184):
 
 * 1.1 FIX: Hardware acceleration stability. Fixed OpenGL extension detection, replaced the deprecated automatic mip map generation that crashed some drivers, checked texture uploads for errors, and added a startup guard that switches hardware acceleration off for one session if ComicRack failed to start last time.
 * 1.2 NEW: Direct2D renderer for the reader. Used by default when hardware acceleration is on, with OpenGL and then software rendering as fallbacks. Handles graphics device resets, uses high quality cubic sampling for "Enable Hardware Filters", and supports paper textures. Start with -hwgl to use the old OpenGL renderer.
@@ -3662,3 +3662,4 @@ Build 0.9.0:
 * 1.90 NEW: The "Translated n/N" panel at the top left of the reader now shows the translator button's picture at its left, coloured by state (green on, amber busy, red problem). The editor's status bar uses it too.
 * 1.91 FIX: The translation status panel no longer clips its words next to the icon, and the icon now sits right beside the text with only a small gap.
 * 1.92 NEW: Any translation box can be deleted in the editor (Delete key, or the Delete box button), not only boxes you added. A deleted box is hidden and its original text is left as drawn, so a title read as two boxes can be replaced by one. The Restore button brings deleted boxes back. Select several boxes to delete them together.
+* 1.93 NEW: Batch translation of whole books. Select books in the library and choose "Translate the selected books (whole books)" in the translate-ahead drop-down: they are translated one after the other in the background without being opened. Opening a book in the reader pauses the batch; the drop-down then offers "Continue translating previously selected books" and lists the books left with the percentage of each already translated. A pause button and "Forget the queue" are there too. Pages already translated are skipped, so a book can be continued where it stopped.

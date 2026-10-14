@@ -47,6 +47,24 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 			this.folder = folder;
 		}
 
+		private static TranslationStore shared;
+
+		/// <summary>
+		/// The one store the reader and the batch translation both use, so what one records (translated pages, edits)
+		/// is what the other reads; two stores over the same files would overwrite each other.
+		/// </summary>
+		public static TranslationStore Shared
+		{
+			get
+			{
+				if (shared == null)
+				{
+					shared = new TranslationStore(DefaultFolder);
+				}
+				return shared;
+			}
+		}
+
 		public static string DefaultFolder => System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "cYo", "ComicRack Community Edition", "Translations");
 
 		public string Folder => folder;

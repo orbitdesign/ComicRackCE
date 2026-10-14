@@ -3055,6 +3055,17 @@ namespace cYo.Projects.ComicRack.Viewer
 
 		internal ComicDisplayControl TranslationReader => readerControl;
 
+		/// <summary>The books selected in the library (or the open book when the reader has the focus), for batch translation.</summary>
+		internal ComicBook[] GetBooksForTranslation()
+		{
+			IGetBookList list = FormUtility.FindActiveService<IGetBookList>();
+			if (list == null)
+			{
+				return new ComicBook[0];
+			}
+			return list.GetBookList(ComicBookFilterType.Selected | ComicBookFilterType.IsNotFileless).ToArray();
+		}
+
 		internal void ToggleTranslatePages()
 		{
 			if (ComicDisplay != null && readerControl != null)
@@ -4606,6 +4617,14 @@ namespace cYo.Projects.ComicRack.Viewer
 			readerContainer.Controls.SetChildIndex(quickOpenView, 0);
 			readerControl = pageDisplay;
 			pageDisplay.TranslationStatusVisible = Program.Settings.TranslatorShowStatus;
+			//Opening a book to read pauses the batch translation, so the page being read gets the helper to itself.
+			pageDisplay.BookChanged += delegate
+			{
+				if (pageDisplay.Book != null && TranslationBatch.IsRunning)
+				{
+					TranslationBatch.Pause();
+				}
+			};
 			pageDisplay.TranslationStatusChanged += delegate
 			{
 				TranslationButtons.RefreshAll();

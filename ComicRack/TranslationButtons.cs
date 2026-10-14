@@ -10,6 +10,7 @@ using System.Net;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Windows.Forms;
+using cYo.Projects.ComicRack.Engine;
 using cYo.Projects.ComicRack.Engine.Display.Forms;
 
 namespace cYo.Projects.ComicRack.Viewer
@@ -520,6 +521,16 @@ namespace cYo.Projects.ComicRack.Viewer
 
 			public ToolStripMenuItem AheadStop;
 
+			public ToolStripMenuItem BatchStart;
+
+			public ToolStripMenuItem BatchState;
+
+			public ToolStripMenuItem BatchContinue;
+
+			public ToolStripMenuItem BatchPause;
+
+			public ToolStripMenuItem BatchCancel;
+
 			public int AheadLed = -1;
 
 			public TranslationLed TranslatorLed = (TranslationLed)(-1);
@@ -620,6 +631,22 @@ namespace cYo.Projects.ComicRack.Viewer
 			pair.Ahead.DropDownItems.Add(new ToolStripSeparator());
 			pair.AheadStop = new ToolStripMenuItem("Stop translating ahead", GetMenuIcon(MenuIcon.Stop, null, menuSize), delegate { Main?.TranslationReader?.StopPreTranslate(); });
 			pair.Ahead.DropDownItems.Add(pair.AheadStop);
+			pair.Ahead.DropDownItems.Add(new ToolStripSeparator());
+			//Several books at once: the books selected in the library are translated whole, one after the other, in the background.
+			pair.BatchStart = new ToolStripMenuItem("Translate the selected books (whole books)", GetMenuIcon(MenuIcon.Book, null, menuSize), delegate
+			{
+				ComicBook[] books = Main?.GetBooksForTranslation() ?? new ComicBook[0];
+				if (books.Length > 0)
+				{
+					TranslationBatch.Start(books);
+				}
+			});
+			pair.BatchState = new ToolStripMenuItem { Enabled = false, Visible = false };
+			pair.BatchPause = new ToolStripMenuItem("Pause the batch", GetMenuIcon(MenuIcon.Stop, null, menuSize), delegate { TranslationBatch.Pause(); });
+			pair.BatchContinue = new ToolStripMenuItem("Continue translating previously selected books");
+			pair.BatchContinue.Click += delegate { TranslationBatch.Resume(); };
+			pair.BatchCancel = new ToolStripMenuItem("Forget the queue", GetMenuIcon(MenuIcon.Stop, null, menuSize), delegate { TranslationBatch.Cancel(); });
+			pair.Ahead.DropDownItems.AddRange(new ToolStripItem[] { pair.BatchStart, pair.BatchState, pair.BatchPause, pair.BatchContinue, pair.BatchCancel });
 			pair.Ahead.DropDownOpening += delegate { Update(pair); };
 
 			//After a button or one of its menu entries was used, the keyboard goes back to the reader (the toolbar kept it,
@@ -664,6 +691,7 @@ namespace cYo.Projects.ComicRack.Viewer
 			{
 				hooked = true;
 				TranslationServices.Changed += delegate { RefreshAll(); };
+				TranslationBatch.Changed += delegate { RefreshAll(); };
 				TranslationServices.StartWatching();
 			}
 			Update(pair);
@@ -764,7 +792,7 @@ namespace cYo.Projects.ComicRack.Viewer
 				p.ServicesLed = sled;
 				p.Services.Image = GetIcon(false, sled, size);
 			}
-			bool ahead = reader != null && reader.IsPreTranslating;
+			bool ahead = (reader != null && reader.IsPreTranslating) || TranslationBatch.IsRunning;
 			int aheadState = ahead ? 1 : 0;
 			if (aheadState != p.AheadLed || size != p.Size)
 			{
@@ -778,6 +806,7 @@ namespace cYo.Projects.ComicRack.Viewer
 				p.Ahead.ToolTipText = ahead ? "Translating ahead: " + aheadDone + " of " + aheadTotal + " pages. Click to change or stop." : "Translate pages ahead of reading (5, 10, 15... or the whole book)";
 			}
 			p.AheadStop.Enabled = ahead;
+			UpdateBatchMenu(p);
 			p.Size = size;
 			string state = "Translator helper: " + (helper ? "running" : "stopped") + ".  Ollama: " + (ollama ? "running" : "stopped") + ".";
 			p.StateItem.Text = state;
@@ -786,6 +815,59 @@ namespace cYo.Projects.ComicRack.Viewer
 			p.HelperItem.Enabled = p.OllamaItem.Enabled = !TranslationServices.Busy;
 			string action = TranslationServices.Busy ? "working..." : (helper || ollama ? "Click to stop both." : "Click to start both.");
 			p.Services.ToolTipText = state + " " + action + (string.IsNullOrEmpty(TranslationServices.Problem) ? "" : "  Problem: " + TranslationServices.Problem);
+		}
+
+		private static void UpdateBatchMenu(Pair p)
+		{
+			int selected = Main?.GetBooksForTranslation().Length ?? 0;
+			p.BatchStart.Text = selected > 1 ? "Translate the " + selected + " selected books (whole books)" : "Translate the selected book (whole book)";
+			p.BatchStart.Enabled = selected > 0;
+			List<TranslationBatch.Item> waiting = TranslationBatch.Waiting;
+			bool running = TranslationBatch.IsRunning;
+			TranslationBatch.Item current = TranslationBatch.Current;
+			string problem = TranslationBatch.Problem;
+			p.BatchState.Visible = running || waiting.Count > 0 || problem != null;
+			if (running && current != null)
+			{
+				p.BatchState.Text = "Batch: translating \"" + Shorten(current.Title) + "\" (" + PercentText(current) + "), " + waiting.Count + (waiting.Count == 1 ? " book" : " books") + " left";
+			}
+			else if (waiting.Count > 0)
+			{
+				p.BatchState.Text = "Batch paused: " + waiting.Count + (waiting.Count == 1 ? " book" : " books") + " left" + (problem != null ? ". " + problem : "");
+			}
+			else
+			{
+				p.BatchState.Text = problem ?? "";
+			}
+			p.BatchPause.Visible = running;
+			p.BatchCancel.Visible = running || waiting.Count > 0;
+			p.BatchContinue.Visible = !running && waiting.Count > 0;
+			//The books in the queue with how much of each is translated.
+			p.BatchContinue.DropDownItems.Clear();
+			if (!running && waiting.Count > 0)
+			{
+				ToolStripMenuItem now = new ToolStripMenuItem("Continue now (" + waiting.Count + (waiting.Count == 1 ? " book" : " books") + ")");
+				now.Click += delegate { TranslationBatch.Resume(); };
+				p.BatchContinue.DropDownItems.Add(now);
+				p.BatchContinue.DropDownItems.Add(new ToolStripSeparator());
+				foreach (TranslationBatch.Item item in waiting)
+				{
+					p.BatchContinue.DropDownItems.Add(new ToolStripMenuItem(PercentText(item).PadLeft(5) + "   " + Shorten(item.Title)) { Enabled = false });
+				}
+			}
+			p.Ahead.ToolTipText = running ? "Batch translating books in the background. Click for the queue." : p.Ahead.ToolTipText;
+		}
+
+		private static string PercentText(TranslationBatch.Item item)
+		{
+			int percent = item.Percent;
+			return percent < 0 ? "queued" : percent + "%";
+		}
+
+		private static string Shorten(string text)
+		{
+			text = text ?? "";
+			return text.Length > 70 ? text.Substring(0, 67) + "..." : text;
 		}
 
 		// ---- pictures ----
