@@ -463,6 +463,21 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 		}
 
 		/// <summary>
+		/// Forgets the pages that are waiting and not yet being translated (the one being translated is left to finish),
+		/// so something more urgent can have the helper next. They can simply be asked for again later.
+		/// </summary>
+		public void DropPending()
+		{
+			lock (sync)
+			{
+				foreach (PageKey key in entries.Where((KeyValuePair<PageKey, Entry> kv) => kv.Value.State == State.Pending && !kv.Value.RenderOnly).Select((KeyValuePair<PageKey, Entry> kv) => kv.Key).ToList())
+				{
+					entries.Remove(key);
+				}
+			}
+		}
+
+		/// <summary>
 		/// Forgets every translated and waiting page from memory, e.g. when translation is turned off,
 		/// so turning it on again picks up changed settings. What is saved with books stays.
 		/// </summary>

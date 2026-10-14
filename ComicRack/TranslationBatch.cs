@@ -67,6 +67,12 @@ namespace cYo.Projects.ComicRack.Viewer
 
 		public static event EventHandler Changed;
 
+		/// <summary>Tells whether the reader is translating pages itself; the batch waits while it is.</summary>
+		public static Func<bool> ReaderBusy { get; set; }
+
+		/// <summary>True while the batch is holding back for the reader.</summary>
+		public static bool Yielding { get; private set; }
+
 		/// <summary>The last thing that stopped the batch (the helper was not running, ...), or null.</summary>
 		public static string Problem { get; private set; }
 
@@ -226,8 +232,46 @@ namespace cYo.Projects.ComicRack.Viewer
 					}
 				}
 				Current = null;
+				Yielding = false;
 				RaiseChanged(true);
 			}
+		}
+
+		private static bool IsReaderBusy()
+		{
+			try
+			{
+				return ReaderBusy != null && ReaderBusy();
+			}
+			catch (Exception)
+			{
+				return false;
+			}
+		}
+
+		/// <summary>
+		/// While the reader translates pages (the book being read has pages that are not translated yet), the batch lets it
+		/// have the helper: the pages the batch still has waiting are dropped, and it carries on once the reader has been
+		/// idle for a couple of seconds. Returns true when it had to wait.
+		/// </summary>
+		private static bool YieldToReader(CancellationToken token, PageTranslationService svc)
+		{
+			if (!IsReaderBusy())
+			{
+				return false;
+			}
+			svc.DropPending();
+			Yielding = true;
+			RaiseChanged(true);
+			int idle = 0;
+			while (!token.IsCancellationRequested && idle < 4)
+			{
+				Thread.Sleep(500);
+				idle = IsReaderBusy() ? 0 : idle + 1;
+			}
+			Yielding = false;
+			RaiseChanged(true);
+			return true;
 		}
 
 		private static void DoBook(Item item, CancellationToken token)
@@ -248,6 +292,7 @@ namespace cYo.Projects.ComicRack.Viewer
 				//Pages the helper could not do (it was busy, or did not answer for a moment) are asked for again, a few times.
 				for (int pass = 0; pass < 4 && !token.IsCancellationRequested; pass++)
 				{
+					bool yielded = false;
 					if (pass > 0)
 					{
 						//The service remembers a failed page for a while; wait that out, and for the helper to be back.
@@ -266,7 +311,9 @@ namespace cYo.Projects.ComicRack.Viewer
 						while (!token.IsCancellationRequested && svc.PendingCount >= 3)
 						{
 							Thread.Sleep(400);
+							yielded |= YieldToReader(token, svc);
 						}
+						yielded |= YieldToReader(token, svc);
 						if (token.IsCancellationRequested)
 						{
 							return;
@@ -295,6 +342,7 @@ namespace cYo.Projects.ComicRack.Viewer
 					while (!token.IsCancellationRequested && svc.PendingCount > 0)
 					{
 						Thread.Sleep(400);
+						yielded |= YieldToReader(token, svc);
 						RaiseChanged(false);
 					}
 					if (token.IsCancellationRequested)
@@ -304,6 +352,11 @@ namespace cYo.Projects.ComicRack.Viewer
 					if (item.Total - item.Translated <= 0)
 					{
 						break;
+					}
+					if (yielded)
+					{
+						//Pages were set aside for the reader: go through the book again; this does not count as a retry.
+						pass--;
 					}
 				}
 				int left = item.Total - item.Translated;

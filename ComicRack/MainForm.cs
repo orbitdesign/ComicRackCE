@@ -4617,13 +4617,13 @@ namespace cYo.Projects.ComicRack.Viewer
 			readerContainer.Controls.SetChildIndex(quickOpenView, 0);
 			readerControl = pageDisplay;
 			pageDisplay.TranslationStatusVisible = Program.Settings.TranslatorShowStatus;
-			//Opening a book to read pauses the batch translation, so the page being read gets the helper to itself.
-			pageDisplay.BookChanged += delegate
+			//The batch translation steps aside while the reader is translating pages for the book being read (or translating
+			//ahead), and carries on when the reader is idle again.
+			TranslationBatch.ReaderBusy = () =>
 			{
-				if (pageDisplay.Book != null && TranslationBatch.IsRunning)
-				{
-					TranslationBatch.Pause();
-				}
+				ComicDisplayControl reader = pageDisplay;
+				PageTranslationService readerService = reader?.TranslationService;
+				return reader != null && (reader.IsPreTranslating || (readerService != null && readerService.IsBusy));
 			};
 			pageDisplay.TranslationStatusChanged += delegate
 			{

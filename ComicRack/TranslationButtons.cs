@@ -848,7 +848,7 @@ namespace cYo.Projects.ComicRack.Viewer
 			p.BatchState.Visible = running || waiting.Count > 0 || problem != null;
 			if (running && current != null)
 			{
-				p.BatchState.Text = "Batch: translating \"" + Shorten(current.Title) + "\" (" + PercentText(current) + "), " + waiting.Count + (waiting.Count == 1 ? " book" : " books") + " left";
+				p.BatchState.Text = "Batch: " + (TranslationBatch.Yielding ? "waiting while the reader translates, then " : "") + "translating \"" + Shorten(current.Title) + "\" (" + PercentText(current) + "), " + waiting.Count + (waiting.Count == 1 ? " book" : " books") + " left";
 			}
 			else if (waiting.Count > 0)
 			{
@@ -876,7 +876,7 @@ namespace cYo.Projects.ComicRack.Viewer
 			}
 			if (running)
 			{
-				p.Ahead.ToolTipText = "Batch translating books in the background (" + waiting.Count + (waiting.Count == 1 ? " book" : " books") + " left). Click for the queue.";
+				p.Ahead.ToolTipText = (TranslationBatch.Yielding ? "Batch waiting while the reader translates pages (" : "Batch translating books in the background (") + waiting.Count + (waiting.Count == 1 ? " book" : " books") + " left). Click for the queue.";
 			}
 			else if (waiting.Count > 0)
 			{
