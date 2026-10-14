@@ -1269,8 +1269,8 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			Controls.Add(bottom);
 			canvas.BringToFront();
 
-			picLed = new PictureBox { Location = new Point(10, 7), Size = new Size(14, 14), Name = "picLed" };
-			lblLed = new Label { Location = new Point(30, 5), Size = new Size(280, 18), Name = "lblLed", TextAlign = ContentAlignment.MiddleLeft, AutoEllipsis = true };
+			picLed = new PictureBox { Location = new Point(8, 4), Size = new Size(20, 20), Name = "picLed", SizeMode = PictureBoxSizeMode.CenterImage };
+			lblLed = new Label { Location = new Point(34, 5), Size = new Size(276, 18), Name = "lblLed", TextAlign = ContentAlignment.MiddleLeft, AutoEllipsis = true };
 			lblStatus = new Label { Location = new Point(316, 5), Size = new Size(600, 18), Name = "lblStatus", AutoEllipsis = true, Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right };
 			bottom.Controls.AddRange(new Control[] { picLed, lblLed, lblStatus });
 
@@ -1792,14 +1792,8 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 		private void UpdateLed()
 		{
 			reader.GetTranslationStatus(out int translated, out int total, out bool busy, out string problem);
-			Color color = !string.IsNullOrEmpty(problem) ? Color.FromArgb(220, 60, 50) : (busy ? Color.FromArgb(240, 170, 30) : Color.FromArgb(70, 190, 90));
-			Bitmap led = new Bitmap(14, 14);
-			using (Graphics g = Graphics.FromImage(led))
-			using (SolidBrush brush = new SolidBrush(color))
-			{
-				g.SmoothingMode = SmoothingMode.AntiAlias;
-				g.FillEllipse(brush, 1, 1, 11, 11);
-			}
+			//The translator button's own picture, coloured by the state (grey off, green on, amber busy, red problem).
+			Bitmap led = TranslationButtons.StatusIcon(!string.IsNullOrEmpty(problem) ? TranslationLed.Problem : (busy ? TranslationLed.Busy : TranslationLed.On), 18);
 			Image old = picLed.Image;
 			picLed.Image = led;
 			old?.Dispose();

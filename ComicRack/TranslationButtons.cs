@@ -804,6 +804,12 @@ namespace cYo.Projects.ComicRack.Viewer
 			return Color.FromArgb(135, 135, 140);
 		}
 
+		/// <summary>The translator button's picture (a speech bubble) in the colour of a state, for status lights elsewhere. The caller owns the copy.</summary>
+		public static Bitmap StatusIcon(TranslationLed led, int size)
+		{
+			return new Bitmap(GetIcon(true, led, size));
+		}
+
 		private static Bitmap GetIcon(bool translator, TranslationLed led, int size)
 		{
 			string key = (translator ? "t" : "s") + (int)led + "-" + size;
