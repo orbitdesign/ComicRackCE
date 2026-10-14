@@ -1173,6 +1173,10 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 
 		private Button btDelete;
 
+		private Button btRestore;
+
+		private const string DeletedMark = "deleted";
+
 		private ListBox lstBoxes;
 
 		private TextBox txtTranslation;
@@ -1284,7 +1288,10 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			btAdd = new Button { Text = "Add text box", Location = new Point(10, y), Size = new Size(118, 28), Name = "btAdd" };
 			btAddShape = new Button { Text = "\u25be", Location = new Point(130, y), Size = new Size(30, 28), Name = "btAddShape" };
 			btDelete = new Button { Text = "Delete box", Location = new Point(166, y), Size = new Size(100, 28), Name = "btDelete" };
-			side.Controls.AddRange(new Control[] { btAdd, btAddShape, btDelete });
+			btRestore = new Button { Text = "Restore", Location = new Point(270, y), Size = new Size(58, 28), Name = "btRestore" };
+			new ToolTip().SetToolTip(btDelete, "Delete the selected boxes (Delete key). Their original text is left as drawn. Restore brings deleted boxes back.");
+			new ToolTip().SetToolTip(btRestore, "Bring back the boxes deleted on this page");
+			side.Controls.AddRange(new Control[] { btAdd, btAddShape, btDelete, btRestore });
 			y += 38;
 			side.Controls.Add(new Label { Text = "Text boxes on this page:", Location = new Point(10, y), Size = new Size(300, 16) });
 			y += 18;
@@ -1486,6 +1493,7 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			};
 			chkTurnText.CheckedChanged += delegate { canvas.TextFollowsShape = chkTurnText.Checked; };
 			btDelete.Click += delegate { DeleteSelected(); };
+			btRestore.Click += delegate { RestoreDeleted(); };
 			txtTranslation.TextChanged += delegate
 			{
 				TranslationBox box = canvas.Selected;
@@ -1833,7 +1841,14 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			TranslationBox box = canvas.Selected;
 			bool has = box != null;
 			txtTranslation.Enabled = chkAuto.Enabled = cboAlign.Enabled = nudRotation.Enabled = chkSkip.Enabled = btReset.Enabled = btAgain.Enabled = has;
-			btDelete.Enabled = has && box.Manual;
+			btDelete.Enabled = has;
+			if (btRestore != null)
+			{
+				int deleted = canvas.Boxes.Count((TranslationBox b) => b.MergedInto == DeletedMark);
+				btRestore.Enabled = deleted > 0;
+				btRestore.Text = deleted > 0 ? "Restore " + deleted : "Restore";
+				btRestore.Width = deleted > 9 ? 70 : 58;
+			}
 			if (tileBox != null)
 			{
 				tileBox.Enabled = has;
@@ -2228,20 +2243,50 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			CommitNow();
 		}
 
+		/// <summary>
+		/// Deletes the selected boxes. A box added by hand is removed; a box the helper found is hidden and its original
+		/// text is left as the artist drew it (so a title read as two boxes can be replaced by one). A merged box is
+		/// split again.
+		/// </summary>
 		private void DeleteSelected()
 		{
-			TranslationBox box = canvas.Selected;
-			if (box == null || !box.Manual)
+			List<TranslationBox> boxes = canvas.AllSelected.ToList();
+			if (boxes.Count == 0)
 			{
 				return;
 			}
-			if (box.Shape != null)
+			foreach (TranslationBox box in boxes)
 			{
-				Unmerge(box);
-				return;
+				if (box.Shape != null)
+				{
+					Unmerge(box);
+				}
+				else if (box.Manual)
+				{
+					canvas.Boxes.Remove(box);
+				}
+				else
+				{
+					box.Skip = true;
+					box.MergedInto = DeletedMark;
+				}
 			}
-			canvas.Boxes.Remove(box);
 			canvas.Selected = null;
+			canvas.Extra.Clear();
+			SyncList();
+			SyncControls();
+			canvas.Invalidate();
+			SetStatus(boxes.Count == 1 ? "Box deleted. Restore brings it back." : boxes.Count + " boxes deleted. Restore brings them back.");
+			CommitNow();
+		}
+
+		private void RestoreDeleted()
+		{
+			foreach (TranslationBox box in canvas.Boxes.Where((TranslationBox b) => b.MergedInto == DeletedMark).ToList())
+			{
+				box.MergedInto = "";
+				box.Skip = false;
+			}
 			SyncList();
 			SyncControls();
 			canvas.Invalidate();
@@ -2308,7 +2353,7 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 
 		protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
 		{
-			if (keyData == Keys.Delete && canvas.Focused)
+			if (keyData == Keys.Delete && (canvas.Focused || lstBoxes.Focused))
 			{
 				DeleteSelected();
 				return true;
