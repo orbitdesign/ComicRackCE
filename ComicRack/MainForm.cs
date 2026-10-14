@@ -4610,6 +4610,7 @@ namespace cYo.Projects.ComicRack.Viewer
 			{
 				TranslationButtons.RefreshAll();
 			};
+			pageDisplay.TranslationIconProvider = (string state, int size) => TranslationButtons.StatusIcon(state == "problem" ? TranslationLed.Problem : (state == "busy" ? TranslationLed.Busy : TranslationLed.On), size);
 			pageDisplay.TranslationServerUrl = Program.Settings.TranslatorServerUrl;
 			ComicDisplay comicDisplay = new ComicDisplay(pageDisplay);
 			FormUtility.ServiceTranslation[pageDisplay] = comicDisplay;
