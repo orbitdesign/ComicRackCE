@@ -38,6 +38,26 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 		/// </summary>
 		public List<int[]> Shape { get; set; }
 
+		/// <summary>The form of the box's area: rounded corners, cut corners or a triangle (see TranslationShapes). Needs Rect.</summary>
+		public int Form { get; set; }
+
+		/// <summary>Each corner's size in percent: top left, top right, bottom right, bottom left (for a triangle, the first is where its point sits).</summary>
+		public int[] Corners { get; set; } = new int[4];
+
+		/// <summary>Rounded corners are circles (a pill, a circle in a square) instead of scaling with the box (an oval).</summary>
+		public bool Circular { get; set; }
+
+		public bool HasForm => !TranslationShapes.IsPlain(Form, Corners);
+
+		/// <summary>The corner points of a free polygon (flat x, y list in page pixels); null for other forms.</summary>
+		public int[] Points { get; set; }
+
+		/// <summary>Degrees, clockwise: the box's shape turned about its centre (the lettering follows when Rotation matches).</summary>
+		public double ShapeAngle { get; set; }
+
+		/// <summary>The box's shape differs from the plain upright rectangle.</summary>
+		public bool HasShape => HasForm || Math.Abs(ShapeAngle) >= 0.05;
+
 		/// <summary>The id of the merged box this one was folded into; the box is then hidden and left alone.</summary>
 		public string MergedInto { get; set; } = "";
 
@@ -58,7 +78,7 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 		/// <summary>The font size the helper chose on the last render.</summary>
 		public double AutoSize { get; set; }
 
-		public bool HasManualSettings => Rect != null || Size > 0 || Rotation != 0 || Skip || TextEdited || !string.Equals(Align, "center", StringComparison.OrdinalIgnoreCase);
+		public bool HasManualSettings => Rect != null || HasShape || Size > 0 || Rotation != 0 || Skip || TextEdited || !string.Equals(Align, "center", StringComparison.OrdinalIgnoreCase);
 
 		/// <summary>True when this box differs from what the helper found, so it is kept with the book.</summary>
 		public bool IsEdited => Manual || HasManualSettings || Shape != null || !string.IsNullOrEmpty(MergedInto);
@@ -78,7 +98,8 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 			{
 				if (Shape != null && Shape.Count > 0)
 				{
-					return new[] { Shape.Min((int[] r) => r[0]), Shape.Min((int[] r) => r[1]), Shape.Max((int[] r) => r[2]), Shape.Max((int[] r) => r[3]) };
+					List<int[]> bounds = Shape.Select((int[] r) => TranslationShapes.Bounds(r)).ToList();
+					return new[] { bounds.Min((int[] r) => r[0]), bounds.Min((int[] r) => r[1]), bounds.Max((int[] r) => r[2]), bounds.Max((int[] r) => r[3]) };
 				}
 				return Rect ?? Bounds ?? Src;
 			}
@@ -89,11 +110,15 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 		{
 			if (Shape != null)
 			{
-				Shape = Shape.Select((int[] r) => new[] { r[0] + dx, r[1] + dy, r[2] + dx, r[3] + dy }).ToList();
+				Shape = Shape.Select((int[] r) => { int[] moved = (int[])r.Clone(); moved[0] += dx; moved[1] += dy; moved[2] += dx; moved[3] += dy; return moved; }).ToList();
 				return;
 			}
 			int[] a = (int[])Area.Clone();
 			Rect = new[] { a[0] + dx, a[1] + dy, a[2] + dx, a[3] + dy };
+			if (Points != null)
+			{
+				Points = Points.Select((int v, int i) => v + (i % 2 == 0 ? dx : dy)).ToArray();
+			}
 		}
 
 		public TranslationBox Clone()
@@ -102,6 +127,8 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 			b.Src = (int[])Src.Clone();
 			b.Rect = (int[])Rect?.Clone();
 			b.Bounds = (int[])Bounds?.Clone();
+			b.Corners = (int[])(Corners ?? new int[4]).Clone();
+			b.Points = (int[])Points?.Clone();
 			b.Shape = Shape?.Select((int[] r) => (int[])r.Clone()).ToList();
 			return b;
 		}
@@ -110,6 +137,11 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 		public void ResetSettings()
 		{
 			Rect = null;
+			Form = TranslationShapes.Round;
+			ShapeAngle = 0;
+			Points = null;
+			Corners = new int[4];
+			Circular = false;
 			Size = 0;
 			Align = "center";
 			Rotation = 0;
@@ -128,6 +160,30 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 			if (Rect != null)
 			{
 				WriteInts(w, "rect", Rect);
+			}
+			if (Math.Abs(ShapeAngle) >= 0.05)
+			{
+				w.WriteNumber("shape_angle", ShapeAngle);
+			}
+			if (HasForm)
+			{
+				w.WriteNumber("kind", Form);
+				w.WriteStartArray("corners");
+				foreach (int c in Corners)
+				{
+					w.WriteNumberValue(c);
+				}
+				w.WriteEndArray();
+				w.WriteBoolean("circular", Circular);
+				if (Form == TranslationShapes.FreePolygon && Points != null)
+				{
+					w.WriteStartArray("points");
+					foreach (int v in Points)
+					{
+						w.WriteNumberValue(v);
+					}
+					w.WriteEndArray();
+				}
 			}
 			if (Shape != null && Shape.Count > 0)
 			{
@@ -173,6 +229,21 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 				Bounds = GetInts(e, "bounds"),
 				AutoSize = GetDouble(e, "auto_size")
 			};
+			b.Form = (int)GetDouble(e, "kind");
+			b.ShapeAngle = GetDouble(e, "shape_angle");
+			if (e.TryGetProperty("points", out JsonElement pointList) && pointList.ValueKind == JsonValueKind.Array)
+			{
+				b.Points = pointList.EnumerateArray().Where((JsonElement x) => x.ValueKind == JsonValueKind.Number).Select((JsonElement x) => (int)Math.Round(x.GetDouble())).ToArray();
+			}
+			b.Circular = GetBool(e, "circular");
+			if (e.TryGetProperty("corners", out JsonElement corners) && corners.ValueKind == JsonValueKind.Array)
+			{
+				int[] cornerValues = corners.EnumerateArray().Where((JsonElement x) => x.ValueKind == JsonValueKind.Number).Select((JsonElement x) => (int)Math.Round(x.GetDouble())).ToArray();
+				if (cornerValues.Length == 4)
+				{
+					b.Corners = cornerValues;
+				}
+			}
 			if (e.TryGetProperty("shape", out JsonElement shape) && shape.ValueKind == JsonValueKind.Array)
 			{
 				List<int[]> rects = new List<int[]>();
@@ -181,7 +252,7 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 					if (r.ValueKind == JsonValueKind.Array)
 					{
 						int[] values = r.EnumerateArray().Where((JsonElement x) => x.ValueKind == JsonValueKind.Number).Select((JsonElement x) => (int)Math.Round(x.GetDouble())).ToArray();
-						if (values.Length == 4)
+						if (values.Length == 4 || values.Length == TranslationShapes.PartLength || values.Length >= TranslationShapes.AnglePart && (values.Length - TranslationShapes.AnglePart) % 2 == 0)
 						{
 							rects.Add(values);
 						}

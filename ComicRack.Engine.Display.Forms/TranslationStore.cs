@@ -290,6 +290,11 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 					match.TextEdited = true;
 				}
 				match.Rect = (int[])edit.Rect?.Clone();
+				match.Form = edit.Form;
+				match.ShapeAngle = edit.ShapeAngle;
+				match.Points = (int[])edit.Points?.Clone();
+				match.Corners = (int[])(edit.Corners ?? new int[4]).Clone();
+				match.Circular = edit.Circular;
 				match.Size = edit.Size;
 				match.Align = edit.Align;
 				match.Rotation = edit.Rotation;

@@ -31,7 +31,9 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			Resize,
 			Rotate,
 			Pan,
-			Draw
+			Draw,
+			Corner,
+			Vertex
 		}
 
 		/// <summary>The picture of the page with the outlines of its boxes on top.</summary>
@@ -52,6 +54,20 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			private Drag drag;
 
 			private int handle;
+
+			private int cornerIndex;
+
+			private int vertexIndex;
+
+			private int[] startPoints;
+
+			private const float CornerOffset = 16f;
+
+			/// <summary>The shape new boxes are drawn with (an index of TranslationShapes.PresetNames); only used for the preview.</summary>
+			public int NewPreset { get; set; }
+
+			/// <summary>Turning a shape turns its lettering too; off keeps the text upright inside the turned shape.</summary>
+			public bool TextFollowsShape { get; set; }
 
 			private PointF dragStart;
 
@@ -181,20 +197,286 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			private PointF RotationHandle(TranslationBox b)
 			{
 				RectangleF r = ToScreen(AreaOf(b));
-				return new PointF(r.Left + r.Width / 2f, r.Top - 26f);
+				PointF centre = new PointF(r.Left + r.Width / 2f, r.Top + r.Height / 2f);
+				return Turn(new PointF(centre.X, r.Top - 26f), centre, b.ShapeAngle);
 			}
 
-			private PointF[] HandlePoints(RectangleF r)
+			private PointF[] HandlePoints(RectangleF r, double angle)
 			{
 				float cx = r.Left + r.Width / 2f;
 				float cy = r.Top + r.Height / 2f;
-				return new[]
+				PointF[] points =
 				{
 					new PointF(r.Left, r.Top), new PointF(cx, r.Top), new PointF(r.Right, r.Top),
 					new PointF(r.Right, cy), new PointF(r.Right, r.Bottom), new PointF(cx, r.Bottom),
 					new PointF(r.Left, r.Bottom), new PointF(r.Left, cy)
 				};
+				return points.Select((PointF p) => Turn(p, new PointF(cx, cy), angle)).ToArray();
 			}
+
+			/// <summary>A point turned clockwise about a centre (in the units of the point).</summary>
+			private static PointF Turn(PointF p, PointF centre, double degrees)
+			{
+				if (Math.Abs(degrees) < 0.05)
+				{
+					return p;
+				}
+				double s = Math.Sin(degrees * Math.PI / 180.0), c = Math.Cos(degrees * Math.PI / 180.0);
+				return new PointF((float)(centre.X + (p.X - centre.X) * c - (p.Y - centre.Y) * s), (float)(centre.Y + (p.X - centre.X) * s + (p.Y - centre.Y) * c));
+			}
+
+			/// <summary>The part (rectangle plus form and angle) a plain box stands for.</summary>
+			private static int[] PartOf(TranslationBox b)
+			{
+				return b.HasShape && !b.Skip ? TranslationShapes.MakePart(AreaOf(b), b.Form, b.Corners, b.Circular, b.ShapeAngle) : AreaOf(b);
+			}
+
+			private PointF[] ScreenPolygon(int[] part)
+			{
+				return TranslationShapes.Polygon(part).Select((PointF p) => new PointF(p.X * zoom + pan.X, p.Y * zoom + pan.Y)).ToArray();
+			}
+
+			private static PointF CentreOf(int[] r)
+			{
+				return new PointF((r[0] + r[2]) / 2f, (r[1] + r[3]) / 2f);
+			}
+
+			/// <summary>Where the handle of a corner sits (screen), or of the point of a triangle.</summary>
+			private PointF CornerHandle(TranslationBox b, int i)
+			{
+				int[] a = AreaOf(b);
+				RectangleF r = ToScreen(a);
+				PointF centre = new PointF(r.Left + r.Width / 2f, r.Top + r.Height / 2f);
+				PointF at;
+				if (TranslationShapes.IsTriangle(b.Form))
+				{
+					double t = b.Corners[0] > 0 ? b.Corners[0] / 100.0 : 0.5;
+					switch (b.Form)
+					{
+					case TranslationShapes.TriangleUp:
+						at = new PointF((float)(r.Left + t * r.Width), r.Top);
+						break;
+					case TranslationShapes.TriangleDown:
+						at = new PointF((float)(r.Left + t * r.Width), r.Bottom);
+						break;
+					case TranslationShapes.TriangleLeft:
+						at = new PointF(r.Left, (float)(r.Top + t * r.Height));
+						break;
+					default:
+						at = new PointF(r.Right, (float)(r.Top + t * r.Height));
+						break;
+					}
+					return Turn(at, centre, b.ShapeAngle);
+				}
+				TranslationShapes.CornerReach(a, b.Corners[i], b.Circular, out double rx, out double ry);
+				float dx = (float)(rx * zoom) + CornerOffset;
+				float dy = (float)(ry * zoom) + CornerOffset;
+				switch (i)
+				{
+				case 0:
+					at = new PointF(r.Left + dx, r.Top + dy);
+					break;
+				case 1:
+					at = new PointF(r.Right - dx, r.Top + dy);
+					break;
+				case 2:
+					at = new PointF(r.Right - dx, r.Bottom - dy);
+					break;
+				default:
+					at = new PointF(r.Left + dx, r.Bottom - dy);
+					break;
+				}
+				return Turn(at, centre, b.ShapeAngle);
+			}
+
+			/// <summary>True for a single free polygon whose points can be dragged.</summary>
+			public static bool HasVertices(TranslationBox b)
+			{
+				return b != null && !b.Skip && b.Shape == null && b.Form == TranslationShapes.FreePolygon && b.Points != null && b.Points.Length >= 6;
+			}
+
+			/// <summary>Where the points of a polygon are on screen (turned with the shape).</summary>
+			private PointF[] VertexScreen(TranslationBox b)
+			{
+				RectangleF r = ToScreen(AreaOf(b));
+				PointF centre = new PointF(r.Left + r.Width / 2f, r.Top + r.Height / 2f);
+				List<PointF> list = new List<PointF>();
+				for (int i = 0; i + 1 < b.Points.Length; i += 2)
+				{
+					list.Add(Turn(new PointF(b.Points[i] * zoom + pan.X, b.Points[i + 1] * zoom + pan.Y), centre, b.ShapeAngle));
+				}
+				return list.ToArray();
+			}
+
+			/// <summary>The index of the polygon point under the pointer, or -1.</summary>
+			public int VertexAt(Point p)
+			{
+				if (!HasVertices(Selected) || Extra.Count > 0)
+				{
+					return -1;
+				}
+				PointF[] v = VertexScreen(Selected);
+				for (int i = 0; i < v.Length; i++)
+				{
+					if (Math.Abs(p.X - v[i].X) <= 7 && Math.Abs(p.Y - v[i].Y) <= 7)
+					{
+						return i;
+					}
+				}
+				return -1;
+			}
+
+			/// <summary>True when the pointer is on an edge of the polygon (not on a point); after is the index of the point the edge starts at.</summary>
+			public bool EdgeAt(Point p, out int after)
+			{
+				after = -1;
+				if (!HasVertices(Selected) || Extra.Count > 0 || VertexAt(p) >= 0)
+				{
+					return false;
+				}
+				PointF[] v = VertexScreen(Selected);
+				for (int i = 0; i < v.Length; i++)
+				{
+					PointF a = v[i], b = v[(i + 1) % v.Length];
+					double dx = b.X - a.X, dy = b.Y - a.Y;
+					double len2 = dx * dx + dy * dy;
+					if (len2 < 1)
+					{
+						continue;
+					}
+					double t = Math.Max(0, Math.Min(1, ((p.X - a.X) * dx + (p.Y - a.Y) * dy) / len2));
+					double px = a.X + t * dx, py = a.Y + t * dy;
+					if ((p.X - px) * (p.X - px) + (p.Y - py) * (p.Y - py) <= 49)
+					{
+						after = i;
+						return true;
+					}
+				}
+				return false;
+			}
+
+			/// <summary>Turns the angle of a polygon into its points (so a point can be edited in page coordinates).</summary>
+			private static void BakeAngle(TranslationBox b)
+			{
+				if (b.Points == null || Math.Abs(b.ShapeAngle) < 0.05)
+				{
+					return;
+				}
+				PointF centre = CentreOf(b.Rect ?? TranslationShapes.PointsBounds(b.Points));
+				int[] pts = (int[])b.Points.Clone();
+				for (int i = 0; i + 1 < pts.Length; i += 2)
+				{
+					PointF q = Turn(new PointF(pts[i], pts[i + 1]), centre, b.ShapeAngle);
+					pts[i] = (int)Math.Round(q.X);
+					pts[i + 1] = (int)Math.Round(q.Y);
+				}
+				if (Math.Abs(b.Rotation - b.ShapeAngle) < 0.05)
+				{
+					b.Rotation = 0;
+				}
+				b.ShapeAngle = 0;
+				b.Points = pts;
+				b.Rect = TranslationShapes.PointsBounds(pts);
+			}
+
+			/// <summary>Adds a point on the edge that starts at point `after`, where the pointer is.</summary>
+			public void InsertVertex(int after, Point at)
+			{
+				if (!HasVertices(Selected))
+				{
+					return;
+				}
+				BakeAngle(Selected);
+				PointF q = ToImage(at);
+				int[] pts = Selected.Points;
+				int n = pts.Length / 2;
+				int ax = pts[2 * after], ay = pts[2 * after + 1];
+				int bx = pts[2 * ((after + 1) % n)], by = pts[2 * ((after + 1) % n) + 1];
+				double dx = bx - ax, dy = by - ay;
+				double len2 = Math.Max(1, dx * dx + dy * dy);
+				double t = Math.Max(0.1, Math.Min(0.9, ((q.X - ax) * dx + (q.Y - ay) * dy) / len2));
+				List<int> list = pts.ToList();
+				list.InsertRange(2 * (after + 1), new[] { (int)Math.Round(ax + t * dx), (int)Math.Round(ay + t * dy) });
+				Selected.Points = list.ToArray();
+				Selected.Rect = TranslationShapes.PointsBounds(Selected.Points);
+				BoxChanging?.Invoke(this, EventArgs.Empty);
+				BoxChanged?.Invoke(this, EventArgs.Empty);
+				Invalidate();
+			}
+
+			/// <summary>Takes a point away (a polygon keeps at least three).</summary>
+			public void RemoveVertex(int index)
+			{
+				if (!HasVertices(Selected) || Selected.Points.Length <= 6 || index < 0 || 2 * index + 1 >= Selected.Points.Length)
+				{
+					return;
+				}
+				BakeAngle(Selected);
+				List<int> list = Selected.Points.ToList();
+				list.RemoveRange(2 * index, 2);
+				Selected.Points = list.ToArray();
+				Selected.Rect = TranslationShapes.PointsBounds(Selected.Points);
+				BoxChanging?.Invoke(this, EventArgs.Empty);
+				BoxChanged?.Invoke(this, EventArgs.Empty);
+				Invalidate();
+			}
+
+			private static int[] RemapPoints(int[] points, int[] from, int[] to)
+			{
+				double sx = (double)(to[2] - to[0]) / Math.Max(1, from[2] - from[0]);
+				double sy = (double)(to[3] - to[1]) / Math.Max(1, from[3] - from[1]);
+				int[] result = new int[points.Length];
+				for (int i = 0; i + 1 < points.Length; i += 2)
+				{
+					result[i] = (int)Math.Round(to[0] + (points[i] - from[0]) * sx);
+					result[i + 1] = (int)Math.Round(to[1] + (points[i + 1] - from[1]) * sy);
+				}
+				return result;
+			}
+
+			private void DragVertex(PointF at)
+			{
+				if (startPoints == null || vertexIndex < 0 || 2 * vertexIndex + 1 >= startPoints.Length)
+				{
+					return;
+				}
+				int[] pts = (int[])startPoints.Clone();
+				pts[2 * vertexIndex] = (int)Math.Max(0, Math.Min(imageSize.Width, Math.Round(at.X)));
+				pts[2 * vertexIndex + 1] = (int)Math.Max(0, Math.Min(imageSize.Height, Math.Round(at.Y)));
+				Selected.Points = pts;
+				Selected.Rect = TranslationShapes.PointsBounds(pts);
+				BoxChanging?.Invoke(this, EventArgs.Empty);
+				Invalidate();
+			}
+
+			private bool CanShapeCorners(TranslationBox b)
+			{
+				if (b == null || b.Skip || b.Shape != null || b.Form == TranslationShapes.FreePolygon)
+				{
+					return false;
+				}
+				int[] a = AreaOf(b);
+				return (a[2] - a[0]) * zoom >= 80 && (a[3] - a[1]) * zoom >= 80;
+			}
+
+			private int HitCorner(TranslationBox b, Point p)
+			{
+				if (!CanShapeCorners(b))
+				{
+					return -1;
+				}
+				int count = TranslationShapes.IsTriangle(b.Form) ? 1 : 4;
+				for (int i = 0; i < count; i++)
+				{
+					PointF h = CornerHandle(b, i);
+					if (Math.Abs(p.X - h.X) <= 8 && Math.Abs(p.Y - h.Y) <= 8)
+					{
+						return i;
+					}
+				}
+				return -1;
+			}
+
 
 			protected override void OnPaint(PaintEventArgs e)
 			{
@@ -229,31 +511,40 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 						{
 							pen.DashStyle = DashStyle.Dash;
 						}
-						if (box.Rotation != 0 && !box.Skip)
-						{
-							using (Matrix m = new Matrix())
-							{
-								m.RotateAt((float)box.Rotation, new PointF(r.Left + r.Width / 2f, r.Top + r.Height / 2f));
-								PointF[] pts = { new PointF(r.Left, r.Top), new PointF(r.Right, r.Top), new PointF(r.Right, r.Bottom), new PointF(r.Left, r.Bottom) };
-								m.TransformPoints(pts);
-								g.DrawPolygon(pen, pts);
-							}
-							using (Pen faint = new Pen(Color.FromArgb(110, color), 1f) { DashStyle = DashStyle.Dot })
-							{
-								g.DrawRectangle(faint, r.X, r.Y, r.Width, r.Height);
-							}
-						}
-						else if (box.Shape != null && !box.Skip)
+						if (box.Shape != null && !box.Skip)
 						{
 							foreach (int[] part in box.Shape)
 							{
-								RectangleF pr = ToScreen(part);
-								g.DrawRectangle(pen, pr.X, pr.Y, pr.Width, pr.Height);
+								if (part.Length >= TranslationShapes.PartLength)
+								{
+									g.DrawPolygon(pen, ScreenPolygon(part));
+								}
+								else
+								{
+									RectangleF pr = ToScreen(part);
+									g.DrawRectangle(pen, pr.X, pr.Y, pr.Width, pr.Height);
+								}
 							}
+						}
+						else if (box.HasShape && !box.Skip)
+						{
+							g.DrawPolygon(pen, ScreenPolygon(PartOf(box)));
 						}
 						else
 						{
 							g.DrawRectangle(pen, r.X, r.Y, r.Width, r.Height);
+						}
+						if (box.Rotation != 0 && !box.Skip && box.Shape == null && Math.Abs(box.Rotation - box.ShapeAngle) >= 0.05)
+						{
+							//The lettering is turned differently from the shape: show the direction of the text.
+							using (Matrix m = new Matrix())
+							using (Pen faint = new Pen(Color.FromArgb(150, color), 1f) { DashStyle = DashStyle.Dot })
+							{
+								m.RotateAt((float)box.Rotation, new PointF(r.Left + r.Width / 2f, r.Top + r.Height / 2f));
+								PointF[] pts = { new PointF(r.Left, r.Top), new PointF(r.Right, r.Top), new PointF(r.Right, r.Bottom), new PointF(r.Left, r.Bottom) };
+								m.TransformPoints(pts);
+								g.DrawPolygon(faint, pts);
+							}
 						}
 					}
 					string tag = number.ToString();
@@ -265,7 +556,7 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 					g.DrawString(tag, Font, Brushes.Black, r.Left + 1, r.Top - ts.Height);
 					if (box == Selected && Extra.Count == 0 && !box.Skip && box.Shape == null)
 					{
-						PointF top = new PointF(r.Left + r.Width / 2f, r.Top);
+						PointF top = Turn(new PointF(r.Left + r.Width / 2f, r.Top), new PointF(r.Left + r.Width / 2f, r.Top + r.Height / 2f), box.ShapeAngle);
 						PointF knob = RotationHandle(box);
 						using (Pen line = new Pen(color, 1f))
 						{
@@ -276,12 +567,38 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 						{
 							g.DrawEllipse(ring, knob.X - 6, knob.Y - 6, 12, 12);
 						}
-						foreach (PointF h in HandlePoints(r))
+						foreach (PointF h in HandlePoints(r, box.ShapeAngle))
 						{
 							g.FillRectangle(Brushes.White, h.X - HandleSize / 2f, h.Y - HandleSize / 2f, HandleSize, HandleSize);
 							using (Pen ring = new Pen(color, 1.5f))
 							{
 								g.DrawRectangle(ring, h.X - HandleSize / 2f, h.Y - HandleSize / 2f, HandleSize, HandleSize);
+							}
+						}
+						if (HasVertices(box))
+						{
+							//A free polygon: a square dot on every point (drag it); double-click an edge to add a point, right-click a point to remove it.
+							foreach (PointF v in VertexScreen(box))
+							{
+								g.FillRectangle(Brushes.White, v.X - 4, v.Y - 4, 8, 8);
+								using (Pen ring = new Pen(Color.FromArgb(255, 150, 20), 2f))
+								{
+									g.DrawRectangle(ring, v.X - 4, v.Y - 4, 8, 8);
+								}
+							}
+						}
+						if (CanShapeCorners(box))
+						{
+							//Round handles: drag one to round, cut or move the point of the corner it belongs to (Shift: all corners).
+							int count = TranslationShapes.IsTriangle(box.Form) ? 1 : 4;
+							for (int ci = 0; ci < count; ci++)
+							{
+								PointF h = CornerHandle(box, ci);
+								using (SolidBrush dot = new SolidBrush(Color.FromArgb(255, 150, 20)))
+								{
+									g.FillEllipse(dot, h.X - 5, h.Y - 5, 10, 10);
+								}
+								g.DrawEllipse(Pens.White, h.X - 5, h.Y - 5, 10, 10);
 							}
 						}
 					}
@@ -291,8 +608,20 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 					using (Pen pen = new Pen(Color.FromArgb(70, 150, 255), 2f) { DashStyle = DashStyle.Dash })
 					using (SolidBrush fill = new SolidBrush(Color.FromArgb(40, 70, 150, 255)))
 					{
-						g.FillRectangle(fill, drawing);
-						g.DrawRectangle(pen, drawing);
+						if (NewPreset > 0 && drawing.Width > 4 && drawing.Height > 4)
+						{
+							TranslationShapes.Preset(NewPreset, out int kind, out int[] corners, out bool circular);
+							PointF a = ToImage(drawing.Location);
+							PointF z = ToImage(new Point(drawing.Right, drawing.Bottom));
+							PointF[] poly = ScreenPolygon(TranslationShapes.MakePart(new[] { (int)a.X, (int)a.Y, (int)z.X, (int)z.Y }, kind, corners, circular));
+							g.FillPolygon(fill, poly);
+							g.DrawPolygon(pen, poly);
+						}
+						else
+						{
+							g.FillRectangle(fill, drawing);
+							g.DrawRectangle(pen, drawing);
+						}
 					}
 				}
 				if (!string.IsNullOrEmpty(Message))
@@ -312,7 +641,7 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			private int HitHandle(TranslationBox b, Point p)
 			{
 				RectangleF r = ToScreen(AreaOf(b));
-				PointF[] pts = HandlePoints(r);
+				PointF[] pts = HandlePoints(r, b.ShapeAngle);
 				for (int i = 0; i < pts.Length; i++)
 				{
 					if (Math.Abs(p.X - pts[i].X) <= HandleSize && Math.Abs(p.Y - pts[i].Y) <= HandleSize)
@@ -341,7 +670,9 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 						continue;
 					}
 					int[] r = b.Skip ? b.Src : AreaOf(b);
-					if (ip.X >= r[0] && ip.X <= r[2] && ip.Y >= r[1] && ip.Y <= r[3])
+					bool inside = b.Skip ? ip.X >= r[0] && ip.X <= r[2] && ip.Y >= r[1] && ip.Y <= r[3]
+						: (b.Shape != null ? b.Shape.Any((int[] part) => TranslationShapes.Contains(part, ip)) : TranslationShapes.Contains(PartOf(b), ip));
+					if (inside)
 					{
 						double area = (double)(r[2] - r[0]) * (r[3] - r[1]);
 						if (area < bestArea)
@@ -423,6 +754,21 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 						startRotation = Selected.Rotation;
 						return;
 					}
+					int vertex = VertexAt(e.Location);
+					if (vertex >= 0)
+					{
+						BakeAngle(Selected);
+						BeginEdit(Drag.Vertex, e.Location);
+						vertexIndex = vertex;
+						return;
+					}
+					int corner = HitCorner(Selected, e.Location);
+					if (corner >= 0)
+					{
+						BeginEdit(Drag.Corner, e.Location);
+						cornerIndex = corner;
+						return;
+					}
 					int h = HitHandle(Selected, e.Location);
 					if (h > 0)
 					{
@@ -451,6 +797,7 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 				dragStart = ToImage(at);
 				startRect = (int[])AreaOf(Selected).Clone();
 				startShape = Selected.Shape?.Select((int[] part) => (int[])part.Clone()).ToList();
+				startPoints = (int[])Selected.Points?.Clone();
 			}
 
 			protected override void OnMouseMove(MouseEventArgs e)
@@ -474,6 +821,8 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 					return;
 				case Drag.Move:
 				case Drag.Resize:
+				case Drag.Corner:
+				case Drag.Vertex:
 					ApplyDrag(ToImage(e.Location));
 					return;
 				case Drag.Rotate:
@@ -487,7 +836,7 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			{
 				if (Selected != null && !Selected.Skip && Selected.Shape == null)
 				{
-					if (HitRotation(Selected, p))
+					if (HitRotation(Selected, p) || HitCorner(Selected, p) >= 0 || VertexAt(p) >= 0)
 					{
 						return Cursors.Hand;
 					}
@@ -522,9 +871,24 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 				int[] r = (int[])startRect.Clone();
 				if (drag == Drag.Move && startShape != null)
 				{
-					Selected.Shape = startShape.Select((int[] part) => new[] { part[0] + dx, part[1] + dy, part[2] + dx, part[3] + dy }).ToList();
+					Selected.Shape = startShape.Select((int[] part) => { int[] moved = (int[])part.Clone(); moved[0] += dx; moved[1] += dy; moved[2] += dx; moved[3] += dy; return moved; }).ToList();
 					BoxChanging?.Invoke(this, EventArgs.Empty);
 					Invalidate();
+					return;
+				}
+				if (drag == Drag.Vertex)
+				{
+					DragVertex(at);
+					return;
+				}
+				if (drag == Drag.Corner)
+				{
+					DragCorner(at, r);
+					return;
+				}
+				if (drag == Drag.Resize)
+				{
+					ResizeTurned(dx, dy, r);
 					return;
 				}
 				if (drag == Drag.Move)
@@ -576,7 +940,79 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 						}
 					}
 				}
+				if (drag == Drag.Move && Selected.Form == TranslationShapes.FreePolygon && startPoints != null)
+				{
+					Selected.Points = startPoints.Select((int v, int i) => v + (i % 2 == 0 ? r[0] - startRect[0] : r[1] - startRect[1])).ToArray();
+				}
 				Selected.Rect = r;
+				BoxChanging?.Invoke(this, EventArgs.Empty);
+				Invalidate();
+			}
+
+			/// <summary>
+			/// Resizes the selected box by a handle. The box may be turned, so the pointer's movement is taken along the
+			/// box's own sides, and the side opposite the handle stays where it is on the page.
+			/// </summary>
+			private void ResizeTurned(int dx, int dy, int[] r)
+			{
+				double a = Selected.ShapeAngle * Math.PI / 180.0;
+				double cos = Math.Cos(a), sin = Math.Sin(a);
+				double ldx = dx * cos + dy * sin;
+				double ldy = -dx * sin + dy * cos;
+				//Handles are numbered clockwise from the top left corner.
+				int sx = handle == 1 || handle == 7 || handle == 8 ? -1 : (handle == 3 || handle == 4 || handle == 5 ? 1 : 0);
+				int sy = handle == 1 || handle == 2 || handle == 3 ? -1 : (handle == 5 || handle == 6 || handle == 7 ? 1 : 0);
+				double w0 = r[2] - r[0], h0 = r[3] - r[1];
+				double w = sx != 0 ? Math.Max(24, w0 + sx * ldx) : w0;
+				double h = sy != 0 ? Math.Max(24, h0 + sy * ldy) : h0;
+				double lcx = sx * (w - w0) / 2.0, lcy = sy * (h - h0) / 2.0;
+				double cx = (r[0] + r[2]) / 2.0 + lcx * cos - lcy * sin;
+				double cy = (r[1] + r[3]) / 2.0 + lcx * sin + lcy * cos;
+				int[] resized = { (int)Math.Round(cx - w / 2.0), (int)Math.Round(cy - h / 2.0), (int)Math.Round(cx + w / 2.0), (int)Math.Round(cy + h / 2.0) };
+				if (Selected.Form == TranslationShapes.FreePolygon && startPoints != null)
+				{
+					Selected.Points = RemapPoints(startPoints, r, resized);
+				}
+				Selected.Rect = resized;
+				BoxChanging?.Invoke(this, EventArgs.Empty);
+				Invalidate();
+			}
+
+			/// <summary>The pointer is on a corner handle: set that corner's size (Shift: all four), or move a triangle's point.</summary>
+			private void DragCorner(PointF at, int[] r)
+			{
+				double off = CornerOffset / zoom;
+				if (Selected.Rect == null)
+				{
+					Selected.Rect = (int[])r.Clone();
+				}
+				if (Selected.Corners == null || Selected.Corners.Length != 4)
+				{
+					Selected.Corners = new int[4];
+				}
+				//Work in the box's own frame.
+				at = Turn(at, CentreOf(r), -Selected.ShapeAngle);
+				if (TranslationShapes.IsTriangle(Selected.Form))
+				{
+					bool horizontal = Selected.Form == TranslationShapes.TriangleUp || Selected.Form == TranslationShapes.TriangleDown;
+					double span = horizontal ? r[2] - r[0] : r[3] - r[1];
+					double along = horizontal ? at.X - r[0] : at.Y - r[1];
+					Selected.Corners[0] = (int)Math.Max(5, Math.Min(95, Math.Round(100.0 * along / Math.Max(1, span))));
+				}
+				else
+				{
+					double insideX = cornerIndex == 0 || cornerIndex == 3 ? at.X - r[0] : r[2] - at.X;
+					double insideY = cornerIndex <= 1 ? at.Y - r[1] : r[3] - at.Y;
+					int c = TranslationShapes.CornerFromPointer(r, insideX - off, insideY - off, Selected.Circular);
+					if ((ModifierKeys & Keys.Shift) != 0)
+					{
+						Selected.Corners = new[] { c, c, c, c };
+					}
+					else
+					{
+						Selected.Corners[cornerIndex] = c;
+					}
+				}
 				BoxChanging?.Invoke(this, EventArgs.Empty);
 				Invalidate();
 			}
@@ -591,7 +1027,16 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 				{
 					angle = 0;
 				}
-				Selected.Rotation = angle;
+				//The shape turns; the lettering turns with it only when asked to, otherwise it stays upright inside the turned shape.
+				if (Selected.Rect == null)
+				{
+					Selected.Rect = (int[])AreaOf(Selected).Clone();
+				}
+				Selected.ShapeAngle = angle;
+				if (TextFollowsShape)
+				{
+					Selected.Rotation = angle;
+				}
 				BoxChanging?.Invoke(this, EventArgs.Empty);
 				Invalidate();
 			}
@@ -612,6 +1057,8 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 				case Drag.Move:
 				case Drag.Resize:
 				case Drag.Rotate:
+				case Drag.Corner:
+				case Drag.Vertex:
 					BoxChanged?.Invoke(this, EventArgs.Empty);
 					break;
 				case Drag.Draw:
@@ -632,6 +1079,15 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 					}
 				}
 				Invalidate();
+			}
+
+			protected override void OnMouseDoubleClick(MouseEventArgs e)
+			{
+				base.OnMouseDoubleClick(e);
+				if (e.Button == MouseButtons.Left && !AddMode && EdgeAt(e.Location, out int after))
+				{
+					InsertVertex(after, e.Location);
+				}
 			}
 
 			protected override void OnMouseWheel(MouseEventArgs e)
@@ -700,6 +1156,20 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 		private Button btFit;
 
 		private Button btAdd;
+
+		private Button btAddShape;
+
+		private int newPreset;
+
+		private ComboBox cboShape;
+
+		private CheckBox chkCircular;
+
+		private NumericUpDown[] nudCorner = new NumericUpDown[4];
+
+		private NumericUpDown nudShapeAngle;
+
+		private CheckBox chkTurnText;
 
 		private Button btDelete;
 
@@ -791,7 +1261,7 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 
 		private void BuildControls()
 		{
-			Panel side = new Panel { Dock = DockStyle.Right, Width = 340 };
+			Panel side = new Panel { Dock = DockStyle.Right, Width = 360, AutoScroll = true };
 			Panel bottom = new Panel { Dock = DockStyle.Bottom, Height = 28 };
 			canvas = new PageCanvas { Dock = DockStyle.Fill, Name = "canvas" };
 			Controls.Add(canvas);
@@ -811,9 +1281,10 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			btFit = new Button { Text = "Fit page", Location = new Point(212, y), Size = new Size(70, 26), Name = "btFit" };
 			side.Controls.AddRange(new Control[] { lblPage, btPrev, btNext, btFit });
 			y += 36;
-			btAdd = new Button { Text = "Add text box", Location = new Point(10, y), Size = new Size(150, 28), Name = "btAdd" };
+			btAdd = new Button { Text = "Add text box", Location = new Point(10, y), Size = new Size(118, 28), Name = "btAdd" };
+			btAddShape = new Button { Text = "\u25be", Location = new Point(130, y), Size = new Size(30, 28), Name = "btAddShape" };
 			btDelete = new Button { Text = "Delete box", Location = new Point(166, y), Size = new Size(100, 28), Name = "btDelete" };
-			side.Controls.AddRange(new Control[] { btAdd, btDelete });
+			side.Controls.AddRange(new Control[] { btAdd, btAddShape, btDelete });
 			y += 38;
 			side.Controls.Add(new Label { Text = "Text boxes on this page:", Location = new Point(10, y), Size = new Size(300, 16) });
 			y += 18;
@@ -836,10 +1307,31 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			cboAlign.Items.AddRange(new object[] { "Left", "Center", "Right" });
 			side.Controls.Add(cboAlign);
 			y += 30;
-			side.Controls.Add(new Label { Text = "Rotate:", Location = new Point(10, y + 3), Size = new Size(64, 16) });
+			side.Controls.Add(new Label { Text = "Text angle:", Location = new Point(10, y + 3), Size = new Size(68, 16) });
 			nudRotation = new NumericUpDown { Location = new Point(78, y), Size = new Size(80, 22), DecimalPlaces = 1, Increment = 0.5m, Minimum = -180m, Maximum = 180m, Name = "nudRotation" };
 			side.Controls.Add(nudRotation);
 			side.Controls.Add(new Label { Text = "degrees", Location = new Point(164, y + 3), Size = new Size(60, 16) });
+			y += 30;
+			side.Controls.Add(new Label { Text = "Shape:", Location = new Point(10, y + 3), Size = new Size(64, 16) });
+			cboShape = new ComboBoxEx { Location = new Point(78, y), Size = new Size(138, 21), DropDownStyle = ComboBoxStyle.DropDownList, Name = "cboShape" };
+			cboShape.Items.AddRange(TranslationShapes.PresetNames.Cast<object>().Concat(new object[] { "Custom" }).ToArray());
+			chkCircular = new CheckBox { Text = "Circular corners", Location = new Point(222, y), Size = new Size(130, 22), Name = "chkCircular" };
+			side.Controls.AddRange(new Control[] { cboShape, chkCircular });
+			y += 30;
+			side.Controls.Add(new Label { Text = "Corners %:", Location = new Point(10, y + 3), Size = new Size(68, 16) });
+			string[] cornerNames = { "Top left", "Top right", "Bottom right", "Bottom left" };
+			for (int i = 0; i < 4; i++)
+			{
+				nudCorner[i] = new NumericUpDown { Location = new Point(78 + i * 56, y), Size = new Size(52, 22), Minimum = 0m, Maximum = 100m, Name = "nudCorner" + i };
+				side.Controls.Add(nudCorner[i]);
+				new ToolTip().SetToolTip(nudCorner[i], cornerNames[i] + " corner, in percent (100 = fully round or cut; for a triangle, where its point is)");
+			}
+			y += 30;
+			side.Controls.Add(new Label { Text = "Shape angle:", Location = new Point(10, y + 3), Size = new Size(68, 16) });
+			nudShapeAngle = new NumericUpDown { Location = new Point(78, y), Size = new Size(70, 22), DecimalPlaces = 1, Increment = 0.5m, Minimum = -180m, Maximum = 180m, Name = "nudShapeAngle" };
+			chkTurnText = new CheckBox { Text = "Turn the text too", Location = new Point(156, y), Size = new Size(190, 22), Name = "chkTurnText" };
+			side.Controls.AddRange(new Control[] { nudShapeAngle, chkTurnText });
+			new ToolTip().SetToolTip(chkTurnText, "Off: the shape turns but the text stays upright inside it. On: the text turns with the shape.");
 			y += 30;
 			chkSkip = new CheckBox { Text = "Leave the original text (do not translate)", Location = new Point(10, y), Size = new Size(318, 22), Name = "chkSkip" };
 			side.Controls.Add(chkSkip);
@@ -892,7 +1384,7 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			ShowCacheInfo();
 			side.Controls.Add(new Label
 			{
-				Text = "Drag a box to move it, its square handles to resize, the round handle to rotate (Shift: 5 degree steps). Ctrl-click adds boxes to the selection; right-click for options. Arrow keys nudge. Wheel zooms, right-drag pans. Saved with the book.",
+				Text = "Drag a box to move it, its square handles to resize, the round handle to rotate (Shift: 5 degree steps). Ctrl-click adds boxes to the selection; right-click for options.Arrow keys nudge. Orange dots round or cut a corner (Shift: all four);the round handle turns the shape. Free polygon: drag its square dots, double-click an edge to add a point, right-click a point to remove it. Wheel zooms, right-drag pans. Saved with the book.",
 				Location = new Point(10, y),
 				Size = new Size(318, 60),
 				ForeColor = dark ? Color.FromArgb(150, 150, 150) : Color.FromArgb(110, 110, 110)
@@ -936,6 +1428,63 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			btNext.Click += delegate { MovePage(1); };
 			btFit.Click += delegate { canvas.Fit(); };
 			btAdd.Click += delegate { SetAddMode(!canvas.AddMode); };
+			btAddShape.Click += delegate { ShowAddShapeMenu(); };
+			cboShape.SelectedIndexChanged += delegate
+			{
+				if (loading || canvas.Selected == null || cboShape.SelectedIndex < 0 || cboShape.SelectedIndex >= TranslationShapes.PresetNames.Length)
+				{
+					return;
+				}
+				ApplyPreset(cboShape.SelectedIndex, canvas.AllSelected.ToList());
+			};
+			chkCircular.CheckedChanged += delegate
+			{
+				TranslationBox box = canvas.Selected;
+				if (loading || box == null)
+				{
+					return;
+				}
+				EnsureRect(box);
+				box.Circular = chkCircular.Checked;
+				SyncControls();
+				canvas.Invalidate();
+				Touch();
+			};
+			for (int i = 0; i < 4; i++)
+			{
+				int corner = i;
+				nudCorner[i].ValueChanged += delegate
+				{
+					TranslationBox box = canvas.Selected;
+					if (loading || box == null)
+					{
+						return;
+					}
+					EnsureRect(box);
+					box.Corners[corner] = (int)nudCorner[corner].Value;
+					SyncControls();
+					canvas.Invalidate();
+					Touch();
+				};
+			}
+			nudShapeAngle.ValueChanged += delegate
+			{
+				TranslationBox box = canvas.Selected;
+				if (loading || box == null)
+				{
+					return;
+				}
+				EnsureRect(box);
+				box.ShapeAngle = (double)nudShapeAngle.Value;
+				if (chkTurnText.Checked)
+				{
+					box.Rotation = box.ShapeAngle;
+				}
+				SyncControls();
+				canvas.Invalidate();
+				Touch();
+			};
+			chkTurnText.CheckedChanged += delegate { canvas.TextFollowsShape = chkTurnText.Checked; };
 			btDelete.Click += delegate { DeleteSelected(); };
 			txtTranslation.TextChanged += delegate
 			{
@@ -1324,7 +1873,113 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 				nudRotation.Value = 0;
 				chkSkip.Checked = false;
 			}
+			SyncShapeControls(box);
 			loading = was;
+		}
+
+		private void EnsureRect(TranslationBox box)
+		{
+			if (box.Rect == null)
+			{
+				box.Rect = (int[])box.Area.Clone();
+			}
+			if (box.Corners == null || box.Corners.Length != 4)
+			{
+				box.Corners = new int[4];
+			}
+		}
+
+		/// <summary>Shows the shape of the selected box in the shape controls (only for a single, unmerged box).</summary>
+		private void SyncShapeControls(TranslationBox box)
+		{
+			bool shapable = box != null && box.Shape == null && !box.Skip;
+			cboShape.Enabled = chkCircular.Enabled = nudShapeAngle.Enabled = shapable;
+			bool triangle = shapable && TranslationShapes.IsTriangle(box.Form);
+			bool polygon = shapable && box.Form == TranslationShapes.FreePolygon;
+			chkCircular.Enabled = shapable && !polygon;
+			for (int i = 0; i < 4; i++)
+			{
+				nudCorner[i].Enabled = shapable && !polygon && (!triangle || i == 0);
+			}
+			if (!shapable)
+			{
+				cboShape.SelectedIndex = box != null && box.Shape != null ? cboShape.Items.Count - 1 : 0;
+				chkCircular.Checked = false;
+				nudShapeAngle.Value = 0;
+				foreach (NumericUpDown n in nudCorner)
+				{
+					n.Value = 0;
+				}
+				return;
+			}
+			int[] corners = box.Corners ?? new int[4];
+			int preset = TranslationShapes.PresetOf(box.Form, corners, box.Circular);
+			int[] a = box.Area;
+			if (preset == 3 && Math.Abs((a[2] - a[0]) - (a[3] - a[1])) <= 2)
+			{
+				preset = 4;
+			}
+			cboShape.SelectedIndex = preset >= 0 ? preset : cboShape.Items.Count - 1;
+			chkCircular.Checked = box.Circular;
+			for (int i = 0; i < 4; i++)
+			{
+				nudCorner[i].Value = Math.Max(0, Math.Min(100, corners[i]));
+			}
+			nudShapeAngle.Value = Math.Max(nudShapeAngle.Minimum, Math.Min(nudShapeAngle.Maximum, (decimal)Math.Round(box.ShapeAngle * 2.0) / 2m));
+			chkTurnText.Checked = canvas.TextFollowsShape;
+		}
+
+		/// <summary>Gives the boxes the shape of a preset (rectangle, rounded, pill, oval, circle, octagon, diamond, triangles).</summary>
+		private void ApplyPreset(int index, List<TranslationBox> boxes)
+		{
+			foreach (TranslationBox box in boxes.Where((TranslationBox b) => b.Shape == null && !b.Skip))
+			{
+				EnsureRect(box);
+				TranslationShapes.Preset(index, out int kind, out int[] corners, out bool circular);
+				int[] previous = box.Form == TranslationShapes.FreePolygon ? box.Points : null;
+				int[] outline = index == TranslationShapes.PolygonPreset ? (previous ?? TranslationShapes.OutlinePoints(box.Rect, box.Form, box.Corners, box.Circular)) : null;
+				box.Form = kind;
+				box.Corners = corners;
+				box.Circular = circular;
+				box.Points = outline;
+				if (outline != null)
+				{
+					//A free polygon starts as the outline of the shape it replaces; its points can then be dragged one by one.
+					box.Rect = TranslationShapes.PointsBounds(outline);
+				}
+				if (index == 4)
+				{
+					//A circle needs a square: keep the centre and the shorter side.
+					int[] r = box.Rect;
+					int side = Math.Min(r[2] - r[0], r[3] - r[1]);
+					int cx = (r[0] + r[2]) / 2, cy = (r[1] + r[3]) / 2;
+					box.Rect = new[] { cx - side / 2, cy - side / 2, cx - side / 2 + side, cy - side / 2 + side };
+				}
+			}
+			SyncControls();
+			canvas.Invalidate();
+			CommitNow();
+		}
+
+		/// <summary>The little arrow beside "Add text box": pick the shape the next box is drawn with.</summary>
+		private void ShowAddShapeMenu()
+		{
+			ContextMenuStrip menu = new ContextMenuStrip();
+			string[] names = TranslationShapes.PresetNames;
+			for (int i = 0; i < names.Length; i++)
+			{
+				int index = i;
+				ToolStripMenuItem item = new ToolStripMenuItem(names[i]) { Checked = i == newPreset };
+				item.Click += delegate
+				{
+					newPreset = index;
+					canvas.NewPreset = index;
+					SetAddMode(true);
+					SetStatus("Drag a rectangle around the text; the new box is a " + names[index].ToLowerInvariant() + ".");
+				};
+				menu.Items.Add(item);
+			}
+			menu.Show(btAddShape, new Point(0, btAddShape.Height));
 		}
 
 		/// <summary>A change was made: draw the page again shortly (many small changes become one redraw).</summary>
@@ -1407,6 +2062,23 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 							Translation = region.Translation,
 							Manual = true
 						};
+						if (newPreset > 0)
+						{
+							TranslationShapes.Preset(newPreset, out int kind, out int[] corners, out bool circular);
+							box.Form = kind;
+							box.Corners = corners;
+							box.Circular = circular;
+							if (newPreset == TranslationShapes.PolygonPreset)
+							{
+								box.Points = TranslationShapes.OutlinePoints(rect, TranslationShapes.Round, new int[4], false);
+							}
+							if (newPreset == 4)
+							{
+								int side = Math.Min(rect[2] - rect[0], rect[3] - rect[1]);
+								int cx = (rect[0] + rect[2]) / 2, cy = (rect[1] + rect[3]) / 2;
+								box.Rect = new[] { cx - side / 2, cy - side / 2, cx - side / 2 + side, cy - side / 2 + side };
+							}
+						}
 						canvas.Boxes.Add(box);
 						canvas.Selected = box;
 						SyncList();
@@ -1475,6 +2147,35 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 				};
 				menu.Items.Add(split);
 			}
+			if (boxes.Count == 1 && PageCanvas.HasVertices(boxes[0]))
+			{
+				int vertex = canvas.VertexAt(at);
+				if (vertex >= 0 && boxes[0].Points.Length > 6)
+				{
+					ToolStripMenuItem remove = new ToolStripMenuItem("Remove this point");
+					remove.Click += delegate { canvas.RemoveVertex(vertex); };
+					menu.Items.Add(remove);
+				}
+				else if (canvas.EdgeAt(at, out int after))
+				{
+					ToolStripMenuItem add = new ToolStripMenuItem("Add a point here");
+					add.Click += delegate { canvas.InsertVertex(after, at); };
+					menu.Items.Add(add);
+				}
+			}
+			if (boxes.Any((TranslationBox b) => b.Shape == null && !b.Skip))
+			{
+				ToolStripMenuItem shape = new ToolStripMenuItem("Shape");
+				string[] names = TranslationShapes.PresetNames;
+				for (int i = 0; i < names.Length; i++)
+				{
+					int index = i;
+					ToolStripMenuItem item = new ToolStripMenuItem(names[i]);
+					item.Click += delegate { ApplyPreset(index, boxes); };
+					shape.DropDownItems.Add(item);
+				}
+				menu.Items.Add(shape);
+			}
 			menu.Show(canvas, at);
 		}
 
@@ -1492,7 +2193,7 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 				Src = new[] { ordered.Min((TranslationBox b) => b.Src[0]), ordered.Min((TranslationBox b) => b.Src[1]), ordered.Max((TranslationBox b) => b.Src[2]), ordered.Max((TranslationBox b) => b.Src[3]) },
 				Text = string.Join(" ", ordered.Select((TranslationBox b) => b.Text).Where((string t) => !string.IsNullOrWhiteSpace(t))),
 				Translation = string.Join(" ", ordered.Select((TranslationBox b) => (b.Translation ?? "").Trim()).Where((string t) => t.Length > 0)),
-				Shape = ordered.Select((TranslationBox b) => (int[])b.Area.Clone()).ToList()
+				Shape = ordered.Select((TranslationBox b) =>TranslationShapes.MakePart(b.Area, b.Form, b.Corners, b.Circular, b.ShapeAngle, b.Points)).ToList()
 			};
 			int at = canvas.Boxes.IndexOf(ordered[0]);
 			foreach (TranslationBox b in ordered)
