@@ -29,6 +29,8 @@ namespace cYo.Projects.ComicRack.Viewer
 
 		private static bool lastHelper;
 
+		private static int missed;
+
 		private static bool lastOllama;
 
 		private static bool lastBusy;
@@ -67,7 +69,21 @@ namespace cYo.Projects.ComicRack.Viewer
 		private static void Poll()
 		{
 			bool helper = Get(HelperUrl + "/api/config", out string body);
-			if (helper)
+			if (!helper)
+			{
+				//A busy helper can be slow to answer: it takes two misses in a row to call it down.
+				missed++;
+				if (missed < 2 && HelperUp)
+				{
+					helper = true;
+					body = null;
+				}
+			}
+			else
+			{
+				missed = 0;
+			}
+			if (helper && body != null)
 			{
 				Match m = Regex.Match(body ?? "", "\"ollama_url\"\\s*:\\s*\"([^\"]+)\"");
 				if (m.Success)
@@ -94,8 +110,8 @@ namespace cYo.Projects.ComicRack.Viewer
 			{
 				HttpWebRequest request = (HttpWebRequest)WebRequest.Create(url);
 				request.Proxy = null;
-				request.Timeout = 1500;
-				request.ReadWriteTimeout = 1500;
+				request.Timeout = 4000;
+				request.ReadWriteTimeout = 4000;
 				using (HttpWebResponse response = (HttpWebResponse)request.GetResponse())
 				using (StreamReader reader = new StreamReader(response.GetResponseStream()))
 				{
@@ -793,11 +809,14 @@ namespace cYo.Projects.ComicRack.Viewer
 				p.Services.Image = GetIcon(false, sled, size);
 			}
 			bool ahead = (reader != null && reader.IsPreTranslating) || TranslationBatch.IsRunning;
-			int aheadState = ahead ? 1 : 0;
+			//The icon's colour tells the state: plain when idle, amber while translating ahead or a batch, blue while a
+			//batch is paused with books waiting, red when something stopped it.
+			TranslationLed aheadLed = ahead ? TranslationLed.Busy : (TranslationBatch.Problem != null && TranslationBatch.HasWaiting ? TranslationLed.Problem : (TranslationBatch.HasWaiting ? TranslationLed.On : TranslationLed.Off));
+			int aheadState = (int)aheadLed;
 			if (aheadState != p.AheadLed || size != p.Size)
 			{
 				p.AheadLed = aheadState;
-				p.Ahead.Image = GetAheadIcon(ahead ? TranslationLed.Busy : TranslationLed.Off, size);
+				p.Ahead.Image = GetAheadIcon(aheadLed, size);
 			}
 			if (reader != null)
 			{
@@ -855,7 +874,14 @@ namespace cYo.Projects.ComicRack.Viewer
 					p.BatchContinue.DropDownItems.Add(new ToolStripMenuItem(PercentText(item).PadLeft(5) + "   " + Shorten(item.Title)) { Enabled = false });
 				}
 			}
-			p.Ahead.ToolTipText = running ? "Batch translating books in the background. Click for the queue." : p.Ahead.ToolTipText;
+			if (running)
+			{
+				p.Ahead.ToolTipText = "Batch translating books in the background (" + waiting.Count + (waiting.Count == 1 ? " book" : " books") + " left). Click for the queue.";
+			}
+			else if (waiting.Count > 0)
+			{
+				p.Ahead.ToolTipText = "Batch paused: " + waiting.Count + (waiting.Count == 1 ? " book" : " books") + " waiting." + (problem != null ? " " + problem : " Click to continue.");
+			}
 		}
 
 		private static string PercentText(TranslationBatch.Item item)
@@ -1036,16 +1062,25 @@ namespace cYo.Projects.ComicRack.Viewer
 			}
 		}
 
+		private static Color Blend(Color a, Color b, float amount)
+		{
+			return Color.FromArgb((int)(a.R + (b.R - a.R) * amount), (int)(a.G + (b.G - a.G) * amount), (int)(a.B + (b.B - a.B) * amount));
+		}
+
 		//Two light pages with an arrow running on past them: the pages ahead. The pages stay light whatever the state,
 		//so they show on a dark bar; the arrow carries the state (blue idle, amber while running).
 		private static void DrawPagesAhead(Graphics g, int s, Color state)
 		{
 			float u = s / 16f;
-			Color arrowColor = state == ColorOf(TranslationLed.Busy) ? state : Color.FromArgb(95, 175, 235);
+			bool idle = state == ColorOf(TranslationLed.Off);
+			bool paused = state == ColorOf(TranslationLed.On);
+			Color arrowColor = idle || paused ? Color.FromArgb(95, 175, 235) : state;
+			Color tint = paused ? Color.FromArgb(95, 175, 235) : state;
+			float mix = idle ? 0f : 0.6f;
 			RectangleF back = new RectangleF(5.5f * u, 1f * u, 8.5f * u, 11.5f * u);
 			RectangleF front = new RectangleF(1.5f * u, 4f * u, 8.5f * u, 11.5f * u);
-			using (SolidBrush backFill = new SolidBrush(Color.FromArgb(205, 205, 212)))
-			using (SolidBrush frontFill = new SolidBrush(Color.FromArgb(244, 244, 248)))
+			using (SolidBrush backFill = new SolidBrush(Blend(Color.FromArgb(205, 205, 212), tint, mix * 0.8f)))
+			using (SolidBrush frontFill = new SolidBrush(Blend(Color.FromArgb(244, 244, 248), tint, mix)))
 			using (Pen rim = new Pen(Color.FromArgb(60, 60, 68), Math.Max(1f, 0.9f * u)))
 			{
 				g.FillRectangle(backFill, back);

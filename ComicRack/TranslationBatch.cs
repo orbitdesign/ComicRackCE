@@ -31,6 +31,9 @@ namespace cYo.Projects.ComicRack.Viewer
 
 			public bool Finished;
 
+			/// <summary>Pages were left that could not be translated; the batch stopped here and the book can be continued.</summary>
+			public bool Stalled;
+
 			public string Problem;
 
 			public int Translated => TranslationStore.Shared.TranslatedPageCount(BookKey);
@@ -201,9 +204,10 @@ namespace cYo.Projects.ComicRack.Viewer
 					{
 						break;
 					}
-					if (item.Problem != null && !TranslationServices.HelperUp)
+					if (item.Stalled)
 					{
-						Problem = "The translator helper stopped. Start it with the power button, then continue.";
+						//Stopped on a book that would not go through; the other books wait until this one is continued.
+						item.Stalled = false;
 						break;
 					}
 				}
@@ -241,60 +245,84 @@ namespace cYo.Projects.ComicRack.Viewer
 					return;
 				}
 				item.Total = provider.Count;
-				int missed = 0;
-				for (int index = 0; index < provider.Count && !token.IsCancellationRequested; index++)
+				//Pages the helper could not do (it was busy, or did not answer for a moment) are asked for again, a few times.
+				for (int pass = 0; pass < 4 && !token.IsCancellationRequested; pass++)
 				{
-					//A few pages at a time, so the queue and its page images stay small.
-					while (!token.IsCancellationRequested && svc.PendingCount >= 3)
+					if (pass > 0)
+					{
+						//The service remembers a failed page for a while; wait that out, and for the helper to be back.
+						for (int waited = 0; waited < 40 && !token.IsCancellationRequested; waited++)
+						{
+							Thread.Sleep(500);
+						}
+						if (token.IsCancellationRequested)
+						{
+							return;
+						}
+					}
+					for (int index = 0; index < provider.Count && !token.IsCancellationRequested; index++)
+					{
+						//A few pages at a time, so the queue and its page images stay small.
+						while (!token.IsCancellationRequested && svc.PendingCount >= 3)
+						{
+							Thread.Sleep(400);
+						}
+						if (token.IsCancellationRequested)
+						{
+							return;
+						}
+						PageKey key = item.Comic.GetImageKey(index) as PageKey;
+						if (key == null || store.IsTranslated(item.BookKey, index) || svc.IsKnown(key))
+						{
+							continue;
+						}
+						byte[] data = provider.GetByteImage(index);
+						if (data == null)
+						{
+							continue;
+						}
+						PageImage image = PageImage.CreateFrom(data);
+						try
+						{
+							svc.Request(key, image, 9, item.Comic, keep: true);
+						}
+						finally
+						{
+							(image as IDisposable)?.Dispose();
+						}
+						RaiseChanged(false);
+					}
+					while (!token.IsCancellationRequested && svc.PendingCount > 0)
 					{
 						Thread.Sleep(400);
+						RaiseChanged(false);
 					}
 					if (token.IsCancellationRequested)
 					{
 						return;
 					}
-					PageKey key = item.Comic.GetImageKey(index) as PageKey;
-					if (key == null || store.IsTranslated(item.BookKey, index) || svc.IsKnown(key))
+					if (item.Total - item.Translated <= 0)
 					{
-						continue;
+						break;
 					}
-					byte[] data = provider.GetByteImage(index);
-					if (data == null)
-					{
-						missed++;
-						continue;
-					}
-					PageImage image = PageImage.CreateFrom(data);
-					try
-					{
-						svc.Request(key, image, 9, item.Comic, keep: true);
-					}
-					finally
-					{
-						(image as IDisposable)?.Dispose();
-					}
-					RaiseChanged(false);
-				}
-				while (!token.IsCancellationRequested && svc.PendingCount > 0)
-				{
-					Thread.Sleep(400);
-					RaiseChanged(false);
-				}
-				if (token.IsCancellationRequested)
-				{
-					return;
 				}
 				int left = item.Total - item.Translated;
 				if (left > 0)
 				{
-					item.Problem = left + (left == 1 ? " page" : " pages") + " could not be translated.";
+					item.Problem = left + (left == 1 ? " page" : " pages") + " could not be translated" + (string.IsNullOrEmpty(svc.Status) ? "." : ": " + svc.Status);
+					//Not finished: the book stays in the queue so it can be continued, and the batch stops here.
+					Problem = item.Problem;
+					item.Stalled = true;
+					return;
 				}
+				item.Problem = null;
 				item.Finished = true;
 			}
 			catch (Exception ex)
 			{
 				item.Problem = ex.Message;
-				item.Finished = !TranslationServices.HelperUp ? item.Finished : true;
+				item.Stalled = true;
+				Problem = ex.Message;
 			}
 			finally
 			{
