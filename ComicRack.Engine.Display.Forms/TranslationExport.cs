@@ -321,9 +321,10 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 				{
 					page = api.Analyze(data);
 					List<TranslationBox> edits = store.GetEdits(bookKey, index);
-					if (edits.Count > 0 && TranslationStore.Merge(page.Boxes, edits))
+					List<ProtectStroke> protect = store.GetProtect(bookKey, index);
+					if ((edits.Count > 0 && TranslationStore.Merge(page.Boxes, edits)) || protect.Count > 0)
 					{
-						page = api.Render(data, page.Boxes);
+						page = api.Render(data, page.Boxes, protect);
 					}
 					break;
 				}

@@ -200,6 +200,8 @@ namespace cYo.Projects.ComicRack.Viewer.Config
 
 		private bool translatorShowStatus = true;
 
+		private string translatorLastShape = string.Empty;
+
 		private bool translatorStopOnExit = true;
 
 		private string libraryBackgroundTexturePath = string.Empty;
@@ -1384,6 +1386,29 @@ namespace cYo.Projects.ComicRack.Viewer.Config
 				if (translatorShowStatus != value)
 				{
 					translatorShowStatus = value;
+					FireEvent(null);
+				}
+			}
+		}
+
+		/// <summary>
+		/// The shape the translation editor last used for a text box (preset number, kind, four corner sizes, circular corners),
+		/// kept so that the next box is drawn with it, also after ComicRack was restarted.
+		/// </summary>
+		[Browsable(false)]
+		[DefaultValue("")]
+		public string TranslatorLastShape
+		{
+			get
+			{
+				return translatorLastShape;
+			}
+			set
+			{
+				value = value ?? string.Empty;
+				if (translatorLastShape != value)
+				{
+					translatorLastShape = value;
 					FireEvent(null);
 				}
 			}

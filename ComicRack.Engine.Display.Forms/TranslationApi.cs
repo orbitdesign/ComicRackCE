@@ -27,7 +27,7 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 			return ReadPage(Send("/api/analyze", page, "application/octet-stream", 900000));
 		}
 
-		public PageAnalysis Render(byte[] page, IEnumerable<TranslationBox> boxList)
+		public PageAnalysis Render(byte[] page, IEnumerable<TranslationBox> boxList, IEnumerable<ProtectStroke> protect = null)
 		{
 			List<TranslationBox> boxes = boxList.ToList();
 			using (MemoryStream ms = new MemoryStream())
@@ -42,6 +42,16 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 						box.Write(w);
 					}
 					w.WriteEndArray();
+					List<ProtectStroke> strokes = protect?.Where((ProtectStroke p) => p != null && p.Points.Length >= 2).ToList();
+					if (strokes != null && strokes.Count > 0)
+					{
+						w.WriteStartArray("protect");
+						foreach (ProtectStroke stroke in strokes)
+						{
+							stroke.Write(w);
+						}
+						w.WriteEndArray();
+					}
 					w.WriteEndObject();
 				}
 				PageAnalysis rendered = ReadPage(Send("/api/render", ms.ToArray(), "application/json", 300000));

@@ -3055,6 +3055,17 @@ namespace cYo.Projects.ComicRack.Viewer
 
 		internal ComicDisplayControl TranslationReader => readerControl;
 
+		/// <summary>The books selected in the library (or the open book when the reader has the focus), for batch translation.</summary>
+		internal ComicBook[] GetBooksForTranslation()
+		{
+			IGetBookList list = FormUtility.FindActiveService<IGetBookList>();
+			if (list == null)
+			{
+				return new ComicBook[0];
+			}
+			return list.GetBookList(ComicBookFilterType.Selected | ComicBookFilterType.IsNotFileless).ToArray();
+		}
+
 		internal void ToggleTranslatePages()
 		{
 			if (ComicDisplay != null && readerControl != null)
@@ -4606,10 +4617,19 @@ namespace cYo.Projects.ComicRack.Viewer
 			readerContainer.Controls.SetChildIndex(quickOpenView, 0);
 			readerControl = pageDisplay;
 			pageDisplay.TranslationStatusVisible = Program.Settings.TranslatorShowStatus;
+			//The batch translation steps aside while the reader is translating pages for the book being read (or translating
+			//ahead), and carries on when the reader is idle again.
+			TranslationBatch.ReaderBusy = () =>
+			{
+				ComicDisplayControl reader = pageDisplay;
+				PageTranslationService readerService = reader?.TranslationService;
+				return reader != null && (reader.IsPreTranslating || (readerService != null && readerService.IsBusy));
+			};
 			pageDisplay.TranslationStatusChanged += delegate
 			{
 				TranslationButtons.RefreshAll();
 			};
+			pageDisplay.TranslationIconProvider = (string state, int size) => TranslationButtons.StatusIcon(state == "problem" ? TranslationLed.Problem : (state == "busy" ? TranslationLed.Busy : TranslationLed.On), size);
 			pageDisplay.TranslationServerUrl = Program.Settings.TranslatorServerUrl;
 			ComicDisplay comicDisplay = new ComicDisplay(pageDisplay);
 			FormUtility.ServiceTranslation[pageDisplay] = comicDisplay;

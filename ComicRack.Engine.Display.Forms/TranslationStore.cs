@@ -23,6 +23,9 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 			public string Sha = "";
 
 			public List<TranslationBox> Edits = new List<TranslationBox>();
+
+			//Artwork the user painted over with the protect brush.
+			public List<ProtectStroke> Protect = new List<ProtectStroke>();
 		}
 
 		private class BookData
@@ -45,6 +48,24 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 		public TranslationStore(string folder)
 		{
 			this.folder = folder;
+		}
+
+		private static TranslationStore shared;
+
+		/// <summary>
+		/// The one store the reader and the batch translation both use, so what one records (translated pages, edits)
+		/// is what the other reads; two stores over the same files would overwrite each other.
+		/// </summary>
+		public static TranslationStore Shared
+		{
+			get
+			{
+				if (shared == null)
+				{
+					shared = new TranslationStore(DefaultFolder);
+				}
+				return shared;
+			}
 		}
 
 		public static string DefaultFolder => System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "cYo", "ComicRack Community Edition", "Translations");
@@ -149,6 +170,44 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 			}
 		}
 
+		/// <summary>The protect brush strokes of a page (copies).</summary>
+		public List<ProtectStroke> GetProtect(string bookKey, int page)
+		{
+			if (bookKey == null)
+			{
+				return new List<ProtectStroke>();
+			}
+			lock (sync)
+			{
+				BookData book = Load(bookKey);
+				return book.Pages.TryGetValue(page, out StoredPage stored) ? stored.Protect.Select((ProtectStroke p) => p.Clone()).ToList() : new List<ProtectStroke>();
+			}
+		}
+
+		/// <summary>Saves the protect brush strokes of a page.</summary>
+		public void SetProtect(string bookKey, int page, IEnumerable<ProtectStroke> strokes)
+		{
+			if (bookKey == null)
+			{
+				return;
+			}
+			lock (sync)
+			{
+				BookData book = Load(bookKey);
+				if (!book.Pages.TryGetValue(page, out StoredPage stored))
+				{
+					book.Pages[page] = stored = new StoredPage();
+				}
+				stored.Protect = strokes.Where((ProtectStroke p) => p.Points.Length >= 2).Select((ProtectStroke p) => p.Clone()).ToList();
+				if (stored.Protect.Count == 0 && stored.Edits.Count == 0 && string.IsNullOrEmpty(stored.Sha))
+				{
+					book.Pages.Remove(page);
+				}
+				book.Dirty = true;
+				Save(bookKey, book);
+			}
+		}
+
 		public int EditedPageCount(string bookKey)
 		{
 			if (bookKey == null)
@@ -157,7 +216,7 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 			}
 			lock (sync)
 			{
-				return Load(bookKey).Pages.Values.Count((StoredPage p) => p.Edits.Count > 0);
+				return Load(bookKey).Pages.Values.Count((StoredPage p) => p.Edits.Count > 0 || p.Protect.Count > 0);
 			}
 		}
 
@@ -227,8 +286,9 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 					if (!keepEdits)
 					{
 						stored.Edits.Clear();
+						stored.Protect.Clear();
 					}
-					if (stored.Edits.Count == 0)
+					if (stored.Edits.Count == 0 && stored.Protect.Count == 0)
 					{
 						book.Pages.Remove(page);
 					}
@@ -254,8 +314,9 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 					if (!keepEdits)
 					{
 						stored.Edits.Clear();
+						stored.Protect.Clear();
 					}
-					if (stored.Edits.Count == 0)
+					if (stored.Edits.Count == 0 && stored.Protect.Count == 0)
 					{
 						book.Pages.Remove(page);
 					}
@@ -290,6 +351,11 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 					match.TextEdited = true;
 				}
 				match.Rect = (int[])edit.Rect?.Clone();
+				match.Form = edit.Form;
+				match.ShapeAngle = edit.ShapeAngle;
+				match.Points = (int[])edit.Points?.Clone();
+				match.Corners = (int[])(edit.Corners ?? new int[4]).Clone();
+				match.Circular = edit.Circular;
 				match.Size = edit.Size;
 				match.Align = edit.Align;
 				match.Rotation = edit.Rotation;
@@ -350,6 +416,10 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 								{
 									stored.Edits = edits.EnumerateArray().Select(TranslationBox.Read).ToList();
 								}
+								if (p.TryGetProperty("protect", out JsonElement strokes) && strokes.ValueKind == JsonValueKind.Array)
+								{
+									stored.Protect = strokes.EnumerateArray().Select(ProtectStroke.Read).Where((ProtectStroke x) => x != null).ToList();
+								}
 								book.Pages[(int)TranslationBox.GetDouble(p, "page")] = stored;
 							}
 						}
@@ -404,6 +474,15 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 							box.Write(w);
 						}
 						w.WriteEndArray();
+						if (kv.Value.Protect.Count > 0)
+						{
+							w.WriteStartArray("protect");
+							foreach (ProtectStroke stroke in kv.Value.Protect)
+							{
+								stroke.Write(w);
+							}
+							w.WriteEndArray();
+						}
 						w.WriteEndObject();
 					}
 					w.WriteEndArray();

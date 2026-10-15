@@ -10,6 +10,7 @@ using System.Net;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Windows.Forms;
+using cYo.Projects.ComicRack.Engine;
 using cYo.Projects.ComicRack.Engine.Display.Forms;
 
 namespace cYo.Projects.ComicRack.Viewer
@@ -27,6 +28,8 @@ namespace cYo.Projects.ComicRack.Viewer
 		private static string ollamaUrl = "http://127.0.0.1:11434";
 
 		private static bool lastHelper;
+
+		private static int missed;
 
 		private static bool lastOllama;
 
@@ -63,18 +66,40 @@ namespace cYo.Projects.ComicRack.Viewer
 			ThreadPool.QueueUserWorkItem(delegate { Poll(); });
 		}
 
+		private static DateTime configRead = DateTime.MinValue;
+
 		private static void Poll()
 		{
-			bool helper = Get(HelperUrl + "/api/config", out string body);
-			if (helper)
+			//Liveness is asked with the helper's light health call. A helper that is busy lettering a page can be slow to answer
+			//anything: slow is not stopped. Only a refused connection (nothing listening) counts, and then twice in a row.
+			Reach reach = Get(HelperUrl + "/health", out _);
+			bool helper;
+			if (reach == Reach.Refused)
 			{
-				Match m = Regex.Match(body ?? "", "\"ollama_url\"\\s*:\\s*\"([^\"]+)\"");
-				if (m.Success)
+				missed++;
+				helper = missed < 2 && HelperUp;
+			}
+			else
+			{
+				missed = 0;
+				helper = true;
+			}
+			if (helper && reach == Reach.Answered && DateTime.UtcNow - configRead > TimeSpan.FromSeconds(60))
+			{
+				//The address of Ollama is in the helper's settings; read now and then, not every few seconds.
+				if (Get(HelperUrl + "/api/config", out string body) == Reach.Answered && body != null)
 				{
-					ollamaUrl = m.Groups[1].Value.TrimEnd('/');
+					configRead = DateTime.UtcNow;
+					Match m = Regex.Match(body, "\"ollama_url\"\\s*:\\s*\"([^\"]+)\"");
+					if (m.Success)
+					{
+						ollamaUrl = m.Groups[1].Value.TrimEnd('/');
+					}
 				}
 			}
-			bool ollama = Get(ollamaUrl + "/api/tags", out _);
+			//Ollama too: busy (slow to answer) is still running.
+			Reach ollamaReach = Get(ollamaUrl + "/api/tags", out _);
+			bool ollama = ollamaReach == Reach.Answered || (ollamaReach == Reach.Slow && OllamaUp);
 			HelperUp = helper;
 			OllamaUp = ollama;
 			if (helper != lastHelper || ollama != lastOllama || Busy != lastBusy)
@@ -86,25 +111,41 @@ namespace cYo.Projects.ComicRack.Viewer
 			}
 		}
 
-		private static bool Get(string url, out string body)
+		private enum Reach
+		{
+			Answered,
+			Refused,
+			Slow
+		}
+
+		private static Reach Get(string url, out string body)
 		{
 			body = null;
 			try
 			{
 				HttpWebRequest request = (HttpWebRequest)WebRequest.Create(url);
 				request.Proxy = null;
-				request.Timeout = 1500;
-				request.ReadWriteTimeout = 1500;
+				request.Timeout = 5000;
+				request.ReadWriteTimeout = 5000;
 				using (HttpWebResponse response = (HttpWebResponse)request.GetResponse())
 				using (StreamReader reader = new StreamReader(response.GetResponseStream()))
 				{
 					body = reader.ReadToEnd();
-					return true;
+					return Reach.Answered;
 				}
+			}
+			catch (WebException ex)
+			{
+				if (ex.Response != null)
+				{
+					ex.Response.Dispose();
+					return Reach.Answered;          //an error answer is still an answer
+				}
+				return ex.Status == WebExceptionStatus.Timeout ? Reach.Slow : Reach.Refused;
 			}
 			catch (Exception)
 			{
-				return false;
+				return Reach.Refused;
 			}
 		}
 
@@ -274,12 +315,12 @@ namespace cYo.Projects.ComicRack.Viewer
 
 		private static bool HelperPolled()
 		{
-			return Get(HelperUrl + "/api/config", out _);
+			return Get(HelperUrl + "/health", out _) != Reach.Refused;
 		}
 
 		private static bool OllamaPolled()
 		{
-			return Get(ollamaUrl + "/api/tags", out _);
+			return Get(ollamaUrl + "/api/tags", out _) != Reach.Refused;
 		}
 
 		private static void WaitFor(Func<bool> condition, int seconds)
@@ -520,6 +561,16 @@ namespace cYo.Projects.ComicRack.Viewer
 
 			public ToolStripMenuItem AheadStop;
 
+			public ToolStripMenuItem BatchStart;
+
+			public ToolStripMenuItem BatchState;
+
+			public ToolStripMenuItem BatchContinue;
+
+			public ToolStripMenuItem BatchPause;
+
+			public ToolStripMenuItem BatchCancel;
+
 			public int AheadLed = -1;
 
 			public TranslationLed TranslatorLed = (TranslationLed)(-1);
@@ -620,6 +671,22 @@ namespace cYo.Projects.ComicRack.Viewer
 			pair.Ahead.DropDownItems.Add(new ToolStripSeparator());
 			pair.AheadStop = new ToolStripMenuItem("Stop translating ahead", GetMenuIcon(MenuIcon.Stop, null, menuSize), delegate { Main?.TranslationReader?.StopPreTranslate(); });
 			pair.Ahead.DropDownItems.Add(pair.AheadStop);
+			pair.Ahead.DropDownItems.Add(new ToolStripSeparator());
+			//Several books at once: the books selected in the library are translated whole, one after the other, in the background.
+			pair.BatchStart = new ToolStripMenuItem("Translate the selected books (whole books)", GetMenuIcon(MenuIcon.Book, null, menuSize), delegate
+			{
+				ComicBook[] books = Main?.GetBooksForTranslation() ?? new ComicBook[0];
+				if (books.Length > 0)
+				{
+					TranslationBatch.Start(books);
+				}
+			});
+			pair.BatchState = new ToolStripMenuItem { Enabled = false, Visible = false };
+			pair.BatchPause = new ToolStripMenuItem("Pause the batch", GetMenuIcon(MenuIcon.Stop, null, menuSize), delegate { TranslationBatch.Pause(); });
+			pair.BatchContinue = new ToolStripMenuItem("Continue translating previously selected books");
+			pair.BatchContinue.Click += delegate { TranslationBatch.Resume(); };
+			pair.BatchCancel = new ToolStripMenuItem("Forget the queue", GetMenuIcon(MenuIcon.Stop, null, menuSize), delegate { TranslationBatch.Cancel(); });
+			pair.Ahead.DropDownItems.AddRange(new ToolStripItem[] { pair.BatchStart, pair.BatchState, pair.BatchPause, pair.BatchContinue, pair.BatchCancel });
 			pair.Ahead.DropDownOpening += delegate { Update(pair); };
 
 			//After a button or one of its menu entries was used, the keyboard goes back to the reader (the toolbar kept it,
@@ -664,6 +731,7 @@ namespace cYo.Projects.ComicRack.Viewer
 			{
 				hooked = true;
 				TranslationServices.Changed += delegate { RefreshAll(); };
+				TranslationBatch.Changed += delegate { RefreshAll(); };
 				TranslationServices.StartWatching();
 			}
 			Update(pair);
@@ -764,12 +832,15 @@ namespace cYo.Projects.ComicRack.Viewer
 				p.ServicesLed = sled;
 				p.Services.Image = GetIcon(false, sled, size);
 			}
-			bool ahead = reader != null && reader.IsPreTranslating;
-			int aheadState = ahead ? 1 : 0;
+			bool ahead = (reader != null && reader.IsPreTranslating) || TranslationBatch.IsRunning;
+			//The icon's colour tells the state: plain when idle, amber while translating ahead or a batch, blue while a
+			//batch is paused with books waiting, red when something stopped it.
+			TranslationLed aheadLed = ahead ? TranslationLed.Busy : (TranslationBatch.Problem != null && TranslationBatch.HasWaiting ? TranslationLed.Problem : (TranslationBatch.HasWaiting ? TranslationLed.On : TranslationLed.Off));
+			int aheadState = (int)aheadLed;
 			if (aheadState != p.AheadLed || size != p.Size)
 			{
 				p.AheadLed = aheadState;
-				p.Ahead.Image = GetAheadIcon(ahead ? TranslationLed.Busy : TranslationLed.Off, size);
+				p.Ahead.Image = GetAheadIcon(aheadLed, size);
 			}
 			if (reader != null)
 			{
@@ -778,6 +849,7 @@ namespace cYo.Projects.ComicRack.Viewer
 				p.Ahead.ToolTipText = ahead ? "Translating ahead: " + aheadDone + " of " + aheadTotal + " pages. Click to change or stop." : "Translate pages ahead of reading (5, 10, 15... or the whole book)";
 			}
 			p.AheadStop.Enabled = ahead;
+			UpdateBatchMenu(p);
 			p.Size = size;
 			string state = "Translator helper: " + (helper ? "running" : "stopped") + ".  Ollama: " + (ollama ? "running" : "stopped") + ".";
 			p.StateItem.Text = state;
@@ -786,6 +858,66 @@ namespace cYo.Projects.ComicRack.Viewer
 			p.HelperItem.Enabled = p.OllamaItem.Enabled = !TranslationServices.Busy;
 			string action = TranslationServices.Busy ? "working..." : (helper || ollama ? "Click to stop both." : "Click to start both.");
 			p.Services.ToolTipText = state + " " + action + (string.IsNullOrEmpty(TranslationServices.Problem) ? "" : "  Problem: " + TranslationServices.Problem);
+		}
+
+		private static void UpdateBatchMenu(Pair p)
+		{
+			int selected = Main?.GetBooksForTranslation().Length ?? 0;
+			p.BatchStart.Text = selected > 1 ? "Translate the " + selected + " selected books (whole books)" : "Translate the selected book (whole book)";
+			p.BatchStart.Enabled = selected > 0;
+			List<TranslationBatch.Item> waiting = TranslationBatch.Waiting;
+			bool running = TranslationBatch.IsRunning;
+			TranslationBatch.Item current = TranslationBatch.Current;
+			string problem = TranslationBatch.Problem;
+			p.BatchState.Visible = running || waiting.Count > 0 || problem != null;
+			if (running && current != null)
+			{
+				p.BatchState.Text = "Batch: " + (TranslationBatch.Yielding ? "waiting while the reader translates, then " : "") + "translating \"" + Shorten(current.Title) + "\" (" + PercentText(current) + "), " + waiting.Count + (waiting.Count == 1 ? " book" : " books") + " left";
+			}
+			else if (waiting.Count > 0)
+			{
+				p.BatchState.Text = "Batch paused: " + waiting.Count + (waiting.Count == 1 ? " book" : " books") + " left" + (problem != null ? ". " + problem : "");
+			}
+			else
+			{
+				p.BatchState.Text = problem ?? "";
+			}
+			p.BatchPause.Visible = running;
+			p.BatchCancel.Visible = running || waiting.Count > 0;
+			p.BatchContinue.Visible = !running && waiting.Count > 0;
+			//The books in the queue with how much of each is translated.
+			p.BatchContinue.DropDownItems.Clear();
+			if (!running && waiting.Count > 0)
+			{
+				ToolStripMenuItem now = new ToolStripMenuItem("Continue now (" + waiting.Count + (waiting.Count == 1 ? " book" : " books") + ")");
+				now.Click += delegate { TranslationBatch.Resume(); };
+				p.BatchContinue.DropDownItems.Add(now);
+				p.BatchContinue.DropDownItems.Add(new ToolStripSeparator());
+				foreach (TranslationBatch.Item item in waiting)
+				{
+					p.BatchContinue.DropDownItems.Add(new ToolStripMenuItem(PercentText(item).PadLeft(5) + "   " + Shorten(item.Title)) { Enabled = false });
+				}
+			}
+			if (running)
+			{
+				p.Ahead.ToolTipText = (TranslationBatch.Yielding ? "Batch waiting while the reader translates pages (" : "Batch translating books in the background (") + waiting.Count + (waiting.Count == 1 ? " book" : " books") + " left). Click for the queue.";
+			}
+			else if (waiting.Count > 0)
+			{
+				p.Ahead.ToolTipText = "Batch paused: " + waiting.Count + (waiting.Count == 1 ? " book" : " books") + " waiting." + (problem != null ? " " + problem : " Click to continue.");
+			}
+		}
+
+		private static string PercentText(TranslationBatch.Item item)
+		{
+			int percent = item.Percent;
+			return percent < 0 ? "queued" : percent + "%";
+		}
+
+		private static string Shorten(string text)
+		{
+			text = text ?? "";
+			return text.Length > 70 ? text.Substring(0, 67) + "..." : text;
 		}
 
 		// ---- pictures ----
@@ -802,6 +934,12 @@ namespace cYo.Projects.ComicRack.Viewer
 				return Color.FromArgb(230, 65, 55);
 			}
 			return Color.FromArgb(135, 135, 140);
+		}
+
+		/// <summary>The translator button's picture (a speech bubble) in the colour of a state, for status lights elsewhere. The caller owns the copy.</summary>
+		public static Bitmap StatusIcon(TranslationLed led, int size)
+		{
+			return new Bitmap(GetIcon(true, led, size));
 		}
 
 		private static Bitmap GetIcon(bool translator, TranslationLed led, int size)
@@ -948,16 +1086,25 @@ namespace cYo.Projects.ComicRack.Viewer
 			}
 		}
 
+		private static Color Blend(Color a, Color b, float amount)
+		{
+			return Color.FromArgb((int)(a.R + (b.R - a.R) * amount), (int)(a.G + (b.G - a.G) * amount), (int)(a.B + (b.B - a.B) * amount));
+		}
+
 		//Two light pages with an arrow running on past them: the pages ahead. The pages stay light whatever the state,
 		//so they show on a dark bar; the arrow carries the state (blue idle, amber while running).
 		private static void DrawPagesAhead(Graphics g, int s, Color state)
 		{
 			float u = s / 16f;
-			Color arrowColor = state == ColorOf(TranslationLed.Busy) ? state : Color.FromArgb(95, 175, 235);
+			bool idle = state == ColorOf(TranslationLed.Off);
+			bool paused = state == ColorOf(TranslationLed.On);
+			Color arrowColor = idle || paused ? Color.FromArgb(95, 175, 235) : state;
+			Color tint = paused ? Color.FromArgb(95, 175, 235) : state;
+			float mix = idle ? 0f : 0.6f;
 			RectangleF back = new RectangleF(5.5f * u, 1f * u, 8.5f * u, 11.5f * u);
 			RectangleF front = new RectangleF(1.5f * u, 4f * u, 8.5f * u, 11.5f * u);
-			using (SolidBrush backFill = new SolidBrush(Color.FromArgb(205, 205, 212)))
-			using (SolidBrush frontFill = new SolidBrush(Color.FromArgb(244, 244, 248)))
+			using (SolidBrush backFill = new SolidBrush(Blend(Color.FromArgb(205, 205, 212), tint, mix * 0.8f)))
+			using (SolidBrush frontFill = new SolidBrush(Blend(Color.FromArgb(244, 244, 248), tint, mix)))
 			using (Pen rim = new Pen(Color.FromArgb(60, 60, 68), Math.Max(1f, 0.9f * u)))
 			{
 				g.FillRectangle(backFill, back);

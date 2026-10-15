@@ -1280,7 +1280,8 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 				AutoAlign = true,
 				Visible = false,
 				MaxSize = new Size(800, 160).ScaleDpi(),
-				MinSize = new Size(30, 18).ScaleDpi()
+				MinSize = new Size(30, 18).ScaleDpi(),
+				TightIcon = true
 			};
 			overlayManager.Panels.Add(translateOverlay);
 			navigationOverlay = new NavigationOverlay(new Size(500, NavigationOverlayDefaultHeight).ScaleDpi())
@@ -2279,6 +2280,11 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 		/// <summary>Raised when what the status light and page count show may have changed.</summary>
 		public event EventHandler TranslationStatusChanged;
 
+		/// <summary>Supplies the translator's picture for the status panel: the state ("on", "busy" or "problem") and the size in pixels.</summary>
+		public Func<string, int, Bitmap> TranslationIconProvider { get; set; }
+
+		private string translationIconState;
+
 		/// <summary>The helper's page translation, once translation has been turned on.</summary>
 		[Browsable(false)]
 		[DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
@@ -2352,16 +2358,29 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 					}
 				}
 			}
-			if (translateOverlay.Icon != null)
+			if (!string.IsNullOrEmpty(text) && TranslationIconProvider != null)
 			{
+				//The translator's own picture at the left of the panel, coloured by what it is doing.
+				GetTranslationStatus(out int doneNow, out int totalNow, out bool busyNow, out string problemNow);
+				string state = !string.IsNullOrEmpty(problemNow) ? "problem" : (busyNow ? "busy" : "on");
+				if (state != translationIconState || translateOverlay.Icon == null)
+				{
+					translationIconState = state;
+					translateOverlay.Icon = TranslationIconProvider(state, new Size(18, 0).ScaleDpi().Width);
+				}
+			}
+			else if (translateOverlay.Icon != null)
+			{
+				translationIconState = null;
 				translateOverlay.Icon = null;
 			}
 			if (!string.IsNullOrEmpty(text))
 			{
 				//Room for the whole text, whatever the page count: the panel is never narrower than the words and
 				//a margin (its own measurement left the last digit cut off).
-				int wanted = TextRenderer.MeasureText(text, translateOverlay.Font).Width + new Size(26, 0).ScaleDpi().Width;
-				translateOverlay.MinSize = new Size(wanted, translateOverlay.MinSize.Height);
+				//With the icon the panel measures itself (icon, small gap, text); without it a margin is added to the measured text.
+								int wanted = translateOverlay.Icon != null ? 0 : TextRenderer.MeasureText(text, translateOverlay.Font).Width + new Size(26, 0).ScaleDpi().Width;
+								translateOverlay.MinSize = new Size(wanted, translateOverlay.MinSize.Height);
 			}
 			if (translateOverlay.Text != text)
 			{

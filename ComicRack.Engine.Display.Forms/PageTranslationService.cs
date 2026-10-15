@@ -122,7 +122,7 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 
 		public PageTranslationService(TranslationStore store = null)
 		{
-			Store = store ?? new TranslationStore(TranslationStore.DefaultFolder);
+			Store = store ?? TranslationStore.Shared;
 		}
 
 		/// <summary>
@@ -354,6 +354,42 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 			return true;
 		}
 
+		/// <summary>The protect brush strokes of a page (copies); empty when there are none.</summary>
+		public List<ProtectStroke> GetProtect(PageKey key)
+		{
+			if (key == null)
+			{
+				return new List<ProtectStroke>();
+			}
+			lock (sync)
+			{
+				return entries.TryGetValue(key, out Entry entry) ? Store.GetProtect(entry.BookKey, entry.ImageIndex) : new List<ProtectStroke>();
+			}
+		}
+
+		/// <summary>
+		/// Saves the protect brush strokes of a page and draws the page again with them: the painted artwork is not wiped and
+		/// is not lettered over. Returns false when the page is not translated yet.
+		/// </summary>
+		public bool SetProtect(PageKey key, PageImage original, IEnumerable<ProtectStroke> strokes)
+		{
+			if (key == null)
+			{
+				return false;
+			}
+			List<TranslationBox> boxes;
+			lock (sync)
+			{
+				if (!entries.TryGetValue(key, out Entry entry) || entry.Boxes == null)
+				{
+					return false;
+				}
+				Store.SetProtect(entry.BookKey, entry.ImageIndex, strokes);
+				boxes = entry.Boxes.Select((TranslationBox b) => b.Clone()).ToList();
+			}
+			return Edit(key, original, boxes);
+		}
+
 		/// <summary>
 		/// Reads and translates the text inside a rectangle of the page (in page pixels). The result
 		/// arrives on a background thread, with an error text when it failed.
@@ -460,6 +496,21 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 				}
 				StateChanged?.Invoke(this, EventArgs.Empty);
 			});
+		}
+
+		/// <summary>
+		/// Forgets the pages that are waiting and not yet being translated (the one being translated is left to finish),
+		/// so something more urgent can have the helper next. They can simply be asked for again later.
+		/// </summary>
+		public void DropPending()
+		{
+			lock (sync)
+			{
+				foreach (PageKey key in entries.Where((KeyValuePair<PageKey, Entry> kv) => kv.Value.State == State.Pending && !kv.Value.RenderOnly).Select((KeyValuePair<PageKey, Entry> kv) => kv.Key).ToList())
+				{
+					entries.Remove(key);
+				}
+			}
 		}
 
 		/// <summary>
@@ -605,17 +656,18 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 			try
 			{
 				TranslationApi api = new TranslationApi(ServerUrl);
+				List<ProtectStroke> protect = Store.GetProtect(entry.BookKey, entry.ImageIndex);
 				if (renderOnly)
 				{
-					page = api.Render(source, boxes);
+					page = api.Render(source, boxes, protect);
 				}
 				else
 				{
 					page = api.Analyze(source);
 					List<TranslationBox> edits = Store.GetEdits(entry.BookKey, entry.ImageIndex);
-					if (edits.Count > 0 && TranslationStore.Merge(page.Boxes, edits))
+					if ((edits.Count > 0 && TranslationStore.Merge(page.Boxes, edits)) || protect.Count > 0)
 					{
-						page = api.Render(source, page.Boxes);
+						page = api.Render(source, page.Boxes, protect);
 					}
 				}
 				result = page.Changed ? State.Done : State.NoText;
