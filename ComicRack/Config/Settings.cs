@@ -202,6 +202,8 @@ namespace cYo.Projects.ComicRack.Viewer.Config
 
 		private string translatorLastShape = string.Empty;
 
+		private int translatorBrushSize = 24;
+
 		private bool translatorStopOnExit = true;
 
 		private string libraryBackgroundTexturePath = string.Empty;
@@ -1409,6 +1411,26 @@ namespace cYo.Projects.ComicRack.Viewer.Config
 				if (translatorLastShape != value)
 				{
 					translatorLastShape = value;
+					FireEvent(null);
+				}
+			}
+		}
+
+		/// <summary>The radius (in page pixels) of the translation editor's protect brush, kept for the next time.</summary>
+		[Browsable(false)]
+		[DefaultValue(24)]
+		public int TranslatorBrushSize
+		{
+			get
+			{
+				return translatorBrushSize;
+			}
+			set
+			{
+				value = Math.Max(4, Math.Min(120, value));
+				if (translatorBrushSize != value)
+				{
+					translatorBrushSize = value;
 					FireEvent(null);
 				}
 			}

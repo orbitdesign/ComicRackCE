@@ -1708,11 +1708,28 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 					CommitProtect();
 				}
 			};
+			try
+			{
+				//The size used last time.
+				tbBrush.Value = Math.Max(tbBrush.Minimum, Math.Min(tbBrush.Maximum, Program.Settings.TranslatorBrushSize));
+			}
+			catch (Exception)
+			{
+			}
+			canvas.BrushRadius = tbBrush.Value;
+			lblBrush.Text = tbBrush.Value + " px";
 			tbBrush.ValueChanged += delegate
 			{
 				canvas.BrushRadius = tbBrush.Value;
 				lblBrush.Text = tbBrush.Value + " px";
 				canvas.Invalidate();
+				try
+				{
+					Program.Settings.TranslatorBrushSize = tbBrush.Value;
+				}
+				catch (Exception)
+				{
+				}
 			};
 			canvas.ProtectChanged += delegate { CommitProtect(); };
 			btAddShape.Click += delegate { ShowAddShapeMenu(); };
