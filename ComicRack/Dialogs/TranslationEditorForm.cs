@@ -235,9 +235,54 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			}
 
 			/// <summary>The part (rectangle plus form and angle) a plain box stands for.</summary>
-			private static int[] PartOf(TranslationBox b)
+			public static int[] PartOf(TranslationBox b)
 			{
-				return b.HasShape && !b.Skip ? TranslationShapes.MakePart(AreaOf(b), b.Form, b.Corners, b.Circular, b.ShapeAngle) : AreaOf(b);
+				if (b.Skip)
+				{
+					return AreaOf(b);
+				}
+				if (b.HasShape)
+				{
+					return TranslationShapes.MakePart(AreaOf(b), b.Form, b.Corners, b.Circular, b.ShapeAngle, b.Form == TranslationShapes.FreePolygon ? b.Points : null);
+				}
+				if (HasAutoOutline(b))
+				{
+					return TranslationShapes.MakePart(AreaOf(b), TranslationShapes.FreePolygon, new int[4], false, 0, b.Outline);
+				}
+				return AreaOf(b);
+			}
+
+			/// <summary>True for a box the helper lettered in a shape of its own (a traced bubble, an oval) that the user has not changed.</summary>
+			public static bool HasAutoOutline(TranslationBox b)
+			{
+				return b != null && b.Outline != null && b.Outline.Length >= 6 && !b.HasShape && b.Shape == null && !b.Skip && b.Rect == null;
+			}
+
+			/// <summary>
+			/// Makes the helper's own area of a box the box's own shape, so that it can be moved, resized and its points dragged:
+			/// an oval becomes an oval box, any other shape a free polygon. Called when the user starts to change such a box.
+			/// </summary>
+			public static void AdoptAutoShape(TranslationBox b, bool asPolygon)
+			{
+				if (!HasAutoOutline(b))
+				{
+					return;
+				}
+				if (b.AutoKind == "oval" && !asPolygon)
+				{
+					b.Rect = (int[])b.Area.Clone();
+					b.Form = TranslationShapes.Round;
+					b.Corners = new[] { 100, 100, 100, 100 };
+					b.Circular = false;
+				}
+				else
+				{
+					b.Points = (int[])b.Outline.Clone();
+					b.Form = TranslationShapes.FreePolygon;
+					b.Corners = new int[4];
+					b.Circular = false;
+					b.Rect = TranslationShapes.PointsBounds(b.Points);
+				}
 			}
 
 			private PointF[] ScreenPolygon(int[] part)
@@ -301,7 +346,13 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			/// <summary>True for a single free polygon whose points can be dragged.</summary>
 			public static bool HasVertices(TranslationBox b)
 			{
-				return b != null && !b.Skip && b.Shape == null && b.Form == TranslationShapes.FreePolygon && b.Points != null && b.Points.Length >= 6;
+				return b != null && !b.Skip && b.Shape == null && ((b.Form == TranslationShapes.FreePolygon && b.Points != null && b.Points.Length >= 6) || HasAutoOutline(b));
+			}
+
+			/// <summary>The corner points to show: the box's own, or those of the helper's area.</summary>
+			private static int[] PointsOf(TranslationBox b)
+			{
+				return b.Form == TranslationShapes.FreePolygon && b.Points != null ? b.Points : b.Outline;
 			}
 
 			/// <summary>Where the points of a polygon are on screen (turned with the shape).</summary>
@@ -310,9 +361,10 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 				RectangleF r = ToScreen(AreaOf(b));
 				PointF centre = new PointF(r.Left + r.Width / 2f, r.Top + r.Height / 2f);
 				List<PointF> list = new List<PointF>();
-				for (int i = 0; i + 1 < b.Points.Length; i += 2)
+				int[] shown = PointsOf(b);
+				for (int i = 0; i + 1 < shown.Length; i += 2)
 				{
-					list.Add(Turn(new PointF(b.Points[i] * zoom + pan.X, b.Points[i + 1] * zoom + pan.Y), centre, b.ShapeAngle));
+					list.Add(Turn(new PointF(shown[i] * zoom + pan.X, shown[i + 1] * zoom + pan.Y), centre, b.ShapeAngle));
 				}
 				return list.ToArray();
 			}
@@ -395,6 +447,7 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 				{
 					return;
 				}
+				AdoptAutoShape(Selected, true);
 				BakeAngle(Selected);
 				PointF q = ToImage(at);
 				int[] pts = Selected.Points;
@@ -416,10 +469,11 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			/// <summary>Takes a point away (a polygon keeps at least three).</summary>
 			public void RemoveVertex(int index)
 			{
-				if (!HasVertices(Selected) || Selected.Points.Length <= 6 || index < 0 || 2 * index + 1 >= Selected.Points.Length)
+				if (!HasVertices(Selected) || PointsOf(Selected).Length <= 6 || index < 0 || 2 * index + 1 >= PointsOf(Selected).Length)
 				{
 					return;
 				}
+				AdoptAutoShape(Selected, true);
 				BakeAngle(Selected);
 				List<int> list = Selected.Points.ToList();
 				list.RemoveRange(2 * index, 2);
@@ -460,7 +514,7 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 
 			private bool CanShapeCorners(TranslationBox b)
 			{
-				if (b == null || b.Skip || b.Shape != null || b.Form == TranslationShapes.FreePolygon)
+				if (b == null || b.Skip || b.Shape != null || b.Form == TranslationShapes.FreePolygon || HasAutoOutline(b))
 				{
 					return false;
 				}
@@ -535,7 +589,7 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 								}
 							}
 						}
-						else if (box.HasShape && !box.Skip)
+						else if ((box.HasShape || HasAutoOutline(box)) && !box.Skip)
 						{
 							g.DrawPolygon(pen, ScreenPolygon(PartOf(box)));
 						}
@@ -763,9 +817,10 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 						return;
 					}
 					int vertex = VertexAt(e.Location);
-					if (vertex >= 0)
-					{
-						BakeAngle(Selected);
+						if (vertex >= 0)
+						{
+							AdoptAutoShape(Selected, true);
+							BakeAngle(Selected);
 						BeginEdit(Drag.Vertex, e.Location);
 						vertexIndex = vertex;
 						return;
@@ -873,6 +928,13 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 				if (Selected == null)
 				{
 					return;
+				}
+				if ((drag == Drag.Move || drag == Drag.Resize || drag == Drag.Corner) && HasAutoOutline(Selected))
+				{
+					//The helper's own area is the box's shape from now on; what is dragged starts from it.
+					AdoptAutoShape(Selected, false);
+					startRect = (int[])AreaOf(Selected).Clone();
+					startPoints = (int[])Selected.Points?.Clone();
 				}
 				int dx = (int)Math.Round(at.X - dragStart.X);
 				int dy = (int)Math.Round(at.Y - dragStart.Y);
@@ -1035,6 +1097,7 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 				{
 					angle = 0;
 				}
+				AdoptAutoShape(Selected, false);
 				//The shape turns; the lettering turns with it only when asked to, otherwise it stays upright inside the turned shape.
 				if (Selected.Rect == null)
 				{
@@ -1945,7 +2008,7 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 				return;
 			}
 			int[] corners = box.Corners ?? new int[4];
-			int preset = TranslationShapes.PresetOf(box.Form, corners, box.Circular);
+			int preset = PageCanvas.HasAutoOutline(box) ? -1 : TranslationShapes.PresetOf(box.Form, corners, box.Circular);
 			int[] a = box.Area;
 			if (preset == 3 && Math.Abs((a[2] - a[0]) - (a[3] - a[1])) <= 2)
 			{
@@ -1970,7 +2033,7 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			{
 				EnsureRect(box);
 				TranslationShapes.Preset(index, out int kind, out int[] corners, out bool circular);
-				int[] previous = box.Form == TranslationShapes.FreePolygon ? box.Points : null;
+				int[] previous = box.Form == TranslationShapes.FreePolygon ? box.Points : (PageCanvas.HasAutoOutline(box) ? box.Outline : null);
 				int[] outline = index == TranslationShapes.PolygonPreset ? (previous ?? TranslationShapes.OutlinePoints(box.Rect, box.Form, box.Corners, box.Circular)) : null;
 				box.Form = kind;
 				box.Corners = corners;
@@ -2292,7 +2355,7 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 				Src = new[] { ordered.Min((TranslationBox b) => b.Src[0]), ordered.Min((TranslationBox b) => b.Src[1]), ordered.Max((TranslationBox b) => b.Src[2]), ordered.Max((TranslationBox b) => b.Src[3]) },
 				Text = string.Join(" ", ordered.Select((TranslationBox b) => b.Text).Where((string t) => !string.IsNullOrWhiteSpace(t))),
 				Translation = string.Join(" ", ordered.Select((TranslationBox b) => (b.Translation ?? "").Trim()).Where((string t) => t.Length > 0)),
-				Shape = ordered.Select((TranslationBox b) =>TranslationShapes.MakePart(b.Area, b.Form, b.Corners, b.Circular, b.ShapeAngle, b.Points)).ToList()
+				Shape = ordered.Select((TranslationBox b) =>PageCanvas.PartOf(b)).Select((int[] part) => (int[])part.Clone()).ToList()
 			};
 			int at = canvas.Boxes.IndexOf(ordered[0]);
 			foreach (TranslationBox b in ordered)

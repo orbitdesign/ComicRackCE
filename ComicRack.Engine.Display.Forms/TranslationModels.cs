@@ -58,6 +58,15 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 		/// <summary>The box's shape differs from the plain upright rectangle.</summary>
 		public bool HasShape => HasForm || Math.Abs(ShapeAngle) >= 0.05;
 
+		/// <summary>
+		/// The area the helper lettered this box in when that is not a plain rectangle (a traced bubble, an oval): corner points
+		/// as a flat x, y list in page pixels. Only for showing and for starting to edit the shape; never sent back.
+		/// </summary>
+		public int[] Outline { get; set; }
+
+		/// <summary>"oval" when the helper's area is an upright ellipse, "polygon" for another shape, "" for a rectangle.</summary>
+		public string AutoKind { get; set; } = "";
+
 		/// <summary>The id of the merged box this one was folded into; the box is then hidden and left alone.</summary>
 		public string MergedInto { get; set; } = "";
 
@@ -129,6 +138,7 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 			b.Bounds = (int[])Bounds?.Clone();
 			b.Corners = (int[])(Corners ?? new int[4]).Clone();
 			b.Points = (int[])Points?.Clone();
+			b.Outline = (int[])Outline?.Clone();
 			b.Shape = Shape?.Select((int[] r) => (int[])r.Clone()).ToList();
 			return b;
 		}
@@ -231,6 +241,15 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 			};
 			b.Form = (int)GetDouble(e, "kind");
 			b.ShapeAngle = GetDouble(e, "shape_angle");
+			if (e.TryGetProperty("outline", out JsonElement outlineList) && outlineList.ValueKind == JsonValueKind.Array)
+			{
+				int[] flat = outlineList.EnumerateArray().Where((JsonElement x) => x.ValueKind == JsonValueKind.Number).Select((JsonElement x) => (int)Math.Round(x.GetDouble())).ToArray();
+				if (flat.Length >= 6 && flat.Length % 2 == 0)
+				{
+					b.Outline = flat;
+				}
+			}
+			b.AutoKind = GetString(e, "auto_kind");
 			if (e.TryGetProperty("points", out JsonElement pointList) && pointList.ValueKind == JsonValueKind.Array)
 			{
 				b.Points = pointList.EnumerateArray().Where((JsonElement x) => x.ValueKind == JsonValueKind.Number).Select((JsonElement x) => (int)Math.Round(x.GetDouble())).ToArray();
