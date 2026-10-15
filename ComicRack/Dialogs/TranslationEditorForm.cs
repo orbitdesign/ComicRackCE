@@ -64,7 +64,13 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			private const float CornerOffset = 16f;
 
 			/// <summary>The shape new boxes are drawn with (an index of TranslationShapes.PresetNames); only used for the preview.</summary>
-			public int NewPreset { get; set; }
+			public bool NewShaped { get; set; }
+
+			public int NewKind { get; set; }
+
+			public int[] NewCorners { get; set; } = new int[4];
+
+			public bool NewCircular { get; set; }
 
 			/// <summary>Turning a shape turns its lettering too; off keeps the text upright inside the turned shape.</summary>
 			public bool TextFollowsShape { get; set; }
@@ -126,6 +132,9 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			public event EventHandler BoxChanged;
 
 			public event Action<int[]> RegionDrawn;
+
+			/// <summary>The corner dots of a box were dragged: its shape is now the one to remember.</summary>
+			public event Action<TranslationBox> CornersEdited;
 
 			public PageCanvas()
 			{
@@ -608,12 +617,11 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 					using (Pen pen = new Pen(Color.FromArgb(70, 150, 255), 2f) { DashStyle = DashStyle.Dash })
 					using (SolidBrush fill = new SolidBrush(Color.FromArgb(40, 70, 150, 255)))
 					{
-						if (NewPreset > 0 && drawing.Width > 4 && drawing.Height > 4)
-						{
-							TranslationShapes.Preset(NewPreset, out int kind, out int[] corners, out bool circular);
-							PointF a = ToImage(drawing.Location);
-							PointF z = ToImage(new Point(drawing.Right, drawing.Bottom));
-							PointF[] poly = ScreenPolygon(TranslationShapes.MakePart(new[] { (int)a.X, (int)a.Y, (int)z.X, (int)z.Y }, kind, corners, circular));
+						if (NewShaped && drawing.Width > 4 && drawing.Height > 4)
+							{
+								PointF a = ToImage(drawing.Location);
+								PointF z = ToImage(new Point(drawing.Right, drawing.Bottom));
+								PointF[] poly = ScreenPolygon(TranslationShapes.MakePart(new[] { (int)a.X, (int)a.Y, (int)z.X, (int)z.Y }, NewKind == TranslationShapes.FreePolygon ? TranslationShapes.Round : NewKind, NewKind == TranslationShapes.FreePolygon ? new int[4] : NewCorners, NewCircular));
 							g.FillPolygon(fill, poly);
 							g.DrawPolygon(pen, poly);
 						}
@@ -1059,6 +1067,10 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 				case Drag.Rotate:
 				case Drag.Corner:
 				case Drag.Vertex:
+					if (kind == Drag.Corner)
+					{
+						CornersEdited?.Invoke(Selected);
+					}
 					BoxChanged?.Invoke(this, EventArgs.Empty);
 					break;
 				case Drag.Draw:
@@ -1160,6 +1172,13 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 		private Button btAddShape;
 
 		private int newPreset;
+
+		//The shape new boxes are drawn with: the last one used (a preset, or -1 for corners set by hand). Kept in the settings.
+		private int newKind;
+
+		private int[] newCorners = new int[4];
+
+		private bool newCircular;
 
 		private ComboBox cboShape;
 
@@ -1413,6 +1432,8 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 				Commit();
 			};
 			canvas.RegionDrawn += OnRegionDrawn;
+			canvas.CornersEdited += RememberShapeOf;
+			LoadRememberedShape();
 			canvas.ContextRequested += ShowBoxMenu;
 			lstBoxes.SelectedIndexChanged += delegate
 			{
@@ -1453,6 +1474,7 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 				}
 				EnsureRect(box);
 				box.Circular = chkCircular.Checked;
+				RememberShapeOf(box);
 				SyncControls();
 				canvas.Invalidate();
 				Touch();
@@ -1469,6 +1491,7 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 					}
 					EnsureRect(box);
 					box.Corners[corner] = (int)nudCorner[corner].Value;
+					RememberShapeOf(box);
 					SyncControls();
 					canvas.Invalidate();
 					Touch();
@@ -1941,6 +1964,8 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 		/// <summary>Gives the boxes the shape of a preset (rectangle, rounded, pill, oval, circle, octagon, diamond, triangles).</summary>
 		private void ApplyPreset(int index, List<TranslationBox> boxes)
 		{
+			TranslationShapes.Preset(index, out int rememberKind, out int[] rememberCorners, out bool rememberCircular);
+			RememberShape(index, rememberKind, rememberCorners, rememberCircular);
 			foreach (TranslationBox box in boxes.Where((TranslationBox b) => b.Shape == null && !b.Skip))
 			{
 				EnsureRect(box);
@@ -1970,6 +1995,87 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			CommitNow();
 		}
 
+		/// <summary>Remembers a shape as the one new boxes are drawn with, and keeps it for the next time ComicRack runs.</summary>
+		private void RememberShape(int preset, int kind, int[] corners, bool circular)
+		{
+			newPreset = preset;
+			newKind = kind;
+			newCorners = (int[])(corners ?? new int[4]).Clone();
+			newCircular = circular;
+			canvas.NewShaped = !(preset == 0 || (preset < 0 && TranslationShapes.IsPlain(kind, newCorners)));
+			canvas.NewKind = newKind;
+			canvas.NewCorners = (int[])newCorners.Clone();
+			canvas.NewCircular = newCircular;
+			try
+			{
+				Program.Settings.TranslatorLastShape = preset + "|" + kind + "|" + string.Join(",", newCorners) + "|" + (circular ? 1 : 0);
+			}
+			catch (Exception)
+			{
+			}
+		}
+
+		/// <summary>Takes the shape used last time from the settings (a plain rectangle when there is none).</summary>
+		private void LoadRememberedShape()
+		{
+			int preset = 0, kind = TranslationShapes.Round;
+			int[] corners = new int[4];
+			bool circular = false;
+			try
+			{
+				string[] parts = (Program.Settings.TranslatorLastShape ?? "").Split('|');
+				if (parts.Length == 4)
+				{
+					int p = int.Parse(parts[0]);
+					int k = int.Parse(parts[1]);
+					int[] c = parts[2].Split(',').Select((string v) => Math.Max(0, Math.Min(100, int.Parse(v)))).ToArray();
+					if (c.Length == 4 && p >= -1 && p < TranslationShapes.PresetNames.Length && k >= TranslationShapes.Round && k <= TranslationShapes.FreePolygon)
+					{
+						preset = p;
+						kind = k;
+						corners = c;
+						circular = parts[3] == "1";
+					}
+				}
+			}
+			catch (Exception)
+			{
+			}
+			RememberShape(preset, kind, corners, circular);
+		}
+
+		/// <summary>Gives a box just drawn the remembered shape.</summary>
+		private void ApplyRememberedShape(TranslationBox box, int[] rect)
+		{
+			if (!canvas.NewShaped)
+			{
+				return;
+			}
+			box.Form = newKind;
+			box.Corners = (int[])newCorners.Clone();
+			box.Circular = newCircular;
+			if (newKind == TranslationShapes.FreePolygon)
+			{
+				box.Points = TranslationShapes.OutlinePoints(rect, TranslationShapes.Round, new int[4], false);
+			}
+			if (newPreset == 4)
+			{
+				int side = Math.Min(rect[2] - rect[0], rect[3] - rect[1]);
+				int cx = (rect[0] + rect[2]) / 2, cy = (rect[1] + rect[3]) / 2;
+				box.Rect = new[] { cx - side / 2, cy - side / 2, cx - side / 2 + side, cy - side / 2 + side };
+			}
+		}
+
+		/// <summary>Called when the shape of the selected box was set by hand (corner sizes, circular corners): that is the shape remembered.</summary>
+		private void RememberShapeOf(TranslationBox box)
+		{
+			if (box != null && box.Shape == null && box.Form != TranslationShapes.FreePolygon)
+			{
+				int preset = TranslationShapes.PresetOf(box.Form, box.Corners ?? new int[4], box.Circular);
+				RememberShape(preset, box.Form, box.Corners, box.Circular);
+			}
+		}
+
 		/// <summary>The little arrow beside "Add text box": pick the shape the next box is drawn with.</summary>
 		private void ShowAddShapeMenu()
 		{
@@ -1981,8 +2087,8 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 				ToolStripMenuItem item = new ToolStripMenuItem(names[i]) { Checked = i == newPreset };
 				item.Click += delegate
 				{
-					newPreset = index;
-					canvas.NewPreset = index;
+					TranslationShapes.Preset(index, out int kind, out int[] corners, out bool circular);
+					RememberShape(index, kind, corners, circular);
 					SetAddMode(true);
 					SetStatus("Drag a rectangle around the text; the new box is a " + names[index].ToLowerInvariant() + ".");
 				};
@@ -2071,24 +2177,8 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 							Translation = region.Translation,
 							Manual = true
 						};
-						if (newPreset > 0)
-						{
-							TranslationShapes.Preset(newPreset, out int kind, out int[] corners, out bool circular);
-							box.Form = kind;
-							box.Corners = corners;
-							box.Circular = circular;
-							if (newPreset == TranslationShapes.PolygonPreset)
-							{
-								box.Points = TranslationShapes.OutlinePoints(rect, TranslationShapes.Round, new int[4], false);
-							}
-							if (newPreset == 4)
-							{
-								int side = Math.Min(rect[2] - rect[0], rect[3] - rect[1]);
-								int cx = (rect[0] + rect[2]) / 2, cy = (rect[1] + rect[3]) / 2;
-								box.Rect = new[] { cx - side / 2, cy - side / 2, cx - side / 2 + side, cy - side / 2 + side };
-							}
-						}
-						canvas.Boxes.Add(box);
+						ApplyRememberedShape(box, rect);
+					canvas.Boxes.Add(box);
 						canvas.Selected = box;
 						SyncList();
 						SyncControls();
