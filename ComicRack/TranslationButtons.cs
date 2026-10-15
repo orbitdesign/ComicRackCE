@@ -66,32 +66,40 @@ namespace cYo.Projects.ComicRack.Viewer
 			ThreadPool.QueueUserWorkItem(delegate { Poll(); });
 		}
 
+		private static DateTime configRead = DateTime.MinValue;
+
 		private static void Poll()
 		{
-			bool helper = Get(HelperUrl + "/api/config", out string body);
-			if (!helper)
+			//Liveness is asked with the helper's light health call. A helper that is busy lettering a page can be slow to answer
+			//anything: slow is not stopped. Only a refused connection (nothing listening) counts, and then twice in a row.
+			Reach reach = Get(HelperUrl + "/health", out _);
+			bool helper;
+			if (reach == Reach.Refused)
 			{
-				//A busy helper can be slow to answer: it takes two misses in a row to call it down.
 				missed++;
-				if (missed < 2 && HelperUp)
-				{
-					helper = true;
-					body = null;
-				}
+				helper = missed < 2 && HelperUp;
 			}
 			else
 			{
 				missed = 0;
+				helper = true;
 			}
-			if (helper && body != null)
+			if (helper && reach == Reach.Answered && DateTime.UtcNow - configRead > TimeSpan.FromSeconds(60))
 			{
-				Match m = Regex.Match(body ?? "", "\"ollama_url\"\\s*:\\s*\"([^\"]+)\"");
-				if (m.Success)
+				//The address of Ollama is in the helper's settings; read now and then, not every few seconds.
+				if (Get(HelperUrl + "/api/config", out string body) == Reach.Answered && body != null)
 				{
-					ollamaUrl = m.Groups[1].Value.TrimEnd('/');
+					configRead = DateTime.UtcNow;
+					Match m = Regex.Match(body, "\"ollama_url\"\\s*:\\s*\"([^\"]+)\"");
+					if (m.Success)
+					{
+						ollamaUrl = m.Groups[1].Value.TrimEnd('/');
+					}
 				}
 			}
-			bool ollama = Get(ollamaUrl + "/api/tags", out _);
+			//Ollama too: busy (slow to answer) is still running.
+			Reach ollamaReach = Get(ollamaUrl + "/api/tags", out _);
+			bool ollama = ollamaReach == Reach.Answered || (ollamaReach == Reach.Slow && OllamaUp);
 			HelperUp = helper;
 			OllamaUp = ollama;
 			if (helper != lastHelper || ollama != lastOllama || Busy != lastBusy)
@@ -103,25 +111,41 @@ namespace cYo.Projects.ComicRack.Viewer
 			}
 		}
 
-		private static bool Get(string url, out string body)
+		private enum Reach
+		{
+			Answered,
+			Refused,
+			Slow
+		}
+
+		private static Reach Get(string url, out string body)
 		{
 			body = null;
 			try
 			{
 				HttpWebRequest request = (HttpWebRequest)WebRequest.Create(url);
 				request.Proxy = null;
-				request.Timeout = 4000;
-				request.ReadWriteTimeout = 4000;
+				request.Timeout = 5000;
+				request.ReadWriteTimeout = 5000;
 				using (HttpWebResponse response = (HttpWebResponse)request.GetResponse())
 				using (StreamReader reader = new StreamReader(response.GetResponseStream()))
 				{
 					body = reader.ReadToEnd();
-					return true;
+					return Reach.Answered;
 				}
+			}
+			catch (WebException ex)
+			{
+				if (ex.Response != null)
+				{
+					ex.Response.Dispose();
+					return Reach.Answered;          //an error answer is still an answer
+				}
+				return ex.Status == WebExceptionStatus.Timeout ? Reach.Slow : Reach.Refused;
 			}
 			catch (Exception)
 			{
-				return false;
+				return Reach.Refused;
 			}
 		}
 
@@ -291,12 +315,12 @@ namespace cYo.Projects.ComicRack.Viewer
 
 		private static bool HelperPolled()
 		{
-			return Get(HelperUrl + "/api/config", out _);
+			return Get(HelperUrl + "/health", out _) != Reach.Refused;
 		}
 
 		private static bool OllamaPolled()
 		{
-			return Get(ollamaUrl + "/api/tags", out _);
+			return Get(ollamaUrl + "/api/tags", out _) != Reach.Refused;
 		}
 
 		private static void WaitFor(Func<bool> condition, int seconds)
