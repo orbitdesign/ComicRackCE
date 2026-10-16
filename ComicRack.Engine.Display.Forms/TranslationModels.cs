@@ -382,6 +382,56 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 		public List<string> Notes { get; set; } = new List<string>();
 	}
 
+	/// <summary>
+	/// The fonts chosen for the two kinds of lettering, by font file name: one for boxes whose original is in capital letters, one for
+	/// mixed case. Empty means the translator's own choice.
+	/// </summary>
+	public class StyleFonts
+	{
+		public string Caps { get; set; } = "";
+
+		public string Mixed { get; set; } = "";
+
+		public bool IsEmpty => string.IsNullOrEmpty(Caps) && string.IsNullOrEmpty(Mixed);
+
+		public bool Same(StyleFonts other)
+		{
+			return other != null && (Caps ?? "") == (other.Caps ?? "") && (Mixed ?? "") == (other.Mixed ?? "");
+		}
+
+		public StyleFonts Clone()
+		{
+			return new StyleFonts { Caps = Caps ?? "", Mixed = Mixed ?? "" };
+		}
+
+		internal void Write(Utf8JsonWriter w, string name)
+		{
+			w.WriteStartObject(name);
+			w.WriteString("caps", Caps ?? "");
+			w.WriteString("mixed", Mixed ?? "");
+			w.WriteEndObject();
+		}
+
+		internal static StyleFonts Read(JsonElement e)
+		{
+			return new StyleFonts { Caps = TranslationBox.GetString(e, "caps"), Mixed = TranslationBox.GetString(e, "mixed") };
+		}
+	}
+
+	/// <summary>What the helper's font search is doing now.</summary>
+	public class FontProgress
+	{
+		public bool Busy { get; set; }
+
+		public string Stage { get; set; } = "";
+
+		public int Done { get; set; }
+
+		public int Total { get; set; }
+
+		public double Seconds { get; set; }
+	}
+
 	/// <summary>A font file on this computer that the translator can use.</summary>
 	public class FontFile
 	{
@@ -421,6 +471,9 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 
 		/// <summary>Where fonts downloaded from other sites can be dropped to be compared too.</summary>
 		public string CandidatesFolder { get; set; } = "";
+
+		/// <summary>The kind of lettering of the main answer ("Capital letters (10 boxes)"), when the helper looked at several boxes.</summary>
+		public string Label { get; set; } = "";
 
 		public string Error { get; set; } = "";
 	}

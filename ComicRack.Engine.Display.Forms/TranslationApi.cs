@@ -22,9 +22,15 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 			BaseUrl = (string.IsNullOrWhiteSpace(baseUrl) ? "http://127.0.0.1:8790" : baseUrl.Trim()).TrimEnd('/');
 		}
 
-		public PageAnalysis Analyze(byte[] page)
+		public PageAnalysis Analyze(byte[] page, StyleFonts fonts = null)
 		{
-			return ReadPage(Send("/api/analyze", page, "application/octet-stream", 900000));
+			string path = "/api/analyze";
+			if (fonts != null && !fonts.IsEmpty)
+			{
+				//the fonts chosen for this page or book; the helper keeps the picture drawn with them apart from others
+				path += "?font_caps=" + Uri.EscapeDataString(fonts.Caps ?? "") + "&font_mixed=" + Uri.EscapeDataString(fonts.Mixed ?? "");
+			}
+			return ReadPage(Send(path, page, "application/octet-stream", 900000));
 		}
 
 		/// <summary>
@@ -55,7 +61,7 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 			}
 		}
 
-		public PageAnalysis Render(byte[] page, IEnumerable<TranslationBox> boxList, IEnumerable<ProtectStroke> protect = null)
+		public PageAnalysis Render(byte[] page, IEnumerable<TranslationBox> boxList, IEnumerable<ProtectStroke> protect = null, StyleFonts fonts = null)
 		{
 			List<TranslationBox> boxes = boxList.ToList();
 			using (MemoryStream ms = new MemoryStream())
@@ -70,6 +76,11 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 						box.Write(w);
 					}
 					w.WriteEndArray();
+					if (fonts != null && !fonts.IsEmpty)
+					{
+						w.WriteString("font_caps", fonts.Caps ?? "");
+						w.WriteString("font_mixed", fonts.Mixed ?? "");
+					}
 					List<ProtectStroke> strokes = protect?.Where((ProtectStroke p) => p != null && p.Points.Length >= 2).ToList();
 					if (strokes != null && strokes.Count > 0)
 					{
@@ -199,6 +210,29 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 			}
 		}
 
+		/// <summary>What the font search is doing now (a quick call that does not wait for the search).</summary>
+		public FontProgress FontSearchProgress()
+		{
+			using (JsonDocument doc = JsonDocument.Parse(Send("/api/font-progress", Encoding.UTF8.GetBytes("{}"), "application/json", 5000)))
+			{
+				JsonElement r = doc.RootElement;
+				return new FontProgress
+				{
+					Busy = TranslationBox.GetBool(r, "busy"),
+					Stage = TranslationBox.GetString(r, "stage"),
+					Done = (int)TranslationBox.GetDouble(r, "done"),
+					Total = (int)TranslationBox.GetDouble(r, "total"),
+					Seconds = TranslationBox.GetDouble(r, "seconds")
+				};
+			}
+		}
+
+		/// <summary>Stops the font search that is running.</summary>
+		public void CancelFontSearch()
+		{
+			Send("/api/font-cancel", Encoding.UTF8.GetBytes("{}"), "application/json", 5000);
+		}
+
 		/// <summary>Every font file on this computer that the translator can use, sorted by name.</summary>
 		public List<FontFile> FontsOnPc()
 		{
@@ -249,7 +283,8 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 					{
 						Error = TranslationBox.GetString(root, "error"),
 						Compared = (int)TranslationBox.GetDouble(root, "compared"),
-						CandidatesFolder = TranslationBox.GetString(root, "candidates_folder")
+						CandidatesFolder = TranslationBox.GetString(root, "candidates_folder"),
+						Label = TranslationBox.GetString(root, "label")
 					};
 					string crop = TranslationBox.GetString(root, "crop");
 					if (!string.IsNullOrEmpty(crop))

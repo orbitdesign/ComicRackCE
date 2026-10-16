@@ -319,12 +319,13 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 			{
 				try
 				{
-					page = api.Analyze(data);
+					StyleFonts fonts = store.GetFonts(bookKey, index);
+					page = api.Analyze(data, fonts);
 					List<TranslationBox> edits = store.GetEdits(bookKey, index);
 					List<ProtectStroke> protect = store.GetProtect(bookKey, index);
 					if ((edits.Count > 0 && TranslationStore.Merge(page.Boxes, edits)) || protect.Count > 0)
 					{
-						page = api.Render(data, page.Boxes, protect);
+						page = api.Render(data, page.Boxes, protect, fonts);
 					}
 					break;
 				}

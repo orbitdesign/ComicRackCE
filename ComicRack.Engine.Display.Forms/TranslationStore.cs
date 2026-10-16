@@ -26,6 +26,11 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 
 			//Artwork the user painted over with the protect brush.
 			public List<ProtectStroke> Protect = new List<ProtectStroke>();
+
+			//Fonts chosen for this page's lettering (they come before the book's).
+			public StyleFonts Fonts = new StyleFonts();
+
+			public bool HasUserData => Edits.Count > 0 || Protect.Count > 0 || !Fonts.IsEmpty;
 		}
 
 		private class BookData
@@ -33,6 +38,9 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 			public string Title = "";
 
 			public string Path = "";
+
+			//Fonts chosen for the whole book's lettering.
+			public StyleFonts Fonts = new StyleFonts();
 
 			public readonly SortedDictionary<int, StoredPage> Pages = new SortedDictionary<int, StoredPage>();
 
@@ -170,6 +178,88 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 			}
 		}
 
+		/// <summary>The fonts the lettering of a page is drawn with: the page's own choice for each kind of lettering, else the book's.</summary>
+		public StyleFonts GetFonts(string bookKey, int page)
+		{
+			if (bookKey == null)
+			{
+				return new StyleFonts();
+			}
+			lock (sync)
+			{
+				BookData book = Load(bookKey);
+				StyleFonts own = book.Pages.TryGetValue(page, out StoredPage stored) ? stored.Fonts : new StyleFonts();
+				return new StyleFonts
+				{
+					Caps = string.IsNullOrEmpty(own.Caps) ? book.Fonts.Caps ?? "" : own.Caps,
+					Mixed = string.IsNullOrEmpty(own.Mixed) ? book.Fonts.Mixed ?? "" : own.Mixed
+				};
+			}
+		}
+
+		/// <summary>The fonts chosen for a page itself (not the book's).</summary>
+		public StyleFonts GetPageFonts(string bookKey, int page)
+		{
+			if (bookKey == null)
+			{
+				return new StyleFonts();
+			}
+			lock (sync)
+			{
+				return Load(bookKey).Pages.TryGetValue(page, out StoredPage stored) ? stored.Fonts.Clone() : new StyleFonts();
+			}
+		}
+
+		public StyleFonts GetBookFonts(string bookKey)
+		{
+			if (bookKey == null)
+			{
+				return new StyleFonts();
+			}
+			lock (sync)
+			{
+				return Load(bookKey).Fonts.Clone();
+			}
+		}
+
+		public void SetPageFonts(string bookKey, int page, StyleFonts fonts)
+		{
+			if (bookKey == null)
+			{
+				return;
+			}
+			lock (sync)
+			{
+				BookData book = Load(bookKey);
+				if (!book.Pages.TryGetValue(page, out StoredPage stored))
+				{
+					book.Pages[page] = stored = new StoredPage();
+				}
+				stored.Fonts = (fonts ?? new StyleFonts()).Clone();
+				if (!stored.HasUserData && string.IsNullOrEmpty(stored.Sha))
+				{
+					book.Pages.Remove(page);
+				}
+				book.Dirty = true;
+				Save(bookKey, book);
+			}
+		}
+
+		public void SetBookFonts(string bookKey, StyleFonts fonts)
+		{
+			if (bookKey == null)
+			{
+				return;
+			}
+			lock (sync)
+			{
+				BookData book = Load(bookKey);
+				book.Fonts = (fonts ?? new StyleFonts()).Clone();
+				book.Dirty = true;
+				Save(bookKey, book);
+			}
+		}
+
 		/// <summary>The protect brush strokes of a page (copies).</summary>
 		public List<ProtectStroke> GetProtect(string bookKey, int page)
 		{
@@ -199,7 +289,7 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 					book.Pages[page] = stored = new StoredPage();
 				}
 				stored.Protect = strokes.Where((ProtectStroke p) => p.Points.Length >= 2).Select((ProtectStroke p) => p.Clone()).ToList();
-				if (stored.Protect.Count == 0 && stored.Edits.Count == 0 && string.IsNullOrEmpty(stored.Sha))
+				if (!stored.HasUserData && string.IsNullOrEmpty(stored.Sha))
 				{
 					book.Pages.Remove(page);
 				}
@@ -287,8 +377,9 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 					{
 						stored.Edits.Clear();
 						stored.Protect.Clear();
+						stored.Fonts = new StyleFonts();
 					}
-					if (stored.Edits.Count == 0 && stored.Protect.Count == 0)
+					if (!stored.HasUserData)
 					{
 						book.Pages.Remove(page);
 					}
@@ -315,8 +406,9 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 					{
 						stored.Edits.Clear();
 						stored.Protect.Clear();
+						stored.Fonts = new StyleFonts();
 					}
-					if (stored.Edits.Count == 0 && stored.Protect.Count == 0)
+					if (!stored.HasUserData)
 					{
 						book.Pages.Remove(page);
 					}
@@ -407,6 +499,10 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 						JsonElement root = doc.RootElement;
 						book.Title = TranslationBox.GetString(root, "title");
 						book.Path = TranslationBox.GetString(root, "path");
+						if (root.TryGetProperty("fonts", out JsonElement bookFonts) && bookFonts.ValueKind == JsonValueKind.Object)
+						{
+							book.Fonts = StyleFonts.Read(bookFonts);
+						}
 						if (root.TryGetProperty("pages", out JsonElement pages) && pages.ValueKind == JsonValueKind.Array)
 						{
 							foreach (JsonElement p in pages.EnumerateArray())
@@ -415,6 +511,10 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 								if (p.TryGetProperty("edits", out JsonElement edits) && edits.ValueKind == JsonValueKind.Array)
 								{
 									stored.Edits = edits.EnumerateArray().Select(TranslationBox.Read).ToList();
+								}
+								if (p.TryGetProperty("fonts", out JsonElement pageFonts) && pageFonts.ValueKind == JsonValueKind.Object)
+								{
+									stored.Fonts = StyleFonts.Read(pageFonts);
 								}
 								if (p.TryGetProperty("protect", out JsonElement strokes) && strokes.ValueKind == JsonValueKind.Array)
 								{
@@ -444,7 +544,7 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 			try
 			{
 				string file = FileOf(bookKey);
-				if (book.Pages.Count == 0)
+				if (book.Pages.Count == 0 && book.Fonts.IsEmpty)
 				{
 					if (File.Exists(file))
 					{
@@ -462,6 +562,10 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 					w.WriteNumber("version", 1);
 					w.WriteString("title", book.Title);
 					w.WriteString("path", book.Path);
+					if (!book.Fonts.IsEmpty)
+					{
+						book.Fonts.Write(w, "fonts");
+					}
 					w.WriteStartArray("pages");
 					foreach (KeyValuePair<int, StoredPage> kv in book.Pages)
 					{
@@ -474,6 +578,10 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 							box.Write(w);
 						}
 						w.WriteEndArray();
+						if (!kv.Value.Fonts.IsEmpty)
+						{
+							kv.Value.Fonts.Write(w, "fonts");
+						}
 						if (kv.Value.Protect.Count > 0)
 						{
 							w.WriteStartArray("protect");

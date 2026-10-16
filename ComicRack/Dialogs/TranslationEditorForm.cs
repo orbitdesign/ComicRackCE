@@ -1389,6 +1389,36 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 
 		private Button btBrush;
 
+		private Button btUndo;
+
+		private Button btRedo;
+
+		//What can be undone: the state of the page (boxes, protect strokes, font choices) before each of the last changes.
+		private class EditState
+		{
+			public List<TranslationBox> Boxes;
+
+			public List<ProtectStroke> Protect;
+
+			public StyleFonts PageFonts;
+
+			public StyleFonts BookFonts;
+		}
+
+		private class History
+		{
+			public readonly List<EditState> Undo = new List<EditState>();
+
+			public readonly List<EditState> Redo = new List<EditState>();
+
+			//The state the page was last known to be in: what the next change is measured from.
+			public EditState Baseline;
+		}
+
+		private const int HistorySteps = 5;
+
+		private readonly Dictionary<int, History> histories = new Dictionary<int, History>();
+
 		private Button btIdentify;
 
 		private Button btEraser;
@@ -1541,6 +1571,12 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			btFit = new Button { Text = "Fit page", Location = new Point(212, y), Size = new Size(70, 26), Name = "btFit" };
 			side.Controls.AddRange(new Control[] { lblPage, btPrev, btNext, btFit });
 			y += 36;
+			btUndo = new Button { Text = "Undo", Location = new Point(10, y), Size = new Size(100, 26), Enabled = false, Name = "btUndo" };
+			btRedo = new Button { Text = "Redo", Location = new Point(114, y), Size = new Size(100, 26), Enabled = false, Name = "btRedo" };
+			new ToolTip().SetToolTip(btUndo, "Undo the last change on this page (Ctrl+Z), up to 5 steps: boxes, text, shapes, the protect brush and font choices");
+			new ToolTip().SetToolTip(btRedo, "Do again what was undone (Ctrl+Y)");
+			side.Controls.AddRange(new Control[] { btUndo, btRedo });
+			y += 34;
 			btAdd = new Button { Text = "Add text box", Location = new Point(10, y), Size = new Size(118, 28), Name = "btAdd" };
 			btAddShape = new Button { Text = "\u25be", Location = new Point(130, y), Size = new Size(30, 28), Name = "btAddShape" };
 			btDelete = new Button { Text = "Delete box", Location = new Point(166, y), Size = new Size(100, 28), Name = "btDelete" };
@@ -1710,6 +1746,8 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			btNext.Click += delegate { MovePage(1); };
 			btFit.Click += delegate { canvas.Fit(); };
 			btAdd.Click += delegate { SetAddMode(!canvas.AddMode); };
+			btUndo.Click += delegate { StepHistory(undo: true); };
+			btRedo.Click += delegate { StepHistory(undo: false); };
 			btIdentify.Click += delegate { IdentifyFont(); };
 			btBrush.Click += delegate { SetBrushMode(canvas.Brush == PageCanvas.BrushKind.Paint ? PageCanvas.BrushKind.Off : PageCanvas.BrushKind.Paint); };
 			btEraser.Click += delegate { SetBrushMode(canvas.Brush == PageCanvas.BrushKind.Erase ? PageCanvas.BrushKind.Off : PageCanvas.BrushKind.Erase); };
@@ -1972,6 +2010,7 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 
 		private void reader_BookChanged(object sender, EventArgs e)
 		{
+			ClearHistory();
 			pendingCommit = false;
 			commitTimer.Stop();
 			LoadPage(reader.CurrentPage);
@@ -2006,8 +2045,13 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 		//Pages were forgotten (cache deleted): ask for this page again.
 		private void service_StateChanged(object sender, EventArgs e)
 		{
+			bool forgotten = service != null && service.LastStateChange == "forget";
 			BeginInvokeSafe(delegate
 			{
+				if (forgotten)
+				{
+					ClearHistory();
+				}
 				pendingCommit = false;
 				LoadPage(reader.IsPageDisplayed(page) ? page : reader.CurrentPage);
 			});
@@ -2101,7 +2145,9 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 				}
 				SyncList();
 				SyncControls();
+				HistoryOfPage().Baseline = Capture();
 			}
+			UpdateHistoryButtons();
 			canvas.Message = state == null ? "Waiting for this page to be translated..." : (state.Waiting ? "Drawing the page..." : null);
 			SetStatus(state == null ? "Waiting for the translation of this page..." : (state.Waiting ? "Drawing the page..." : (state.Boxes.Count == 0 ? "No text found on this page. Use Add text box to translate text yourself." : "Changes are saved with the book.")));
 			canvas.Invalidate();
@@ -2439,6 +2485,140 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			Commit();
 		}
 
+		private History HistoryOfPage()
+		{
+			if (!histories.TryGetValue(page, out History h))
+			{
+				histories[page] = h = new History();
+			}
+			return h;
+		}
+
+		/// <summary>The page as it is now: its boxes, protect strokes and font choices (copies).</summary>
+		private EditState Capture()
+		{
+			return new EditState
+			{
+				Boxes = canvas.Boxes.Select((TranslationBox b) => b.Clone()).ToList(),
+				Protect = canvas.Protect.Select((ProtectStroke p) => p.Clone()).ToList(),
+				PageFonts = service != null && key != null ? service.GetStyleFonts(key, false) : new StyleFonts(),
+				BookFonts = service != null && key != null ? service.GetStyleFonts(key, true) : new StyleFonts()
+			};
+		}
+
+		private static EditState Copy(EditState s)
+		{
+			return new EditState
+			{
+				Boxes = s.Boxes.Select((TranslationBox b) => b.Clone()).ToList(),
+				Protect = s.Protect.Select((ProtectStroke p) => p.Clone()).ToList(),
+				PageFonts = s.PageFonts.Clone(),
+				BookFonts = s.BookFonts.Clone()
+			};
+		}
+
+		/// <summary>A change is about to be (or was just) made: the state before it becomes the next step back, and what was undone can no longer be redone.</summary>
+		private void RememberStep(EditState before)
+		{
+			if (before == null || key == null)
+			{
+				return;
+			}
+			History h = HistoryOfPage();
+			h.Undo.Add(before);
+			while (h.Undo.Count > HistorySteps)
+			{
+				h.Undo.RemoveAt(0);
+			}
+			h.Redo.Clear();
+			h.Baseline = Capture();
+			UpdateHistoryButtons();
+		}
+
+		private void UpdateHistoryButtons()
+		{
+			History h = histories.TryGetValue(page, out History found) ? found : null;
+			int undo = h?.Undo.Count ?? 0, redo = h?.Redo.Count ?? 0;
+			btUndo.Enabled = undo > 0 && key != null;
+			btRedo.Enabled = redo > 0 && key != null;
+			btUndo.Text = undo > 0 ? "Undo (" + undo + ")" : "Undo";
+			btRedo.Text = redo > 0 ? "Redo (" + redo + ")" : "Redo";
+		}
+
+		private void ClearHistory()
+		{
+			histories.Clear();
+			UpdateHistoryButtons();
+		}
+
+		/// <summary>Goes one step back (undo) or forward again (redo) on this page.</summary>
+		private void StepHistory(bool undo)
+		{
+			if (key == null || service == null)
+			{
+				return;
+			}
+			if (pendingCommit)
+			{
+				commitTimer.Stop();
+				Commit();
+			}
+			History h = HistoryOfPage();
+			List<EditState> from = undo ? h.Undo : h.Redo, to = undo ? h.Redo : h.Undo;
+			if (from.Count == 0)
+			{
+				return;
+			}
+			EditState target = from[from.Count - 1];
+			from.RemoveAt(from.Count - 1);
+			to.Add(Capture());
+			while (to.Count > HistorySteps)
+			{
+				to.RemoveAt(0);
+			}
+			ApplyState(target);
+			h.Baseline = Copy(target);
+			UpdateHistoryButtons();
+			SetStatus((undo ? "Undone" : "Done again") + ". " + h.Undo.Count + " step(s) to undo, " + h.Redo.Count + " to redo. Drawing the page...");
+		}
+
+		private static bool SameStrokes(List<ProtectStroke> a, List<ProtectStroke> b)
+		{
+			return a.Count == b.Count && a.Zip(b, (ProtectStroke x, ProtectStroke y) => x.Radius == y.Radius && x.Points.SequenceEqual(y.Points)).All((bool same) => same);
+		}
+
+		/// <summary>Puts the page back to a state: the boxes and strokes on the canvas and in the service, the font choices in the book's record.</summary>
+		private void ApplyState(EditState s)
+		{
+			List<string> selectedIds = canvas.AllSelected.Select((TranslationBox b) => b.Id).ToList();
+			canvas.Boxes = s.Boxes.Select((TranslationBox b) => b.Clone()).ToList();
+			List<TranslationBox> again = canvas.Boxes.Where((TranslationBox b) => selectedIds.Contains(b.Id)).ToList();
+			canvas.Selected = again.FirstOrDefault();
+			canvas.Extra.Clear();
+			foreach (TranslationBox other in again.Skip(1))
+			{
+				canvas.Extra.Add(other);
+			}
+			List<ProtectStroke> strokesBefore = canvas.Protect;
+			canvas.Protect = s.Protect.Select((ProtectStroke p) => p.Clone()).ToList();
+			using (IItemLock<PageImage> original = reader.GetOriginalPage(page))
+			{
+				if (original?.Item != null)
+				{
+					service.Edit(key, original.Item, canvas.Boxes);
+					if (!SameStrokes(strokesBefore, canvas.Protect))
+					{
+						service.SetProtect(key, original.Item, canvas.Protect);
+					}
+				}
+			}
+			//The fonts last: drawing them again asks for the page anew, with the boxes and strokes saved just above.
+			service.RestoreStyleFonts(key, s.PageFonts, s.BookFonts);
+			SyncList();
+			SyncControls();
+			canvas.Invalidate();
+		}
+
 		private void Commit()
 		{
 			if (!pendingCommit || key == null || service == null)
@@ -2447,9 +2627,14 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			}
 			pendingCommit = false;
 			bool accepted;
+			EditState before = HistoryOfPage().Baseline;
 			using (IItemLock<PageImage> original = reader.GetOriginalPage(page))
 			{
 				accepted = original?.Item != null && service.Edit(key, original.Item, canvas.Boxes);
+			}
+			if (accepted)
+			{
+				RememberStep(before);
 			}
 			SetStatus(accepted ? "Drawing the page..." : "This page is not translated yet; the change was not applied.");
 			SyncList();
@@ -2549,8 +2734,59 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 				service.InstallFont(family, use, done);
 			};
 			Action<Action<List<FontFile>, string>> listFonts = delegate (Action<List<FontFile>, string> done) { service.ListFonts(done); };
+			PageKey fontKey = key;
+			//A font for one kind of lettering (capitals or mixed case), on this page or the whole book; no family goes back to the default.
+			Action<string, bool, bool, Action<string, string>> applyFont = delegate (string family, bool capitals, bool wholeBook, Action<string, string> done)
+			{
+				Action<string> store = delegate (string file)
+				{
+					//on the editor's own thread: the state before is taken, the font set, and the step remembered
+					bool ok = false;
+					BeginInvokeSafe(delegate
+					{
+						EditState before = key == fontKey ? Capture() : null;
+						ok = service.SetStyleFont(fontKey, capitals, file, wholeBook);
+						if (ok)
+						{
+							RememberStep(before);
+						}
+						if (ok)
+						{
+							done(file, null);
+						}
+						else
+						{
+							done(null, "This page is not translated yet.");
+						}
+					});
+				};
+				if (string.IsNullOrEmpty(family))
+				{
+					store("");
+					return;
+				}
+				service.InstallFont(family, false, delegate (string file, string error)
+				{
+					if (error != null)
+					{
+						done(null, error);
+					}
+					else
+					{
+						store(file);
+					}
+				});
+			};
+			Func<bool, StyleFonts> currentFonts = (bool wholeBook) => service.GetStyleFonts(fontKey, wholeBook);
+			//the kind of lettering of the selected box, or of most of the page's boxes
+			Func<string, bool> isCaps = delegate (string s)
+			{
+				int letters = (s ?? "").Count(char.IsLetter);
+				return letters >= 4 && (s ?? "").Count(char.IsUpper) >= 0.8 * letters;
+			};
+			bool defaultCaps = boxSelected ? isCaps(boxText) : onPage.Count(b => isCaps(b.Text)) * 2 > onPage.Count;
 			string sampleText = boxSelected ? box.Translation ?? boxText : (onPage.FirstOrDefault()?.Translation ?? "");
-			using (TranslationFontDialog dialog = new TranslationFontDialog(search, install, boxSelected, listFonts, sampleText))
+			using (TranslationFontDialog dialog = new TranslationFontDialog(search, install, boxSelected, listFonts, sampleText, applyFont, currentFonts, defaultCaps, (Action<FontProgress> done) => service.FontSearchProgress(done), () => service.CancelFontSearch()))
 			{
 				dialog.ShowDialog(this);
 			}
@@ -2564,9 +2800,14 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 				return;
 			}
 			bool accepted;
+			EditState before = HistoryOfPage().Baseline;
 			using (IItemLock<PageImage> original = reader.GetOriginalPage(page))
 			{
 				accepted = original?.Item != null && service.SetProtect(key, original.Item, canvas.Protect);
+			}
+			if (accepted)
+			{
+				RememberStep(before);
 			}
 			SetStatus(accepted ? "Drawing the page..." : "This page is not translated yet; the protected area was not applied.");
 		}
@@ -2894,6 +3135,17 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			if (keyData == Keys.Delete && (canvas.Focused || lstBoxes.Focused))
 			{
 				DeleteSelected();
+				return true;
+			}
+			bool typing = ActiveControl is TextBoxBase || ActiveControl is NumericUpDown || ActiveControl is ComboBox;
+			if (!typing && (keyData == (Keys.Control | Keys.Z)))
+			{
+				StepHistory(undo: true);
+				return true;
+			}
+			if (!typing && (keyData == (Keys.Control | Keys.Y) || keyData == (Keys.Control | Keys.Shift | Keys.Z)))
+			{
+				StepHistory(undo: false);
 				return true;
 			}
 			if (keyData == Keys.Escape && canvas.AddMode)

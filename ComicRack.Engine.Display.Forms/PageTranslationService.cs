@@ -428,6 +428,113 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 			return true;
 		}
 
+		/// <summary>The fonts chosen for a page itself, or for its whole book.</summary>
+		public StyleFonts GetStyleFonts(PageKey key, bool wholeBook)
+		{
+			string bookKey;
+			int index;
+			lock (sync)
+			{
+				if (key == null || !entries.TryGetValue(key, out Entry entry))
+				{
+					return new StyleFonts();
+				}
+				bookKey = entry.BookKey;
+				index = entry.ImageIndex;
+			}
+			return wholeBook ? Store.GetBookFonts(bookKey) : Store.GetPageFonts(bookKey, index);
+		}
+
+		/// <summary>
+		/// Sets the font of one kind of lettering (capitals or mixed case) for a page or its whole book (an empty name goes back to the
+		/// translator's own choice), and has the pages it concerns drawn again. Returns false when the page is not known.
+		/// </summary>
+		public bool SetStyleFont(PageKey key, bool capitals, string file, bool wholeBook)
+		{
+			string bookKey;
+			int index;
+			lock (sync)
+			{
+				if (key == null || !entries.TryGetValue(key, out Entry entry) || entry.BookKey == null)
+				{
+					return false;
+				}
+				bookKey = entry.BookKey;
+				index = entry.ImageIndex;
+			}
+			StyleFonts fonts = wholeBook ? Store.GetBookFonts(bookKey) : Store.GetPageFonts(bookKey, index);
+			if (capitals)
+			{
+				fonts.Caps = file ?? "";
+			}
+			else
+			{
+				fonts.Mixed = file ?? "";
+			}
+			if (wholeBook)
+			{
+				Store.SetBookFonts(bookKey, fonts);
+			}
+			else
+			{
+				Store.SetPageFonts(bookKey, index, fonts);
+			}
+			RedrawInMemory(bookKey, wholeBook ? -1 : index);
+			return true;
+		}
+
+		/// <summary>
+		/// Puts the font choices of a page and of its book back to given ones (undo and redo) and has the pages they concern drawn again.
+		/// Returns true when anything was different.
+		/// </summary>
+		public bool RestoreStyleFonts(PageKey key, StyleFonts pageFonts, StyleFonts bookFonts)
+		{
+			string bookKey;
+			int index;
+			lock (sync)
+			{
+				if (key == null || !entries.TryGetValue(key, out Entry entry) || entry.BookKey == null)
+				{
+					return false;
+				}
+				bookKey = entry.BookKey;
+				index = entry.ImageIndex;
+			}
+			bool pageChanged = pageFonts != null && !pageFonts.Same(Store.GetPageFonts(bookKey, index));
+			bool bookChanged = bookFonts != null && !bookFonts.Same(Store.GetBookFonts(bookKey));
+			if (!pageChanged && !bookChanged)
+			{
+				return false;
+			}
+			if (pageChanged)
+			{
+				Store.SetPageFonts(bookKey, index, pageFonts);
+			}
+			if (bookChanged)
+			{
+				Store.SetBookFonts(bookKey, bookFonts);
+			}
+			RedrawInMemory(bookKey, bookChanged ? -1 : index);
+			return true;
+		}
+
+		/// <summary>What the last StateChanged was about: "fonts" (pages drawn again with other fonts) or "forget" (translations deleted).</summary>
+		public string LastStateChange { get; private set; } = "";
+
+		/// <summary>Drops the pictures kept of a book's pages (or one page), so that they are asked for, and drawn, again when shown.</summary>
+		public void RedrawInMemory(string bookKey, int page = -1)
+		{
+			lock (sync)
+			{
+				foreach (PageKey k in entries.Where((KeyValuePair<PageKey, Entry> kv) => kv.Value.BookKey == bookKey && (page < 0 || kv.Value.ImageIndex == page)).Select((KeyValuePair<PageKey, Entry> kv) => kv.Key).ToList())
+				{
+					entries.Remove(k);
+				}
+			}
+			LastStateChange = "fonts";
+			StateChanged?.Invoke(this, EventArgs.Empty);
+		}
+
 		/// <summary>The protect brush strokes of a page (copies); empty when there are none.</summary>
 		public List<ProtectStroke> GetProtect(PageKey key)
 		{
@@ -529,6 +636,40 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 				catch (Exception ex)
 				{
 					done(null, ex.Message);
+				}
+			});
+		}
+
+		/// <summary>Asks what the font search is doing; the answer arrives on a background thread (null when the helper does not say).</summary>
+		public void FontSearchProgress(Action<FontProgress> done)
+		{
+			string url = ServerUrl;
+			ThreadPool.QueueUserWorkItem(delegate
+			{
+				FontProgress progress = null;
+				try
+				{
+					progress = new TranslationApi(url).FontSearchProgress();
+				}
+				catch (Exception)
+				{
+				}
+				done(progress);
+			});
+		}
+
+		/// <summary>Stops the font search that is running.</summary>
+		public void CancelFontSearch()
+		{
+			string url = ServerUrl;
+			ThreadPool.QueueUserWorkItem(delegate
+			{
+				try
+				{
+					new TranslationApi(url).CancelFontSearch();
+				}
+				catch (Exception)
+				{
 				}
 			});
 		}
@@ -673,6 +814,7 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 				{
 					status = problem;
 				}
+				LastStateChange = "forget";
 				StateChanged?.Invoke(this, EventArgs.Empty);
 			});
 		}
@@ -836,17 +978,18 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 			{
 				TranslationApi api = new TranslationApi(ServerUrl);
 				List<ProtectStroke> protect = Store.GetProtect(entry.BookKey, entry.ImageIndex);
+				StyleFonts fonts = Store.GetFonts(entry.BookKey, entry.ImageIndex);
 				if (renderOnly)
 				{
-					page = api.Render(source, boxes, protect);
+					page = api.Render(source, boxes, protect, fonts);
 				}
 				else
 				{
-					page = api.Analyze(source);
+					page = api.Analyze(source, fonts);
 					List<TranslationBox> edits = Store.GetEdits(entry.BookKey, entry.ImageIndex);
 					if ((edits.Count > 0 && TranslationStore.Merge(page.Boxes, edits)) || protect.Count > 0)
 					{
-						page = api.Render(source, page.Boxes, protect);
+						page = api.Render(source, page.Boxes, protect, fonts);
 					}
 				}
 				result = page.Changed ? State.Done : State.NoText;
