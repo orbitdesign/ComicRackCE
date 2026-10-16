@@ -351,6 +351,9 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 	{
 		public string Family { get; set; } = "";
 
+		/// <summary>The font's file name, which is how the translator is told to use it.</summary>
+		public string File { get; set; } = "";
+
 		/// <summary>"google" (an open font from Google Fonts), "installed" (on this computer), "translator" (in the helper's fonts folder) or "candidates".</summary>
 		public string Source { get; set; } = "";
 

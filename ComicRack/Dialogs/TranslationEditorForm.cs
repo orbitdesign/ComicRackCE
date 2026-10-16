@@ -46,6 +46,16 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 
 			private Bitmap image;
 
+			/// <summary>The page as it was before translating, shown see-through over the picture to draw boxes along its bubbles.</summary>
+			private Bitmap overlay;
+
+			public bool OverlayOn { get; set; }
+
+			/// <summary>How much of the original shows through (0.1 to 0.9).</summary>
+			public float OverlayOpacity { get; set; } = 0.5f;
+
+			public bool HasOverlay => overlay != null;
+
 			private SizeF imageSize;
 
 			private float zoom = 1f;
@@ -184,6 +194,14 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 				Invalidate();
 			}
 
+			public void SetOverlay(Bitmap bitmap)
+			{
+				Bitmap old = overlay;
+				overlay = bitmap;
+				old?.Dispose();
+				Invalidate();
+			}
+
 			public void Fit()
 			{
 				if (imageSize.Width < 1 || ClientSize.Width < 20 || ClientSize.Height < 20)
@@ -210,6 +228,8 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 				{
 					image?.Dispose();
 					image = null;
+					overlay?.Dispose();
+					overlay = null;
 				}
 				base.Dispose(disposing);
 			}
@@ -644,6 +664,18 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 					g.InterpolationMode = zoom < 1f ? InterpolationMode.HighQualityBilinear : InterpolationMode.NearestNeighbor;
 					g.PixelOffsetMode = PixelOffsetMode.Half;
 					g.DrawImage(image, new RectangleF(pan.X, pan.Y, imageSize.Width * zoom, imageSize.Height * zoom));
+					if (OverlayOn && overlay != null)
+					{
+						//the original, see-through, over the same rectangle (whatever its pixel size is)
+						System.Drawing.Imaging.ColorMatrix fade = new System.Drawing.Imaging.ColorMatrix { Matrix33 = Math.Max(0.05f, Math.Min(0.95f, OverlayOpacity)) };
+						using (System.Drawing.Imaging.ImageAttributes attributes = new System.Drawing.Imaging.ImageAttributes())
+						{
+							attributes.SetColorMatrix(fade);
+							Rectangle target = Rectangle.Round(new RectangleF(pan.X, pan.Y, imageSize.Width * zoom, imageSize.Height * zoom));
+							g.InterpolationMode = InterpolationMode.HighQualityBilinear;
+							g.DrawImage(overlay, target, 0, 0, overlay.Width, overlay.Height, GraphicsUnit.Pixel, attributes);
+						}
+					}
 				}
 				g.SmoothingMode = SmoothingMode.AntiAlias;
 				foreach (ProtectStroke stroke in Protect)
@@ -1391,6 +1423,12 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 
 		private Button btUndo;
 
+		private CheckBox chkOverlay;
+
+		private TrackBar tbOverlay;
+
+		private Label lblOverlay;
+
 		private Button btRedo;
 
 		//What can be undone: the state of the page (boxes, protect strokes, font choices) before each of the last changes.
@@ -1529,6 +1567,8 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			ShowInTaskbar = false;
 			MinimumSize = new Size(820, 600);
 			ClientSize = new Size(1180, 800);
+			WindowMemory.Restore(this, () => Program.Settings.TranslatorEditorSize, MinimumSize, Screen.FromControl(reader).WorkingArea);
+			WindowMemory.Watch(this, (string size) => Program.Settings.TranslatorEditorSize = size);
 			Rectangle area = Screen.FromControl(reader).WorkingArea;
 			Location = new Point(area.Left + Math.Max(0, (area.Width - Width) / 2), area.Top + Math.Max(0, (area.Height - Height) / 2));
 			BuildControls();
@@ -1576,6 +1616,13 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			new ToolTip().SetToolTip(btUndo, "Undo the last change on this page (Ctrl+Z), up to 5 steps: boxes, text, shapes, the protect brush and font choices");
 			new ToolTip().SetToolTip(btRedo, "Do again what was undone (Ctrl+Y)");
 			side.Controls.AddRange(new Control[] { btUndo, btRedo });
+			y += 34;
+			chkOverlay = new CheckBox { Text = "Original page over it", Location = new Point(10, y + 3), Size = new Size(148, 22), Name = "chkOverlay" };
+			tbOverlay = new TrackBar { Location = new Point(160, y), Size = new Size(122, 30), Minimum = 10, Maximum = 90, TickFrequency = 20, Value = 50, SmallChange = 5, LargeChange = 10, Name = "tbOverlay", AutoSize = false };
+			lblOverlay = new Label { Location = new Point(284, y + 6), Size = new Size(44, 16), Name = "lblOverlay", Text = "50%" };
+			new ToolTip().SetToolTip(chkOverlay, "Show the original, untranslated page see-through on top of this one, to draw boxes exactly along the original bubbles (O key). The slider sets how strongly it shows.");
+			new ToolTip().SetToolTip(tbOverlay, "How strongly the original page shows over the translated one");
+			side.Controls.AddRange(new Control[] { chkOverlay, tbOverlay, lblOverlay });
 			y += 34;
 			btAdd = new Button { Text = "Add text box", Location = new Point(10, y), Size = new Size(118, 28), Name = "btAdd" };
 			btAddShape = new Button { Text = "\u25be", Location = new Point(130, y), Size = new Size(30, 28), Name = "btAddShape" };
@@ -1745,6 +1792,30 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			btPrev.Click += delegate { MovePage(-1); };
 			btNext.Click += delegate { MovePage(1); };
 			btFit.Click += delegate { canvas.Fit(); };
+			try
+			{
+				//the strength used last time
+				tbOverlay.Value = Math.Max(tbOverlay.Minimum, Math.Min(tbOverlay.Maximum, Program.Settings.TranslatorOverlayOpacity));
+			}
+			catch (Exception)
+			{
+			}
+			canvas.OverlayOpacity = tbOverlay.Value / 100f;
+			lblOverlay.Text = tbOverlay.Value + "%";
+			tbOverlay.ValueChanged += delegate
+			{
+				canvas.OverlayOpacity = tbOverlay.Value / 100f;
+				lblOverlay.Text = tbOverlay.Value + "%";
+				canvas.Invalidate();
+				try
+				{
+					Program.Settings.TranslatorOverlayOpacity = tbOverlay.Value;
+				}
+				catch (Exception)
+				{
+				}
+			};
+			chkOverlay.CheckedChanged += delegate { RefreshOverlay(); };
 			btAdd.Click += delegate { SetAddMode(!canvas.AddMode); };
 			btUndo.Click += delegate { StepHistory(undo: true); };
 			btRedo.Click += delegate { StepHistory(undo: false); };
@@ -2067,6 +2138,28 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			ShowPage(Math.Max(0, Math.Min(reader.Book.ProviderPageCount - 1, from + offset)));
 		}
 
+		/// <summary>Shows or hides the original page over the picture (read again for each page, only while it is switched on).</summary>
+		private void RefreshOverlay()
+		{
+			canvas.OverlayOn = chkOverlay.Checked;
+			if (!chkOverlay.Checked || key == null)
+			{
+				canvas.SetOverlay(null);
+				canvas.Invalidate();
+				return;
+			}
+			Bitmap picture = null;
+			using (IItemLock<PageImage> original = reader.GetOriginalPage(page))
+			{
+				if (original?.Item != null)
+				{
+					picture = Decode(original.Item.Data) ?? (original.Item.Bitmap != null ? new Bitmap(original.Item.Bitmap) : null);
+				}
+			}
+			canvas.SetOverlay(picture);
+			lblStatus.Text = picture == null ? "The original page could not be read." : "The original page is shown over this one; drag the slider to change how strongly.";
+		}
+
 		private void LoadPage(int newPage)
 		{
 			page = newPage;
@@ -2083,6 +2176,7 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			if (key == null || service == null)
 			{
 				canvas.SetImage(null, 100, 100, keepView: false);
+				canvas.SetOverlay(null);
 				SyncList();
 				SyncControls();
 				return;
@@ -2096,6 +2190,10 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 				}
 			}
 			ReloadPage(keepView: false);
+			if (chkOverlay.Checked)
+			{
+				RefreshOverlay();
+			}
 		}
 
 		/// <summary>Takes the page's picture and boxes from the service (the boxes only when nothing of the user's is waiting).</summary>
@@ -2786,7 +2884,50 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			};
 			bool defaultCaps = boxSelected ? isCaps(boxText) : onPage.Count(b => isCaps(b.Text)) * 2 > onPage.Count;
 			string sampleText = boxSelected ? box.Translation ?? boxText : (onPage.FirstOrDefault()?.Translation ?? "");
-			using (TranslationFontDialog dialog = new TranslationFontDialog(search, install, boxSelected, listFonts, sampleText, applyFont, currentFonts, defaultCaps, (Action<FontProgress> done) => service.FontSearchProgress(done), () => service.CancelFontSearch()))
+			//The page drawn with a font, to look at before it is used: the font goes in for the kind of lettering asked for (0 capitals,
+			//1 mixed case, 2 both); the other kind keeps what the page or the book has now. Nothing is saved.
+			Action<string, int, Action<byte[], string>> previewFont = delegate (string file, int kind, Action<byte[], string> done)
+			{
+				StyleFonts own = service.GetStyleFonts(fontKey, false), book = service.GetStyleFonts(fontKey, true);
+				StyleFonts shown = new StyleFonts { Caps = string.IsNullOrEmpty(own.Caps) ? book.Caps : own.Caps, Mixed = string.IsNullOrEmpty(own.Mixed) ? book.Mixed : own.Mixed };
+				if (kind == 0 || kind == 2)
+				{
+					shown.Caps = file;
+				}
+				if (kind == 1 || kind == 2)
+				{
+					shown.Mixed = file;
+				}
+				using (IItemLock<PageImage> original = reader.GetOriginalPage(shownPage))
+				{
+					if (original?.Item == null)
+					{
+						done(null, "The page could not be read.");
+						return;
+					}
+					service.PreviewWithFonts(fontKey, original.Item, shown, done);
+				}
+			};
+			Func<byte[]> currentPicture = delegate
+			{
+				if (state?.Image != null)
+				{
+					return state.Image;
+				}
+				using (IItemLock<PageImage> original = reader.GetOriginalPage(shownPage))
+				{
+					return original?.Item != null ? service.UploadBytesOf(original.Item) : null;
+				}
+			};
+			//the page as it was before any translating: the picture the book itself holds
+			Func<byte[]> originalPicture = delegate
+			{
+				using (IItemLock<PageImage> original = reader.GetOriginalPage(shownPage))
+				{
+					return original?.Item != null ? service.UploadBytesOf(original.Item) : null;
+				}
+			};
+			using (TranslationFontDialog dialog = new TranslationFontDialog(search, install, boxSelected, listFonts, sampleText, applyFont, currentFonts, defaultCaps, (Action<FontProgress> done) => service.FontSearchProgress(done), () => service.CancelFontSearch(), previewFont, currentPicture, originalPicture))
 			{
 				dialog.ShowDialog(this);
 			}
@@ -3146,6 +3287,11 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			if (!typing && (keyData == (Keys.Control | Keys.Y) || keyData == (Keys.Control | Keys.Shift | Keys.Z)))
 			{
 				StepHistory(undo: false);
+				return true;
+			}
+			if (!typing && keyData == Keys.O)
+			{
+				chkOverlay.Checked = !chkOverlay.Checked;
 				return true;
 			}
 			if (keyData == Keys.Escape && canvas.AddMode)

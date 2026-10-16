@@ -50,6 +50,17 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 
 		private readonly Action cancelSearch;
 
+		//The page drawn with a font (file name, which lettering: 0 capitals 1 mixed 2 both, answer) and the page as it is now.
+		private readonly Action<string, int, Action<byte[], string>> previewFont;
+
+		private readonly Func<byte[]> currentPicture;
+
+		private readonly Func<byte[]> originalPicture;
+
+		private FontPreviewPanel previewPanel;
+
+		private Panel selectedRow;
+
 		private System.Windows.Forms.Timer watch;
 
 		private Button btStop;
@@ -89,8 +100,11 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 
 		public override UIComponent UIComponent => UIComponent.Content;
 
-		public TranslationFontDialog(Action<Scope, bool, Action<FontIdentification, string>> search, Action<string, bool, Action<string, string>> install, bool boxSelected, Action<Action<List<FontFile>, string>> listFonts = null, string sample = "",Action<string, bool, bool, Action<string, string>> applyFont = null, Func<bool, StyleFonts> currentFonts = null, bool defaultCaps = false, Action<Action<FontProgress>> getProgress = null, Action cancelSearch = null)
+		public TranslationFontDialog(Action<Scope, bool, Action<FontIdentification, string>> search, Action<string, bool, Action<string, string>> install, bool boxSelected, Action<Action<List<FontFile>, string>> listFonts = null, string sample = "",Action<string, bool, bool, Action<string, string>> applyFont = null, Func<bool, StyleFonts> currentFonts = null, bool defaultCaps = false,Action<Action<FontProgress>> getProgress = null, Action cancelSearch = null,Action<string, int, Action<byte[], string>> previewFont = null, Func<byte[]> currentPicture = null, Func<byte[]> originalPicture = null)
 		{
+			this.previewFont = previewFont;
+			this.currentPicture = currentPicture;
+			this.originalPicture = originalPicture;
 			this.getProgress = getProgress;
 			this.cancelSearch = cancelSearch;
 			this.applyFont = applyFont;
@@ -106,7 +120,9 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			StartPosition = FormStartPosition.CenterParent;
 			ShowInTaskbar = false;
 			MinimumSize = new Size(760, 560);
-			ClientSize = new Size(800, 700);
+			ClientSize = previewFont != null ? new Size(1290, 700) : new Size(800, 700);
+			WindowMemory.Restore(this, () => Program.Settings.TranslatorMatchFontSize, previewFont != null ? new Size(1100, 560) : new Size(700, 560), Screen.FromPoint(Cursor.Position).WorkingArea);
+			WindowMemory.Watch(this, (string size) => Program.Settings.TranslatorMatchFontSize = size);
 			Color gray = ThemeManager.IsDarkModeEnabled ? Color.FromArgb(150, 150, 150) : Color.FromArgb(110, 110, 110);
 
 			Controls.Add(new Label { Text = "Match the font of:", Location = new Point(14, 12), Size = new Size(110, 18) });
@@ -128,6 +144,7 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			Controls.Add(progress);
 
 			rows = new Panel { Location = new Point(14, 204), Size = new Size(772, 272), AutoScroll = true, BorderStyle = BorderStyle.FixedSingle, Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right, Name = "rows" };
+			rows.MouseEnter += delegate { if (!rows.Focused) { rows.Focus(); } };
 			Controls.Add(rows);
 
 			Label other = new Label { Text = "Other places to look (they do not allow automated searching, so these open in your browser):", Location = new Point(14, 484), Size = new Size(772, 18), Anchor = AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right };
@@ -204,6 +221,20 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 				}
 			};
 			btSearch.Click += delegate { Search(); };
+			if (previewFont != null)
+			{
+				//All the controls so far go into a panel on the left, the preview takes the rest.
+				//a window smaller than its content scrolls instead of cutting it off
+				Panel left = new Panel { Dock = DockStyle.Left, Width = 800, Name = "pnlLeft", AutoScroll = true, AutoScrollMinSize = new Size(780, 660) };
+				foreach (Control c in Controls.Cast<Control>().ToList())
+				{
+					left.Controls.Add(c);
+				}
+				previewPanel = new FontPreviewPanel(previewFont, currentPicture, originalPicture) { Dock = DockStyle.Fill, Name = "previewPanel" };
+				Controls.Add(previewPanel);
+				Controls.Add(left);
+				MinimumSize = new Size(1100, 560);
+			}
 			Shown += delegate { Search(); };
 			FormClosed += delegate { closed = true; };
 		}
@@ -367,8 +398,22 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			ShowMatches(group.Matches);
 		}
 
+		/// <summary>Marks a row as the chosen one and draws the page with its font in the preview.</summary>
+		private void SelectRow(Panel row, FontMatch match)
+		{
+			if (selectedRow != null && !selectedRow.IsDisposed)
+			{
+				selectedRow.BackColor = SystemColors.Control;
+			}
+			selectedRow = row;
+			row.BackColor = ThemeManager.IsDarkModeEnabled ? Color.FromArgb(50, 70, 100) : Color.FromArgb(210, 225, 245);
+			previewPanel.Kind = CurrentCaps() ? 0 : 1;
+			previewPanel.ShowFont(string.IsNullOrEmpty(match.File) ? match.Family + ".ttf" : match.File);
+		}
+
 		private void ShowMatches(List<FontMatch> matches)
 		{
+			selectedRow = null;
 			rows.Controls.Clear();
 			int y = 4;
 			foreach (FontMatch match in matches)
@@ -376,6 +421,8 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 				rows.Controls.Add(MakeRow(match, y));
 				y += 86;
 			}
+			rows.AutoScrollMinSize = new Size(0, y + 6);
+			rows.AutoScrollPosition = new Point(0, 0);
 		}
 
 		/// <summary>Lets the user pick any font the translator can use and use it for the lettering.</summary>
@@ -385,7 +432,7 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			{
 				return;
 			}
-			using (FontPickerDialog picker = new FontPickerDialog(listFonts, install, sample, applyFont, currentFonts, optApplyBook.Checked))
+			using (FontPickerDialog picker = new FontPickerDialog(listFonts, install, sample, applyFont, currentFonts, optApplyBook.Checked, previewFont, currentPicture, originalPicture))
 			{
 				picker.ShowDialog(this);
 				if (!string.IsNullOrEmpty(picker.UsedFile))
@@ -397,7 +444,7 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 
 		private Control MakeRow(FontMatch match, int y)
 		{
-			Panel row = new Panel { Location = new Point(2, y), Size = new Size(742, 80), BorderStyle = BorderStyle.FixedSingle };
+			Panel row = new Panel { Location = new Point(2, y), Size = new Size(742, 80), BorderStyle = BorderStyle.FixedSingle, Tag = match };
 			PictureBox preview = new PictureBox { Location = new Point(6, 6), Size = new Size(410, 46), SizeMode = PictureBoxSizeMode.Zoom, BackColor = Color.White };
 			if (match.Preview != null)
 			{
@@ -425,6 +472,22 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			get.Click += delegate { Install(match, false, use, get, done); };
 			page.Click += delegate { OpenPage(match.Url); };
 			row.Controls.AddRange(new Control[] { preview, name, sub, use, get, page, done });
+			//the wheel scrolls the list wherever the pointer is on it (a panel only gets the wheel when it has the focus)
+			foreach (Control c in new Control[] { row, preview, name, sub, use, get, page, done })
+			{
+				c.MouseEnter += delegate { if (!rows.Focused) { rows.Focus(); } };
+			}
+			if (previewPanel != null)
+			{
+				//a click on the row (not on its buttons) chooses it for the preview; so does pressing a button
+				EventHandler choose = delegate { SelectRow(row, match); };
+				foreach (Control c in new Control[] { row, preview, name, sub, done })
+				{
+					c.Click += choose;
+				}
+				use.Click += choose;
+				get.Click += choose;
+			}
 			return row;
 		}
 
@@ -521,6 +584,48 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 	/// Every font file on this computer the translator can use, with a filter and a preview of the text. The chosen font can be set for the
 	/// capital-letter lettering and for the mixed-case lettering, of this page or of the whole book.
 	/// </summary>
+	/// <summary>Remembers the size a window was given, and gives it back the next time (kept inside the screen).</summary>
+	internal static class WindowMemory
+	{
+		public static void Restore(Form form, Func<string> saved, Size minimum, Rectangle area)
+		{
+			try
+			{
+				string[] parts = (saved() ?? "").Split(',');
+				if (parts.Length == 2 && int.TryParse(parts[0], out int w) && int.TryParse(parts[1], out int h))
+				{
+					w = Math.Max(minimum.Width, Math.Min(w, area.Width - 20));
+					h = Math.Max(minimum.Height, Math.Min(h, area.Height - 40));
+					form.ClientSize = new Size(w, h);
+				}
+			}
+			catch (Exception)
+			{
+				//no settings (a test, or a damaged value): the window keeps its usual size
+			}
+		}
+
+		/// <summary>Saves the size when the user has finished resizing and when the window closes (not while it is maximized or minimized).</summary>
+		public static void Watch(Form form, Action<string> save)
+		{
+			Action write = delegate
+			{
+				try
+				{
+					if (form.WindowState == FormWindowState.Normal && form.ClientSize.Width > 100 && form.ClientSize.Height > 100)
+					{
+						save(form.ClientSize.Width + "," + form.ClientSize.Height);
+					}
+				}
+				catch (Exception)
+				{
+				}
+			};
+			form.ResizeEnd += delegate { write(); };
+			form.FormClosing += delegate { write(); };
+		}
+	}
+
 	public class FontPickerDialog : FormEx
 	{
 		private readonly Action<string, bool, Action<string, string>> install;
@@ -559,6 +664,14 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 
 		private Button btCopy;
 
+		private FontPreviewPanel previewPanel;
+
+		private readonly Action<string, int, Action<byte[], string>> previewFont;
+
+		private readonly Func<byte[]> currentPicture;
+
+		private readonly Func<byte[]> originalPicture;
+
 		private System.Drawing.Text.PrivateFontCollection loaded;
 
 		/// <summary>What was last set, to report in the window that opened this one.</summary>
@@ -566,8 +679,11 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 
 		public override UIComponent UIComponent => UIComponent.Content;
 
-		public FontPickerDialog(Action<Action<List<FontFile>, string>> listFonts, Action<string, bool, Action<string, string>> install, string sample, Action<string, bool, bool, Action<string, string>> applyFont = null, Func<bool, StyleFonts> currentFonts = null, bool wholeBook = false)
+		public FontPickerDialog(Action<Action<List<FontFile>, string>> listFonts, Action<string, bool, Action<string, string>> install, string sample, Action<string, bool, bool, Action<string, string>> applyFont = null,Func<bool, StyleFonts> currentFonts = null, bool wholeBook = false,Action<string, int, Action<byte[], string>> previewFont = null, Func<byte[]> currentPicture = null, Func<byte[]> originalPicture = null)
 		{
+			this.previewFont = previewFont;
+			this.currentPicture = currentPicture;
+			this.originalPicture = originalPicture;
 			this.install = install;
 			this.applyFont = applyFont;
 			this.currentFonts = currentFonts;
@@ -578,8 +694,10 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			StartPosition = FormStartPosition.CenterParent;
 			ShowInTaskbar = false;
 			MinimizeBox = false;
-			ClientSize = new Size(620, 590);
+			ClientSize = previewFont != null ? new Size(1130, 590) : new Size(620, 590);
 			MinimumSize = new Size(560, 520);
+			WindowMemory.Restore(this, () => Program.Settings.TranslatorFontPickerSize, previewFont != null ? new Size(900, 520) : new Size(540, 520), Screen.FromPoint(Cursor.Position).WorkingArea);
+			WindowMemory.Watch(this, (string size) => Program.Settings.TranslatorFontPickerSize = size);
 			Color gray = ThemeManager.IsDarkModeEnabled ? Color.FromArgb(150, 150, 150) : Color.FromArgb(110, 110, 110);
 			Controls.Add(new Label { Text = "Find:", Location = new Point(14, 15), Size = new Size(40, 18) });
 			txtFilter = new TextBox { Location = new Point(56, 12), Size = new Size(550, 21), Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right, Name = "txtFilter" };
@@ -621,6 +739,18 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			btCopy.Click += delegate { Copy(); };
 			FormClosed += delegate { loaded?.Dispose(); };
 			ShowSlots();
+			if (previewFont != null)
+			{
+				Panel left = new Panel { Dock = DockStyle.Left, Width = 620, Name = "pnlLeft", AutoScroll = true, AutoScrollMinSize = new Size(600, 560) };
+				foreach (Control c in Controls.Cast<Control>().ToList())
+				{
+					left.Controls.Add(c);
+				}
+				previewPanel = new FontPreviewPanel(previewFont, currentPicture, originalPicture) { Dock = DockStyle.Fill, Name = "previewPanel" };
+				Controls.Add(previewPanel);
+				Controls.Add(left);
+				MinimumSize = new Size(900, 520);
+			}
 			Shown += delegate
 			{
 				listFonts(delegate (List<FontFile> fonts, string error)
@@ -729,6 +859,10 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			FontFile f = Chosen;
 			btCopy.Enabled = f != null;
 			ShowSlots();
+			if (f != null && previewPanel != null)
+			{
+				previewPanel.ShowFont(Path.GetFileName(f.Path));
+			}
 			Image old = picPreview.Image;
 			picPreview.Image = null;
 			old?.Dispose();
@@ -781,6 +915,479 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 					{
 						btCopy.Enabled = true;
 						lblInfo.Text = error != null ? "Failed: " + error : file + " was copied into the translator's fonts folder.";
+					}));
+				}
+				catch (Exception)
+				{
+				}
+			});
+		}
+	}
+
+	/// <summary>A picture that can be zoomed with the mouse wheel and moved by dragging (double click fits it to the panel).</summary>
+	public class ZoomCanvas : Control
+	{
+		private readonly Color back = Color.FromArgb(58, 58, 62);
+
+		private Bitmap image;
+
+		private float zoom = 1f;
+
+		private PointF pan;
+
+		private bool dragging;
+
+		private Point lastMouse;
+
+		private bool fitted = true;
+
+		public string Message { get; set; }
+
+		/// <summary>A small label in the corner ("The page now", "With Bangers.ttf").</summary>
+		public string Caption { get; set; }
+
+		public bool HasImage => image != null;
+
+		/// <summary>The zoom or position changed (by the user, or by fitting): the other pane of a side by side view follows.</summary>
+		public event EventHandler ViewChanged;
+
+		public PointF Pan => pan;
+
+		public bool IsFitted => fitted;
+
+		/// <summary>Takes a view (zoom, position, fitted or not) from the other pane, without telling it back.</summary>
+		public void SetView(float newZoom, PointF newPan, bool isFitted)
+		{
+			zoom = newZoom;
+			pan = newPan;
+			fitted = isFitted;
+			Invalidate();
+		}
+
+		private void ViewMoved()
+		{
+			ViewChanged?.Invoke(this, EventArgs.Empty);
+		}
+
+		public ZoomCanvas()
+		{
+			SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.UserPaint | ControlStyles.ResizeRedraw | ControlStyles.Selectable, true);
+			Cursor = Cursors.Hand;
+		}
+
+		/// <summary>Shows a picture; the view (zoom and position) is kept when it is a picture of the same size.</summary>
+		public void SetImage(Bitmap bitmap, bool keepView)
+		{
+			bool same = image != null && bitmap != null && image.Size == bitmap.Size;
+			Bitmap old = image;
+			image = bitmap;
+			old?.Dispose();
+			if (image == null)
+			{
+				Invalidate();
+				return;
+			}
+			if (!(keepView && same) && !(keepView && !fitted))
+			{
+				Fit();
+			}
+			Invalidate();
+		}
+
+		public void Fit()
+		{
+			if (image == null)
+			{
+				return;
+			}
+			zoom = Math.Min((float)ClientSize.Width / image.Width, (float)ClientSize.Height / image.Height);
+			zoom = Math.Max(0.02f, zoom);
+			pan = new PointF((ClientSize.Width - image.Width * zoom) / 2f, (ClientSize.Height - image.Height * zoom) / 2f);
+			fitted = true;
+			Invalidate();
+			ViewMoved();
+		}
+
+		public void ZoomTo(float value, PointF? around = null)
+		{
+			if (image == null)
+			{
+				return;
+			}
+			value = Math.Max(0.02f, Math.Min(8f, value));
+			PointF c = around ?? new PointF(ClientSize.Width / 2f, ClientSize.Height / 2f);
+			pan = new PointF(c.X - (c.X - pan.X) * value / zoom, c.Y - (c.Y - pan.Y) * value / zoom);
+			zoom = value;
+			fitted = false;
+			Invalidate();
+			ViewMoved();
+		}
+
+		public float Zoom => zoom;
+
+		protected override void OnPaint(PaintEventArgs e)
+		{
+			Graphics g = e.Graphics;
+			g.Clear(back);
+			if (image != null)
+			{
+				g.InterpolationMode = zoom < 1f ? System.Drawing.Drawing2D.InterpolationMode.HighQualityBilinear : System.Drawing.Drawing2D.InterpolationMode.NearestNeighbor;
+				g.PixelOffsetMode = System.Drawing.Drawing2D.PixelOffsetMode.Half;
+				g.DrawImage(image, new RectangleF(pan.X, pan.Y, image.Width * zoom, image.Height * zoom));
+			}
+			if (!string.IsNullOrEmpty(Caption))
+			{
+				using (Font f = new Font(Font.FontFamily, 9f, FontStyle.Bold))
+				{
+					SizeF size = g.MeasureString(Caption, f);
+					using (SolidBrush fill = new SolidBrush(Color.FromArgb(190, 20, 20, 20)))
+					{
+						g.FillRectangle(fill, 6, Height - size.Height - 12, size.Width + 12, size.Height + 6);
+					}
+					g.DrawString(Caption, f, Brushes.White, 12, Height - size.Height - 9);
+				}
+			}
+			if (!string.IsNullOrEmpty(Message))
+			{
+				using (Font f = new Font(Font.FontFamily, 9f))
+				{
+					SizeF size = g.MeasureString(Message, f, Math.Max(40, Width - 40));
+					RectangleF box = new RectangleF((Width - size.Width) / 2f - 8, 10, size.Width + 16, size.Height + 8);
+					using (SolidBrush fill = new SolidBrush(Color.FromArgb(200, 20, 20, 20)))
+					{
+						g.FillRectangle(fill, box);
+					}
+					g.DrawString(Message, f, Brushes.White, new RectangleF(box.X + 8, box.Y + 4, size.Width, size.Height));
+				}
+			}
+		}
+
+		protected override void OnResize(EventArgs e)
+		{
+			base.OnResize(e);
+			if (fitted)
+			{
+				Fit();
+			}
+		}
+
+		protected override void OnMouseWheel(MouseEventArgs e)
+		{
+			base.OnMouseWheel(e);
+			ZoomTo(e.Delta > 0 ? zoom * 1.25f : zoom / 1.25f, e.Location);
+		}
+
+		protected override void OnMouseDown(MouseEventArgs e)
+		{
+			base.OnMouseDown(e);
+			Focus();
+			if (e.Button == MouseButtons.Left && image != null)
+			{
+				dragging = true;
+				lastMouse = e.Location;
+				Cursor = Cursors.SizeAll;
+			}
+		}
+
+		protected override void OnMouseMove(MouseEventArgs e)
+		{
+			base.OnMouseMove(e);
+			if (dragging)
+			{
+				pan = new PointF(pan.X + e.X - lastMouse.X, pan.Y + e.Y - lastMouse.Y);
+				lastMouse = e.Location;
+				fitted = false;
+				Invalidate();
+				ViewMoved();
+			}
+		}
+
+		protected override void OnMouseUp(MouseEventArgs e)
+		{
+			base.OnMouseUp(e);
+			dragging = false;
+			Cursor = Cursors.Hand;
+		}
+
+		protected override void OnDoubleClick(EventArgs e)
+		{
+			base.OnDoubleClick(e);
+			Fit();
+		}
+
+		protected override void Dispose(bool disposing)
+		{
+			if (disposing)
+			{
+				image?.Dispose();
+			}
+			base.Dispose(disposing);
+		}
+	}
+
+	/// <summary>
+	/// The page drawn with a font before it is used. The picture can be zoomed and moved, shown on its own or beside the page as it is now
+	/// and the page as it was before any translating (two or three panes that zoom and move together), and the font can be tried for the
+	/// capital-letter lettering, the mixed-case lettering or both.
+	/// </summary>
+	public class FontPreviewPanel : Panel
+	{
+		private readonly Action<string, int, Action<byte[], string>> render;
+
+		private readonly Func<byte[]> currentPicture;
+
+		private readonly Func<byte[]> originalPicture;
+
+		private readonly ZoomCanvas cvFont;
+
+		private readonly ZoomCanvas cvNow;
+
+		private readonly ZoomCanvas cvOriginal;
+
+		private readonly TableLayoutPanel host;
+
+		private readonly ComboBox cboView;
+
+		private readonly ComboBox cboKind;
+
+		private readonly Label lblInfo;
+
+		private readonly System.Windows.Forms.Timer wait;
+
+		private int sequence;
+
+		private string wanted;
+
+		private Bitmap withFont;
+
+		private bool syncing;
+
+		private bool loadedNow;
+
+		private bool loadedOriginal;
+
+		/// <summary>Which lettering the font is tried for: 0 capital letters, 1 mixed case, 2 both.</summary>
+		public int Kind
+		{
+			get
+			{
+				return Math.Max(0, cboKind.SelectedIndex);
+			}
+			set
+			{
+				if (cboKind.SelectedIndex != value)
+				{
+					cboKind.SelectedIndex = value;
+				}
+			}
+		}
+
+		/// <summary>0 the page with the font; 1 the page now beside it; 2 the original page beside it; 3 original, page now and with the font.</summary>
+		public int View => Math.Max(0, cboView.SelectedIndex);
+
+		public FontPreviewPanel(Action<string, int, Action<byte[], string>> render, Func<byte[]> currentPicture, Func<byte[]> originalPicture = null)
+		{
+			this.render = render;
+			this.currentPicture = currentPicture;
+			this.originalPicture = originalPicture;
+			BorderStyle = BorderStyle.FixedSingle;
+			Panel bar = new Panel { Dock = DockStyle.Top, Height = 122 };
+			Button fit = new Button { Text = "Fit", Location = new Point(6, 5), Size = new Size(44, 24), Name = "btPrevFit" };
+			Button full = new Button { Text = "100%", Location = new Point(54, 5), Size = new Size(48, 24), Name = "btPrev100" };
+			Button minus = new Button { Text = "-", Location = new Point(106, 5), Size = new Size(30, 24), Name = "btPrevOut" };
+			Button plus = new Button { Text = "+", Location = new Point(140, 5), Size = new Size(30, 24), Name = "btPrevIn" };
+			Label viewLabel = new Label { Text = "Show:", Location = new Point(6, 38), Size = new Size(40, 18) };
+			cboView = new ComboBox { Location = new Point(50, 35), Size = new Size(300, 21), DropDownStyle = ComboBoxStyle.DropDownList, Name = "cboPrevView" };
+			cboView.Items.AddRange(new object[] { "The page with the font", "Page now | with the font", "Original page | with the font", "Original | page now | with the font" });
+			cboView.SelectedIndex = 0;
+			Label tryLabel = new Label { Text = "Try the font for:", Location = new Point(6, 68), Size = new Size(96, 18) };
+			cboKind = new ComboBox { Location = new Point(106, 65), Size = new Size(140, 21), DropDownStyle = ComboBoxStyle.DropDownList, Name = "cboPrevKind" };
+			cboKind.Items.AddRange(new object[] { "Capital letters", "Mixed case", "Both" });
+			cboKind.SelectedIndex = 2;
+			lblInfo = new Label { Location = new Point(6, 92), Size = new Size(430, 28), AutoEllipsis = true, Name = "lblPrevInfo", Text = "Select a font to see the page with it." };
+			bar.Controls.AddRange(new Control[] { fit, full, minus, plus, viewLabel, cboView, tryLabel, cboKind, lblInfo });
+			cvOriginal = new ZoomCanvas { Dock = DockStyle.Fill, Name = "prevCanvasOriginal", Caption = "Original page (not translated)", Visible = false, Margin = Padding.Empty };
+			cvNow = new ZoomCanvas { Dock = DockStyle.Fill, Name = "prevCanvasNow", Caption = "The page now", Visible = false, Margin = Padding.Empty };
+			cvFont = new ZoomCanvas { Dock = DockStyle.Fill, Name = "prevCanvas", Caption = "With the font", Margin = Padding.Empty };
+			host = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 3, RowCount = 1, Margin = Padding.Empty, Padding = Padding.Empty, Name = "prevHost" };
+			host.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 0f));
+			host.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 0f));
+			host.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
+			host.RowStyles.Add(new RowStyle(SizeType.Percent, 100f));
+			host.Controls.Add(cvOriginal, 0, 0);
+			host.Controls.Add(cvNow, 1, 0);
+			host.Controls.Add(cvFont, 2, 0);
+			Controls.Add(host);
+			Controls.Add(bar);
+			new ToolTip().SetToolTip(cvFont, "Mouse wheel zooms, drag moves the page, double click fits it");
+			new ToolTip().SetToolTip(cboKind, "Which lettering the font is tried for: capital letters, mixed case or both");
+			new ToolTip().SetToolTip(cboView, "Compare the font with the page as it is now and with the original, untranslated page; the panes zoom and move together");
+			//the panes zoom and move together
+			EventHandler follow = delegate (object sender, EventArgs e)
+			{
+				if (syncing)
+				{
+					return;
+				}
+				syncing = true;
+				ZoomCanvas from = (ZoomCanvas)sender;
+				foreach (ZoomCanvas other in new[] { cvOriginal, cvNow, cvFont })
+				{
+					if (other != from && other.Visible)
+					{
+						other.SetView(from.Zoom, from.Pan, from.IsFitted);
+					}
+				}
+				syncing = false;
+			};
+			cvOriginal.ViewChanged += follow;
+			cvNow.ViewChanged += follow;
+			cvFont.ViewChanged += follow;
+			fit.Click += delegate { cvFont.Fit(); };
+			full.Click += delegate { cvFont.ZoomTo(1f); };
+			minus.Click += delegate { cvFont.ZoomTo(cvFont.Zoom / 1.25f); };
+			plus.Click += delegate { cvFont.ZoomTo(cvFont.Zoom * 1.25f); };
+			cboView.SelectedIndexChanged += delegate { ApplyView(); };
+			cboKind.SelectedIndexChanged += delegate { Redraw(wanted); };
+			wait = new System.Windows.Forms.Timer { Interval = 350 };
+			wait.Tick += delegate
+			{
+				wait.Stop();
+				Draw();
+			};
+			Disposed += delegate { wait.Stop(); wait.Dispose(); withFont?.Dispose(); };
+			cvFont.Message = "Select a font to see the page with it.";
+		}
+
+		private static Bitmap Decode(byte[] data)
+		{
+			try
+			{
+				using (MemoryStream ms = new MemoryStream(data))
+				using (Image decoded = Image.FromStream(ms))
+				{
+					return new Bitmap(decoded);
+				}
+			}
+			catch (Exception)
+			{
+				return null;
+			}
+		}
+
+		/// <summary>Shows the panes the chosen view needs, loading the page as it is now and the original page the first time they are wanted.</summary>
+		private void ApplyView()
+		{
+			int mode = View;
+			bool showOriginal = mode >= 2, showNow = mode == 1 || mode == 3;
+			if (showNow && !loadedNow)
+			{
+				loadedNow = true;
+				byte[] data = currentPicture?.Invoke();
+				Bitmap bmp = data == null ? null : Decode(data);
+				if (bmp != null)
+				{
+					cvNow.SetImage(bmp, keepView: false);
+				}
+				else
+				{
+					cvNow.Message = "The page as it is now is not available.";
+				}
+			}
+			if (showOriginal && !loadedOriginal)
+			{
+				loadedOriginal = true;
+				byte[] data = originalPicture?.Invoke();
+				Bitmap bmp = data == null ? null : Decode(data);
+				if (bmp != null)
+				{
+					cvOriginal.SetImage(bmp, keepView: false);
+				}
+				else
+				{
+					cvOriginal.Message = "The original page is not available.";
+				}
+			}
+			int shown = 1 + (showOriginal ? 1 : 0) + (showNow ? 1 : 0);
+			//a pane needs room to be useful: widen the window when it is too narrow for the panes asked for (as far as the screen allows)
+			Form owner = FindForm();
+			if (owner != null && owner.Visible && owner.WindowState == FormWindowState.Normal && shown > 1 && host.Width < 340 * shown)
+			{
+				Rectangle area = Screen.FromControl(owner).WorkingArea;
+				int grow = Math.Min(340 * shown - host.Width, area.Width - owner.Width);
+				if (grow > 0)
+				{
+					int left = Math.Max(area.Left, Math.Min(owner.Left, area.Right - owner.Width - grow));
+					owner.SetBounds(left, owner.Top, owner.Width + grow, owner.Height);
+				}
+			}
+			host.ColumnStyles[0] = new ColumnStyle(SizeType.Percent, showOriginal ? 100f / shown : 0f);
+			host.ColumnStyles[1] = new ColumnStyle(SizeType.Percent, showNow ? 100f / shown : 0f);
+			host.ColumnStyles[2] = new ColumnStyle(SizeType.Percent, 100f / shown);
+			cvOriginal.Visible = showOriginal;
+			cvNow.Visible = showNow;
+			host.PerformLayout();
+			cvFont.Fit();
+		}
+
+		/// <summary>Shows the page with a font (by file name), a moment after the last call so that moving through a list stays quick.</summary>
+		public void ShowFont(string fontFile)
+		{
+			wanted = fontFile;
+			if (string.IsNullOrEmpty(fontFile))
+			{
+				return;
+			}
+			lblInfo.Text = "Drawing the page with " + fontFile + "...";
+			wait.Stop();
+			wait.Start();
+		}
+
+		private void Redraw(string fontFile)
+		{
+			if (!string.IsNullOrEmpty(fontFile))
+			{
+				ShowFont(fontFile);
+			}
+		}
+
+		private void Draw()
+		{
+			string file = wanted;
+			int kind = Kind;
+			int mine = ++sequence;
+			cvFont.Message = "Drawing the page with " + file + "...";
+			cvFont.Invalidate();
+			render(file, kind, delegate (byte[] jpeg, string error)
+			{
+				try
+				{
+					BeginInvoke(new Action(delegate
+					{
+						if (mine != sequence || IsDisposed)
+						{
+							return;      //a later choice has been asked for since
+						}
+						if (jpeg == null)
+						{
+							cvFont.Message = "No preview: " + error;
+							lblInfo.Text = "The page could not be drawn with " + file + ": " + error;
+							cvFont.Invalidate();
+							return;
+						}
+						Bitmap bmp = Decode(jpeg);
+						if (bmp == null)
+						{
+							cvFont.Message = "No preview: the picture could not be read.";
+							cvFont.Invalidate();
+							return;
+						}
+						withFont?.Dispose();
+						withFont = bmp;
+						cvFont.Message = null;
+						cvFont.Caption = "With " + file;
+						lblInfo.Text = "The page with " + file + " for " + cboKind.SelectedItem.ToString().ToLowerInvariant() + ". Not saved: use the buttons to apply it.";
+						cvFont.SetImage(new Bitmap(withFont), keepView: true);
 					}));
 				}
 				catch (Exception)

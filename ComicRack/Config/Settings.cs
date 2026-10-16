@@ -204,6 +204,14 @@ namespace cYo.Projects.ComicRack.Viewer.Config
 
 		private int translatorBrushSize = 24;
 
+		private int translatorOverlayOpacity = 50;
+
+		private string translatorEditorSize = string.Empty;
+
+		private string translatorMatchFontSize = string.Empty;
+
+		private string translatorFontPickerSize = string.Empty;
+
 		private bool translatorStopOnExit = true;
 
 		private string libraryBackgroundTexturePath = string.Empty;
@@ -1416,6 +1424,66 @@ namespace cYo.Projects.ComicRack.Viewer.Config
 			}
 		}
 
+		/// <summary>The size ("width,height") the translation editor window was last given.</summary>
+		[Browsable(false)]
+		[DefaultValue("")]
+		public string TranslatorEditorSize
+		{
+			get
+			{
+				return translatorEditorSize;
+			}
+			set
+			{
+				value = value ?? string.Empty;
+				if (translatorEditorSize != value)
+				{
+					translatorEditorSize = value;
+					FireEvent(null);
+				}
+			}
+		}
+
+		/// <summary>The size ("width,height") the Match Font window was last given.</summary>
+		[Browsable(false)]
+		[DefaultValue("")]
+		public string TranslatorMatchFontSize
+		{
+			get
+			{
+				return translatorMatchFontSize;
+			}
+			set
+			{
+				value = value ?? string.Empty;
+				if (translatorMatchFontSize != value)
+				{
+					translatorMatchFontSize = value;
+					FireEvent(null);
+				}
+			}
+		}
+
+		/// <summary>The size ("width,height") the "Use a font of my own" window was last given.</summary>
+		[Browsable(false)]
+		[DefaultValue("")]
+		public string TranslatorFontPickerSize
+		{
+			get
+			{
+				return translatorFontPickerSize;
+			}
+			set
+			{
+				value = value ?? string.Empty;
+				if (translatorFontPickerSize != value)
+				{
+					translatorFontPickerSize = value;
+					FireEvent(null);
+				}
+			}
+		}
+
 		/// <summary>The radius (in page pixels) of the translation editor's protect brush, kept for the next time.</summary>
 		[Browsable(false)]
 		[DefaultValue(24)]
@@ -1431,6 +1499,26 @@ namespace cYo.Projects.ComicRack.Viewer.Config
 				if (translatorBrushSize != value)
 				{
 					translatorBrushSize = value;
+					FireEvent(null);
+				}
+			}
+		}
+
+		/// <summary>How strongly (percent) the translation editor shows the original page over the translated one, kept for the next time.</summary>
+		[Browsable(false)]
+		[DefaultValue(50)]
+		public int TranslatorOverlayOpacity
+		{
+			get
+			{
+				return translatorOverlayOpacity;
+			}
+			set
+			{
+				value = Math.Max(10, Math.Min(90, value));
+				if (translatorOverlayOpacity != value)
+				{
+					translatorOverlayOpacity = value;
 					FireEvent(null);
 				}
 			}

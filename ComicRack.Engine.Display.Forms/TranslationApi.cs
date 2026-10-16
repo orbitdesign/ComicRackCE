@@ -261,6 +261,7 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 					list.Add(new FontMatch
 					{
 						Family = TranslationBox.GetString(e, "family"),
+						File = TranslationBox.GetString(e, "file"),
 						Source = TranslationBox.GetString(e, "source"),
 						Category = TranslationBox.GetString(e, "category"),
 						Url = TranslationBox.GetString(e, "url"),

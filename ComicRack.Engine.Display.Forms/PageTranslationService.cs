@@ -674,6 +674,46 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 			});
 		}
 
+		/// <summary>
+		/// Draws the page as it would look with the given fonts, to look at (nothing is saved). The picture (a JPEG) arrives on a background
+		/// thread.
+		/// </summary>
+		public void PreviewWithFonts(PageKey key, PageImage original, StyleFonts fonts, Action<byte[], string> done)
+		{
+			byte[] data = original == null ? null : GetUploadBytes(original);
+			string url = ServerUrl;
+			List<TranslationBox> boxes;
+			string bookKey;
+			int index;
+			lock (sync)
+			{
+				if (key == null || !entries.TryGetValue(key, out Entry entry) || entry.Boxes == null)
+				{
+					done(null, "This page is not translated yet.");
+					return;
+				}
+				boxes = entry.Boxes.Select((TranslationBox b) => b.Clone()).ToList();
+				bookKey = entry.BookKey;
+				index = entry.ImageIndex;
+			}
+			List<ProtectStroke> protect = Store.GetProtect(bookKey, index);
+			ThreadPool.QueueUserWorkItem(delegate
+			{
+				try
+				{
+					if (data == null)
+					{
+						throw new TranslationApiException("The page could not be read.", serverDown: false);
+					}
+					done(new TranslationApi(url).Render(data, boxes, protect, fonts).Image, null);
+				}
+				catch (Exception ex)
+				{
+					done(null, ex.Message);
+				}
+			});
+		}
+
 		/// <summary>The font files on this computer the translator can use. The answer arrives on a background thread.</summary>
 		public void ListFonts(Action<List<FontFile>, string> done)
 		{
