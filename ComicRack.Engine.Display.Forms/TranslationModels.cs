@@ -396,6 +396,15 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 	}
 
 	/// <summary>The fonts that match one kind of lettering among the boxes (capitals, mixed case).</summary>
+	/// <summary>A page sent to the font search and how many of its boxes have a given kind of lettering.</summary>
+	public class FontPage
+	{
+		/// <summary>The page's place in the list of pages sent (0 for a single page).</summary>
+		public int Index { get; set; }
+
+		public int Boxes { get; set; }
+	}
+
 	public class FontGroup
 	{
 		public string Label { get; set; } = "";
@@ -408,6 +417,9 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 
 		/// <summary>The best Google fonts for this kind of lettering besides the ones in Matches (free to install).</summary>
 		public List<FontMatch> GoogleMatches { get; set; } = new List<FontMatch>();
+
+		/// <summary>The pages sent whose boxes have this kind of lettering, the one with the most first.</summary>
+		public List<FontPage> Pages { get; set; } = new List<FontPage>();
 
 		public List<string> Notes { get; set; } = new List<string>();
 	}
@@ -489,6 +501,13 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 
 		/// <summary>The best Google fonts besides the ones in Matches, listed on their own (helper 1.38 and later).</summary>
 		public List<FontMatch> GoogleMatches { get; set; } = new List<FontMatch>();
+
+		/// <summary>The pages sent whose boxes have the main kind of lettering, the one with the most first (helper 1.40 and later).</summary>
+		public List<FontPage> Pages { get; set; } = new List<FontPage>();
+
+		/// <summary>Filled in by ComicRack, not the helper: the reader page of each page sent, in the order sent (FontPage.Index is a
+		/// place in this list).</summary>
+		public List<int> SamplePages { get; set; } = new List<int>();
 
 		/// <summary>When the boxes have more than one kind of lettering: the matches of each kind (the first is the same as Matches).</summary>
 		public List<FontGroup> Groups { get; set; } = new List<FontGroup>();

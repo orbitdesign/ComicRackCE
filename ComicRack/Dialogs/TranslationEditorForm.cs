@@ -2860,6 +2860,8 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			List<string> pageTexts = onPage.Select((TranslationBox b) => b.Text ?? "").ToList();
 			string pageText = string.Join(" ", onPage.OrderByDescending((TranslationBox b) => (b.Text ?? "").Length).Take(2).Select((TranslationBox b) => b.Text));
 			int shownPage = page;
+			//the page the font preview shows: this one, or a sample page with the lettering style looked at
+			int previewPage = page;
 			string bookKey = reader.TranslationBookKey;
 			int pageCount = reader.Book?.ProviderPageCount ?? 0;
 			Action<TranslationFontDialog.Scope, bool, Action<FontIdentification, string>> search = delegate (TranslationFontDialog.Scope scope, bool online, Action<FontIdentification, string> done)
@@ -2867,9 +2869,19 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 				if (scope == TranslationFontDialog.Scope.Book)
 				{
 					//Up to 12 translated pages spread evenly over the book (the helper reads the boxes it stored for each).
-					List<int> translated = Enumerable.Range(0, pageCount).Where((int i) => service.Store.IsTranslated(bookKey, i)).ToList();
+					//not the cover: its title is lettered in a font of its own, unlike the pages
+					int coverPage = -1;
+					try
+					{
+						coverPage = reader.Book?.Comic?.FrontCoverPageIndex ?? -1;
+					}
+					catch (Exception)
+					{
+					}
+					List<int> translated = Enumerable.Range(0, pageCount).Where((int i) => i != coverPage && service.Store.IsTranslated(bookKey, i)).ToList();
 					List<int> sample = translated.Count <= 12 ? translated : Enumerable.Range(0, 12).Select((int n) => translated[n * (translated.Count - 1) / 11]).Distinct().ToList();
 					List<byte[]> pages = new List<byte[]>();
+					List<int> sent = new List<int>();
 					foreach (int i in sample)
 					{
 						using (IItemLock<PageImage> item = reader.GetOriginalPage(i))
@@ -2878,6 +2890,7 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 							if (bytes != null)
 							{
 								pages.Add(bytes);
+								sent.Add(i);
 							}
 						}
 					}
@@ -2886,7 +2899,14 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 						done(null, "No page of this book is translated yet. Translate some pages first, then match again.");
 						return;
 					}
-					service.IdentifyBookFont(pages, online, done);
+					service.IdentifyBookFont(pages, online, delegate (FontIdentification found, string error)
+					{
+						if (found != null)
+						{
+							found.SamplePages = sent;
+						}
+						done(found, error);
+					});
 					return;
 				}
 				using (IItemLock<PageImage> original = reader.GetOriginalPage(shownPage))
@@ -2896,13 +2916,21 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 						done(null, "The page could not be read.");
 						return;
 					}
+					Action<FontIdentification, string> thisPage = delegate (FontIdentification found, string error)
+					{
+						if (found != null)
+						{
+							found.SamplePages = new List<int> { shownPage };
+						}
+						done(found, error);
+					};
 					if (scope == TranslationFontDialog.Scope.Box && rect != null)
 					{
-						service.IdentifyFont(original.Item, rect, boxText, online, done);
+						service.IdentifyFont(original.Item, rect, boxText, online, thisPage);
 					}
 					else if (pageRects.Count > 0)
 					{
-						service.IdentifyPageFont(original.Item, pageRects, pageText, online, done, pageTexts);
+						service.IdentifyPageFont(original.Item, pageRects, pageText, online, thisPage, pageTexts);
 					}
 					else
 					{
@@ -2971,7 +2999,8 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			//1 mixed case, 2 both); the other kind keeps what the page or the book has now. Nothing is saved.
 			Action<string, int, Action<byte[], string>> previewFont = delegate (string file, int kind, Action<byte[], string> done)
 			{
-				StyleFonts own = service.GetStyleFonts(fontKey, false), book = service.GetStyleFonts(fontKey, true);
+				PageKey previewKey = previewPage == shownPage ? fontKey : reader.GetTranslationPageKey(previewPage);
+				StyleFonts own = service.GetStyleFonts(previewKey, false), book = service.GetStyleFonts(previewKey, true);
 				StyleFonts shown = new StyleFonts { Caps = string.IsNullOrEmpty(own.Caps) ? book.Caps : own.Caps, Mixed = string.IsNullOrEmpty(own.Mixed) ? book.Mixed : own.Mixed };
 				if (kind == 0 || kind == 2)
 				{
@@ -2981,23 +3010,24 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 				{
 					shown.Mixed = file;
 				}
-				using (IItemLock<PageImage> original = reader.GetOriginalPage(shownPage))
+				using (IItemLock<PageImage> original = reader.GetOriginalPage(previewPage))
 				{
 					if (original?.Item == null)
 					{
 						done(null, "The page could not be read.");
 						return;
 					}
-					service.PreviewWithFonts(fontKey, original.Item, shown, done);
+					service.PreviewWithFonts(previewKey, original.Item, shown, done);
 				}
 			};
 			Func<byte[]> currentPicture = delegate
 			{
-				if (state?.Image != null)
+				byte[] now = previewPage == shownPage ? state?.Image : service.GetState(reader.GetTranslationPageKey(previewPage))?.Image;
+				if (now != null)
 				{
-					return state.Image;
+					return now;
 				}
-				using (IItemLock<PageImage> original = reader.GetOriginalPage(shownPage))
+				using (IItemLock<PageImage> original = reader.GetOriginalPage(previewPage))
 				{
 					return original?.Item != null ? service.UploadBytesOf(original.Item) : null;
 				}
@@ -3005,12 +3035,57 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			//the page as it was before any translating: the picture the book itself holds
 			Func<byte[]> originalPicture = delegate
 			{
-				using (IItemLock<PageImage> original = reader.GetOriginalPage(shownPage))
+				using (IItemLock<PageImage> original = reader.GetOriginalPage(previewPage))
 				{
 					return original?.Item != null ? service.UploadBytesOf(original.Item) : null;
 				}
 			};
-			using (TranslationFontDialog dialog = new TranslationFontDialog(search, install, boxSelected, listFonts, sampleText, applyFont, currentFonts, defaultCaps, (Action<FontProgress> done) => service.FontSearchProgress(done), () => service.CancelFontSearch(), previewFont, currentPicture, originalPicture))
+			//Another page for the preview (a sample page with the lettering style looked at): it is read in from the helper's cache
+			//first when it is not loaded (the blue light), then the preview shows it. The editor itself stays on its page.
+			Action<int, Action<string>> showPreviewPage = delegate (int wanted, Action<string> done)
+			{
+				PageKey wantedKey = reader.GetTranslationPageKey(wanted);
+				TranslationPageState ready = service.GetState(wantedKey);
+				if (wanted == shownPage || (ready != null && !ready.Waiting))
+				{
+					previewPage = wanted;
+					done(null);
+					return;
+				}
+				using (IItemLock<PageImage> original = reader.GetOriginalPage(wanted))
+				{
+					if (wantedKey == null || original?.Item == null)
+					{
+						done("Page " + (wanted + 1) + " could not be read.");
+						return;
+					}
+					if (!service.IsKnown(wantedKey))
+					{
+						service.Request(wantedKey, original.Item, 0, reader.Book?.Comic);
+					}
+				}
+				System.Windows.Forms.Timer poll = new System.Windows.Forms.Timer { Interval = 300 };
+				DateTime until = DateTime.UtcNow.AddSeconds(120);
+				poll.Tick += delegate
+				{
+					TranslationPageState now = service.GetState(wantedKey);
+					if (now != null && !now.Waiting)
+					{
+						poll.Stop();
+						poll.Dispose();
+						previewPage = wanted;
+						done(null);
+					}
+					else if (DateTime.UtcNow > until)
+					{
+						poll.Stop();
+						poll.Dispose();
+						done("Page " + (wanted + 1) + " is not translated yet, or the translator did not answer in time.");
+					}
+				};
+				poll.Start();
+			};
+			using (TranslationFontDialog dialog = new TranslationFontDialog(search, install, boxSelected, listFonts, sampleText, applyFont, currentFonts, defaultCaps, (Action<FontProgress> done) => service.FontSearchProgress(done), () => service.CancelFontSearch(), previewFont, currentPicture, originalPicture, showPreviewPage, shownPage))
 			{
 				dialog.ShowDialog(this);
 			}

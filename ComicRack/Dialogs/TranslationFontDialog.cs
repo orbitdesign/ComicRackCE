@@ -41,6 +41,11 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 		//a font of the user's own for the lettering style shown (capitals or mixed case)
 		private Button btStyleOwn;
 
+		//loads another page for the preview (the editor makes sure it is translated); the page the preview shows now
+		private readonly Action<int, Action<string>> showPreviewPage;
+
+		private int previewPageNow;
+
 		//applies the font of the chosen row to the lettering style shown
 		private Button btApplySel;
 
@@ -111,8 +116,10 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 
 		public override UIComponent UIComponent => UIComponent.Content;
 
-		public TranslationFontDialog(Action<Scope, bool, Action<FontIdentification, string>> search, Action<string, bool, Action<string, string>> install, bool boxSelected, Action<Action<List<FontFile>, string>> listFonts = null, string sample = "",Action<string, bool, bool, Action<string, string>> applyFont = null, Func<bool, StyleFonts> currentFonts = null, bool defaultCaps = false,Action<Action<FontProgress>> getProgress = null, Action cancelSearch = null,Action<string, int, Action<byte[], string>> previewFont = null, Func<byte[]> currentPicture = null, Func<byte[]> originalPicture = null)
+		public TranslationFontDialog(Action<Scope, bool, Action<FontIdentification, string>> search, Action<string, bool, Action<string, string>> install, bool boxSelected, Action<Action<List<FontFile>, string>> listFonts = null, string sample = "",Action<string, bool, bool, Action<string, string>> applyFont = null, Func<bool, StyleFonts> currentFonts = null, bool defaultCaps = false,Action<Action<FontProgress>> getProgress = null, Action cancelSearch = null,Action<string, int, Action<byte[], string>> previewFont = null, Func<byte[]> currentPicture = null, Func<byte[]> originalPicture = null, Action<int, Action<string>> showPreviewPage = null, int previewStart = -1)
 		{
+			this.showPreviewPage = showPreviewPage;
+			previewPageNow = previewStart;
 			this.previewFont = previewFont;
 			this.currentPicture = currentPicture;
 			this.originalPicture = originalPicture;
@@ -250,6 +257,7 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 				}
 				left.Dock = DockStyle.Left;
 				previewPanel = new FontPreviewPanel(previewFont, currentPicture, originalPicture) { Dock = DockStyle.Fill, Name = "previewPanel" };
+				previewPanel.PageChosen += (int chosen) => GoToPreviewPage(chosen);
 				Controls.Add(previewPanel);
 				Controls.Add(left);
 				MinimumSize = new Size(1100, 560);
@@ -388,6 +396,7 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			{
 				ShowMatches(result.Matches, result.GoogleMatches);
 				NameStyleButton();
+				UpdatePreviewPages();
 			}
 			links.Controls.Clear();
 			int x = 0, row = 0;
@@ -407,6 +416,60 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 				links.Controls.Add(b);
 			}
 			lblFolder.Text = "Fonts you download from dafont, Font Squirrel and similar sites can be dropped (zip files too) in:\r\n" + result.CandidatesFolder + "\r\nThen press Match again to have them compared with this lettering. Check each font's licence before using it.";
+		}
+
+		/// <summary>The preview's page list: the pages that have the lettering style shown. When the page shown has none of that
+		/// style, the preview moves to the page with the most of it.</summary>
+		private void UpdatePreviewPages()
+		{
+			if (previewPanel == null || showPreviewPage == null || last == null)
+			{
+				return;
+			}
+			List<FontPage> pages = last.Pages;
+			if (cboGroup.Visible && cboGroup.SelectedIndex >= 0 && cboGroup.SelectedIndex < last.Groups.Count)
+			{
+				pages = last.Groups[cboGroup.SelectedIndex].Pages;
+			}
+			List<KeyValuePair<int, int>> list = pages.Where((FontPage p) => p.Index >= 0 && p.Index < last.SamplePages.Count).Select((FontPage p) => new KeyValuePair<int, int>(last.SamplePages[p.Index], p.Boxes)).ToList();
+			previewPanel.SetPages(list, previewPageNow);
+			if (list.Count > 0 && !list.Any((KeyValuePair<int, int> p) => p.Key == previewPageNow))
+			{
+				GoToPreviewPage(list[0].Key);
+			}
+		}
+
+		private void GoToPreviewPage(int page)
+		{
+			if (showPreviewPage == null || previewPanel == null || page == previewPageNow)
+			{
+				return;
+			}
+			int previous = previewPageNow;
+			previewPanel.PageLoading(page);
+			showPreviewPage(page, delegate (string error)
+			{
+				if (closed || IsDisposed)
+				{
+					return;
+				}
+				try
+				{
+					BeginInvoke(new Action(delegate
+					{
+						if (error != null)
+						{
+							previewPanel.PageFailed(previous, error);
+							return;
+						}
+						previewPageNow = page;
+						previewPanel.PageReady(page);
+					}));
+				}
+				catch (Exception)
+				{
+				}
+			});
 		}
 
 		/// <summary>The style button says which lettering it is for.</summary>
@@ -437,6 +500,7 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 				}
 			}
 			ShowMatches(group.Matches, group.GoogleMatches);
+			UpdatePreviewPages();
 		}
 
 		/// <summary>Marks a row as the chosen one (Apply selected font then uses it) and draws the page with its font in the preview.</summary>
@@ -1467,6 +1531,27 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 
 		private bool loadedOriginal;
 
+		//the page the preview shows, among the pages that have the lettering style shown
+		private readonly Panel bar;
+
+		private readonly Label pageLabel;
+
+		private readonly ComboBox cboPage;
+
+		private readonly Button btPagePrev;
+
+		private readonly Button btPageNext;
+
+		private List<int> pageList = new List<int>();
+
+		private bool settingPages;
+
+		//the next picture with the font is fitted (a new page), not kept at the zoom of the last one
+		private bool fitNext;
+
+		/// <summary>Another page was chosen to look at: the window loads it, then calls PageReady (or PageFailed).</summary>
+		public event Action<int> PageChosen;
+
 		/// <summary>Which lettering the font is tried for: 0 capital letters, 1 mixed case, 2 both.</summary>
 		public int Kind
 		{
@@ -1492,7 +1577,7 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			this.currentPicture = currentPicture;
 			this.originalPicture = originalPicture;
 			BorderStyle = BorderStyle.FixedSingle;
-			Panel bar = new Panel { Dock = DockStyle.Top, Height = 122 };
+			bar = new Panel { Dock = DockStyle.Top, Height = 122 };
 			Button fit = new Button { Text = "Fit", Location = new Point(6, 5), Size = new Size(44, 24), Name = "btPrevFit" };
 			Button full = new Button { Text = "100%", Location = new Point(54, 5), Size = new Size(48, 24), Name = "btPrev100" };
 			Button minus = new Button { Text = "-", Location = new Point(106, 5), Size = new Size(30, 24), Name = "btPrevOut" };
@@ -1506,7 +1591,23 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			cboKind.Items.AddRange(new object[] { "Capital letters", "Mixed case", "Both" });
 			cboKind.SelectedIndex = 2;
 			lblInfo = new Label { Location = new Point(6, 92), Size = new Size(430, 28), AutoEllipsis = true, Name = "lblPrevInfo", Text = "Select a font to see the page with it." };
-			bar.Controls.AddRange(new Control[] { fit, full, minus, plus, viewLabel, cboView, tryLabel, cboKind, lblInfo });
+			pageLabel = new Label { Text = "Preview page:", Location = new Point(6, 96), Size = new Size(96, 18), Visible = false };
+			cboPage = new ComboBox { Location = new Point(106, 93), Size = new Size(250, 21), DropDownStyle = ComboBoxStyle.DropDownList, Visible = false, Name = "cboPrevPage" };
+			btPagePrev = new Button { Text = "<", Location = new Point(360, 92), Size = new Size(30, 23), Visible = false, Name = "btPrevPage" };
+			btPageNext = new Button { Text = ">", Location = new Point(394, 92), Size = new Size(30, 23), Visible = false, Name = "btNextPage" };
+			new ToolTip().SetToolTip(cboPage, "The pages whose boxes have the lettering style shown: look at the font on any of them");
+			new ToolTip().SetToolTip(btPagePrev, "The previous page with this lettering style");
+			new ToolTip().SetToolTip(btPageNext, "The next page with this lettering style");
+			cboPage.SelectedIndexChanged += delegate
+			{
+				if (!settingPages && cboPage.SelectedIndex >= 0 && cboPage.SelectedIndex < pageList.Count)
+				{
+					PageChosen?.Invoke(pageList[cboPage.SelectedIndex]);
+				}
+			};
+			btPagePrev.Click += delegate { StepPage(-1); };
+			btPageNext.Click += delegate { StepPage(1); };
+			bar.Controls.AddRange(new Control[] { fit, full, minus, plus, viewLabel, cboView, tryLabel, cboKind, pageLabel, cboPage, btPagePrev, btPageNext, lblInfo });
 			cvOriginal = new ZoomCanvas { Dock = DockStyle.Fill, Name = "prevCanvasOriginal", Caption = "Original page (not translated)", Visible = false, Margin = Padding.Empty };
 			cvNow = new ZoomCanvas { Dock = DockStyle.Fill, Name = "prevCanvasNow", Caption = "The page now", Visible = false, Margin = Padding.Empty };
 			cvFont = new ZoomCanvas { Dock = DockStyle.Fill, Name = "prevCanvas", Caption = "With the font", Margin = Padding.Empty };
@@ -1605,6 +1706,81 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			{
 				return null;
 			}
+		}
+
+		/// <summary>The pages that have the lettering style shown (page number, boxes of that style), and the one the preview shows now.
+		/// An empty list hides the page row.</summary>
+		public void SetPages(List<KeyValuePair<int, int>> pages, int current)
+		{
+			settingPages = true;
+			pageList = pages.Select((KeyValuePair<int, int> p) => p.Key).ToList();
+			cboPage.Items.Clear();
+			foreach (KeyValuePair<int, int> p in pages)
+			{
+				cboPage.Items.Add("Page " + (p.Key + 1) + "  (" + p.Value + (p.Value == 1 ? " box" : " boxes") + " of this style)");
+			}
+			cboPage.SelectedIndex = pageList.IndexOf(current);
+			settingPages = false;
+			bool show = pages.Count > 0;
+			pageLabel.Visible = cboPage.Visible = btPagePrev.Visible = btPageNext.Visible = show;
+			btPagePrev.Enabled = btPageNext.Enabled = pages.Count > 1;
+			bar.Height = show ? 150 : 122;
+			lblInfo.Top = show ? 120 : 92;
+		}
+
+		private void StepPage(int step)
+		{
+			if (pageList.Count < 2)
+			{
+				return;
+			}
+			int at = Math.Max(0, cboPage.SelectedIndex);
+			cboPage.SelectedIndex = (at + step + pageList.Count) % pageList.Count;
+		}
+
+		/// <summary>While another page is being loaded for the preview.</summary>
+		public void PageLoading(int page)
+		{
+			cboPage.Enabled = btPagePrev.Enabled = btPageNext.Enabled = false;
+			lblInfo.Text = "Loading page " + (page + 1) + "...";
+			cvFont.Message = "Loading page " + (page + 1) + "...";
+			cvFont.Invalidate();
+		}
+
+		/// <summary>The page asked for is ready: the panes show it, and the chosen font is drawn on it.</summary>
+		public void PageReady(int page)
+		{
+			cboPage.Enabled = true;
+			btPagePrev.Enabled = btPageNext.Enabled = pageList.Count > 1;
+			settingPages = true;
+			cboPage.SelectedIndex = pageList.IndexOf(page);
+			settingPages = false;
+			loadedNow = loadedOriginal = false;
+			fitNext = true;
+			ApplyView();
+			if (!string.IsNullOrEmpty(wanted))
+			{
+				ShowFont(wanted);
+			}
+			else
+			{
+				cvFont.Message = "Select a font to see page " + (page + 1) + " with it.";
+				cvFont.Invalidate();
+				lblInfo.Text = "Page " + (page + 1) + ". Select a font to see the page with it.";
+			}
+		}
+
+		/// <summary>The page asked for could not be loaded: the preview stays on the page it showed.</summary>
+		public void PageFailed(int previous, string error)
+		{
+			cboPage.Enabled = true;
+			btPagePrev.Enabled = btPageNext.Enabled = pageList.Count > 1;
+			settingPages = true;
+			cboPage.SelectedIndex = pageList.IndexOf(previous);
+			settingPages = false;
+			lblInfo.Text = error;
+			cvFont.Message = null;
+			cvFont.Invalidate();
 		}
 
 		/// <summary>Shows the panes the chosen view needs, loading the page as it is now and the original page the first time they are wanted.</summary>
@@ -1719,7 +1895,8 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 						cvFont.Message = null;
 						cvFont.Caption = "With " + file;
 						lblInfo.Text = "The page with " + file + " for " + cboKind.SelectedItem.ToString().ToLowerInvariant() + ". Not saved: use the buttons to apply it.";
-						cvFont.SetImage(new Bitmap(withFont), keepView: true);
+						cvFont.SetImage(new Bitmap(withFont), keepView: !fitNext);
+						fitNext = false;
 					}));
 				}
 				catch (Exception)

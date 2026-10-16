@@ -92,6 +92,9 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 			public bool? FromCache;
 
 			public int ImageIndex;
+
+			/// <summary>The book's front cover: the helper letters its title as large as the original's place allows.</summary>
+			public bool Cover;
 		}
 
 		//How many translated pages to keep in memory (about 1 MB each).
@@ -337,6 +340,23 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 		/// Asks for a page to be translated. Lower priority numbers go first; asking again
 		/// for a waiting page with a lower number moves it forward.
 		/// </summary>
+		/// <summary>True when the image is the book's front cover (the page marked as such, else the first one).</summary>
+		public static bool IsFrontCover(ComicBook book, int imageIndex)
+		{
+			if (book == null)
+			{
+				return false;
+			}
+			try
+			{
+				return book.TranslatePageToImageIndex(book.FrontCoverPageIndex) == imageIndex;
+			}
+			catch (Exception)
+			{
+				return false;
+			}
+		}
+
 		public void Request(PageKey key, PageImage image, int priority, ComicBook book = null, bool keep = false)
 		{
 			if (key == null || image == null || stopping)
@@ -381,7 +401,8 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 					LastUsed = DateTime.UtcNow,
 					BookKey = bookKey,
 					ImageIndex = key.Index,
-					Keep = keep
+					Keep = keep,
+					Cover = IsFrontCover(book, key.Index)
 				};
 				entries[key] = fresh;
 				CheckCache(fresh, data);
@@ -685,6 +706,7 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 			List<TranslationBox> boxes;
 			string bookKey;
 			int index;
+			bool cover;
 			lock (sync)
 			{
 				if (key == null || !entries.TryGetValue(key, out Entry entry) || entry.Boxes == null)
@@ -695,6 +717,7 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 				boxes = entry.Boxes.Select((TranslationBox b) => b.Clone()).ToList();
 				bookKey = entry.BookKey;
 				index = entry.ImageIndex;
+				cover = entry.Cover;
 			}
 			List<ProtectStroke> protect = Store.GetProtect(bookKey, index);
 			ThreadPool.QueueUserWorkItem(delegate
@@ -705,7 +728,7 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 					{
 						throw new TranslationApiException("The page could not be read.", serverDown: false);
 					}
-					done(new TranslationApi(url).Render(data, boxes, protect, fonts).Image, null);
+					done(new TranslationApi(url).Render(data, boxes, protect, fonts, cover).Image, null);
 				}
 				catch (Exception ex)
 				{
@@ -1005,12 +1028,14 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 			bool serverDown = false;
 			byte[] source;
 			bool renderOnly;
+			bool cover;
 			List<TranslationBox> boxes;
 			int version;
 			lock (sync)
 			{
 				source = entry.Source;
 				renderOnly = entry.RenderOnly;
+				cover = entry.Cover;
 				boxes = entry.Boxes?.Select((TranslationBox b) => b.Clone()).ToList();
 				version = entry.Version;
 			}
@@ -1021,15 +1046,15 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 				StyleFonts fonts = Store.GetFonts(entry.BookKey, entry.ImageIndex);
 				if (renderOnly)
 				{
-					page = api.Render(source, boxes, protect, fonts);
+					page = api.Render(source, boxes, protect, fonts, cover);
 				}
 				else
 				{
-					page = api.Analyze(source, fonts);
+					page = api.Analyze(source, fonts, cover);
 					List<TranslationBox> edits = Store.GetEdits(entry.BookKey, entry.ImageIndex);
 					if ((edits.Count > 0 && TranslationStore.Merge(page.Boxes, edits)) || protect.Count > 0)
 					{
-						page = api.Render(source, page.Boxes, protect, fonts);
+						page = api.Render(source, page.Boxes, protect, fonts, cover);
 					}
 				}
 				result = page.Changed ? State.Done : State.NoText;

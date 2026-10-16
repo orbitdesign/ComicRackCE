@@ -22,13 +22,18 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 			BaseUrl = (string.IsNullOrWhiteSpace(baseUrl) ? "http://127.0.0.1:8790" : baseUrl.Trim()).TrimEnd('/');
 		}
 
-		public PageAnalysis Analyze(byte[] page, StyleFonts fonts = null)
+		public PageAnalysis Analyze(byte[] page, StyleFonts fonts = null, bool cover = false)
 		{
 			string path = "/api/analyze";
 			if (fonts != null && !fonts.IsEmpty)
 			{
 				//the fonts chosen for this page or book; the helper keeps the picture drawn with them apart from others
 				path += "?font_caps=" + Uri.EscapeDataString(fonts.Caps ?? "") + "&font_mixed=" + Uri.EscapeDataString(fonts.Mixed ?? "");
+			}
+			if (cover)
+			{
+				//the book's front cover: its title is lettered as large as the original's place allows (helper 1.41)
+				path += (path.Contains("?") ? "&" : "?") + "cover=1";
 			}
 			return ReadPage(Send(path, page, "application/octet-stream", 900000));
 		}
@@ -61,7 +66,7 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 			}
 		}
 
-		public PageAnalysis Render(byte[] page, IEnumerable<TranslationBox> boxList, IEnumerable<ProtectStroke> protect = null, StyleFonts fonts = null)
+		public PageAnalysis Render(byte[] page, IEnumerable<TranslationBox> boxList, IEnumerable<ProtectStroke> protect = null, StyleFonts fonts = null, bool cover = false)
 		{
 			List<TranslationBox> boxes = boxList.ToList();
 			using (MemoryStream ms = new MemoryStream())
@@ -80,6 +85,10 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 					{
 						w.WriteString("font_caps", fonts.Caps ?? "");
 						w.WriteString("font_mixed", fonts.Mixed ?? "");
+					}
+					if (cover)
+					{
+						w.WriteBoolean("cover", true);
 					}
 					List<ProtectStroke> strokes = protect?.Where((ProtectStroke p) => p != null && p.Points.Length >= 2).ToList();
 					if (strokes != null && strokes.Count > 0)
@@ -250,6 +259,22 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 			}
 		}
 
+		private static List<FontPage> ReadPages(JsonElement parent)
+		{
+			List<FontPage> list = new List<FontPage>();
+			if (parent.TryGetProperty("pages", out JsonElement pages) && pages.ValueKind == JsonValueKind.Array)
+			{
+				foreach (JsonElement e in pages.EnumerateArray())
+				{
+					if (e.ValueKind == JsonValueKind.Object)
+					{
+						list.Add(new FontPage { Index = (int)TranslationBox.GetDouble(e, "index"), Boxes = (int)TranslationBox.GetDouble(e, "boxes") });
+					}
+				}
+			}
+			return list;
+		}
+
 		private static List<FontMatch> ReadMatches(JsonElement parent, string name = "matches")
 		{
 			List<FontMatch> list = new List<FontMatch>();
@@ -300,6 +325,7 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 					}
 					result.Matches = ReadMatches(root);
 					result.GoogleMatches = ReadMatches(root, "google_matches");
+					result.Pages = ReadPages(root);
 					if (root.TryGetProperty("groups", out JsonElement groups) && groups.ValueKind == JsonValueKind.Array)
 					{
 						foreach (JsonElement g in groups.EnumerateArray())
@@ -311,7 +337,8 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 								Boxes = (int)TranslationBox.GetDouble(g, "boxes"),
 								Crop = string.IsNullOrEmpty(gcrop) ? null : Convert.FromBase64String(gcrop),
 								Matches = ReadMatches(g),
-								GoogleMatches = ReadMatches(g, "google_matches")
+								GoogleMatches = ReadMatches(g, "google_matches"),
+								Pages = ReadPages(g)
 							};
 							if (g.TryGetProperty("notes", out JsonElement gnotes) && gnotes.ValueKind == JsonValueKind.Array)
 							{

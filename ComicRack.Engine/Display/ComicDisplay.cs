@@ -1999,12 +1999,40 @@ namespace cYo.Projects.ComicRack.Engine.Display
 			return '\0';
 		}
 
+		/// <summary>Zoom steps for Ctrl + wheel, as in the translation editor: each wheel notch multiplies the zoom by this.</summary>
+		public const double WheelZoomStep = 1.2;
+
+		/// <summary>
+		/// Ctrl + wheel while it is set to Zoom In / Zoom Out: the zoom follows the wheel the way the translation editor's does. It
+		/// is multiplied (not added to), so steps stay even at any zoom, and by as much of a step as the wheel moved: a slow,
+		/// fine-stepped wheel zooms a little at a time, a fast spin zooms quickly. False when Ctrl + wheel is set to something else.
+		/// </summary>
+		private bool WheelZoom(int delta)
+		{
+			if (delta == 0)
+			{
+				return false;
+			}
+			CommandKey key = ((delta > 0) ? CommandKey.MouseWheelUp : CommandKey.MouseWheelDown) | (CommandKey)Control.ModifierKeys;
+			KeyboardCommand command = keyboardMap.Commands.FirstOrDefault((KeyboardCommand c) => c.Handles(key));
+			if (command == null || (command.Id != "ZoomIn" && command.Id != "ZoomOut"))
+			{
+				return false;
+			}
+			double notches = (double)delta / SystemInformation.MouseWheelScrollDelta;
+			ImageZoom = (float)Math.Max(1.0, Math.Min(8.0, ImageZoom * Math.Pow(WheelZoomStep, notches)));
+			return true;
+		}
+
 		private void display_MouseWheel(object sender, MouseEventArgs e)
 		{
 			if (Control.MouseButtons == MouseButtons.Right)
 			{
 				keyboardMap.HandleKey((e.Delta > 0) ? CommandKey.Tab : (CommandKey.Tab | CommandKey.Shift));
 				SupressContextMenu = true;
+			}
+			else if ((Control.ModifierKeys & Keys.Control) != 0 && WheelZoom(e.Delta))
+			{
 			}
 			else
 			{
