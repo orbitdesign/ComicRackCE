@@ -91,6 +91,10 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 			//Whether the helper already has this page stored (only loading it, no reading or translating); null until asked.
 			public bool? FromCache;
 
+			/// <summary>Read and translated before, but its picture is drawn again (other fonts, a new picture version, the user's
+			/// edits): no reading or translating, but it takes a while, so the light is amber, not blue.</summary>
+			public bool Redraw;
+
 			public int ImageIndex;
 
 			/// <summary>The book's front cover: the helper letters its title as large as the original's place allows.</summary>
@@ -195,6 +199,22 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 		}
 
 		/// <summary>
+		/// True while the pages being worked on were all read and translated before and at least one of them is only being drawn again
+		/// (its stored picture does not suit any more): the light is amber and says "Redrawing", not "Translating".
+		/// </summary>
+		public bool IsRedrawing
+		{
+			get
+			{
+				lock (sync)
+				{
+					List<Entry> active = entries.Values.Where(IsShownByLight).ToList();
+					return active.Count > 0 && active.Any((Entry e) => e.Redraw || e.RenderOnly) && active.All((Entry e) => e.RenderOnly || e.FromCache == true || e.Redraw);
+				}
+			}
+		}
+
+		/// <summary>
 		/// True while anything is being read, translated, drawn or loaded from what was stored, the pages loaded ahead in the background
 		/// included: the status light stays on (blue while it is only stored pages, amber when something needs real work) until all of it is done.
 		/// </summary>
@@ -228,10 +248,13 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 			string url = ServerUrl;
 			ThreadPool.QueueUserWorkItem(delegate
 			{
-				bool cached = false;
+				bool cached = false, picture = false, edited = false;
 				try
 				{
-					cached = new TranslationApi(url).IsCached(Fingerprint(data));
+					StyleFonts fonts = Store.GetFonts(entry.BookKey, entry.ImageIndex);
+					cached = new TranslationApi(url).IsCached(Fingerprint(data), fonts, entry.Cover, out picture);
+					//the user's edits and protect strokes are drawn by the helper each time the page is shown
+					edited = cached && (Store.GetEdits(entry.BookKey, entry.ImageIndex).Count > 0 || Store.GetProtect(entry.BookKey, entry.ImageIndex).Count > 0);
 				}
 				catch (Exception)
 				{
@@ -240,7 +263,8 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 				{
 					if (entry.FromCache == null)
 					{
-						entry.FromCache = cached;
+						entry.FromCache = cached && picture && !edited;
+						entry.Redraw = cached && (!picture || edited);
 					}
 				}
 			});

@@ -817,7 +817,7 @@ namespace cYo.Projects.ComicRack.Viewer
 				else if (busy)
 				{
 					led = TranslationLed.Busy;
-					tip = "Translate pages: translating... " + translated + " / " + total + " pages done. Click to turn off.";
+					tip = "Translate pages: " + (reader.TranslationRedrawing ? "drawing translated pages again (new settings or a new picture version; nothing is read or translated)... " : "translating... ") + translated + " / " + total + " pages done. Click to turn off.";
 				}
 				else
 				{

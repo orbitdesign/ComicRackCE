@@ -44,6 +44,17 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 		/// </summary>
 		public bool IsCached(string sha)
 		{
+			return IsCached(sha, null, false, out bool _);
+		}
+
+		/// <summary>
+		/// Whether the helper already read and translated this page, and (helper 1.44 and later) whether its finished picture is stored
+		/// for these fonts and cover setting: read but without a picture, the page is drawn again, which takes a while. An older helper
+		/// does not say, and the picture is taken as stored.
+		/// </summary>
+		public bool IsCached(string sha, StyleFonts fonts, bool cover, out bool picture)
+		{
+			picture = false;
 			try
 			{
 				using (MemoryStream ms = new MemoryStream())
@@ -52,11 +63,22 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 					{
 						w.WriteStartObject();
 						w.WriteString("sha", sha);
+						if (fonts != null && !fonts.IsEmpty)
+						{
+							w.WriteString("font_caps", fonts.Caps ?? "");
+							w.WriteString("font_mixed", fonts.Mixed ?? "");
+						}
+						if (cover)
+						{
+							w.WriteBoolean("cover", true);
+						}
 						w.WriteEndObject();
 					}
 					using (JsonDocument doc = JsonDocument.Parse(Send("/api/cached", ms.ToArray(), "application/json", 4000)))
 					{
-						return TranslationBox.GetBool(doc.RootElement, "cached");
+						bool read = TranslationBox.GetBool(doc.RootElement, "cached");
+						picture = doc.RootElement.TryGetProperty("picture", out JsonElement p) ? p.ValueKind == JsonValueKind.True : read;
+						return read;
 					}
 				}
 			}

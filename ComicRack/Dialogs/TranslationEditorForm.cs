@@ -2325,7 +2325,7 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			Image old = picLed.Image;
 			picLed.Image = led;
 			old?.Dispose();
-			lblLed.Text = !string.IsNullOrEmpty(problem) ? problem :(busy ? (fromCache ? "Loading... " : "Translating... ") : "") + translated + " / " + total + " pages translated";
+			lblLed.Text = !string.IsNullOrEmpty(problem) ? problem :(busy ? (fromCache ? "Loading... " : (reader.TranslationRedrawing ? "Redrawing... " : "Translating... ")) : "") + translated + " / " + total + " pages translated";
 		}
 
 		private void SyncList()

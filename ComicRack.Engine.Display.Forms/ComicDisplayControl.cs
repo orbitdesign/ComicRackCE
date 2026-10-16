@@ -2307,6 +2307,18 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 			}
 		}
 
+		/// <summary>True while the pages being worked on were translated before and are only being drawn again (amber, "Redrawing...").</summary>
+		[Browsable(false)]
+		[DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+		public bool TranslationRedrawing
+		{
+			get
+			{
+				PageTranslationService service = pageTranslator;
+				return translatePages && service != null && IsValid && !service.IsLoadingFromCache && service.IsRedrawing;
+			}
+		}
+
 		/// <summary>Supplies the translator's picture for the status panel: the state ("on", "busy", "loading" or "problem") and the size in pixels.</summary>
 		public Func<string, int, Bitmap> TranslationIconProvider { get; set; }
 
@@ -2378,7 +2390,8 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 				else
 				{
 					bool onScreen = pageTranslator.IsWaiting(GetPageKey(CurrentPage)) || (TwoPageDisplay && pageTranslator.IsWaiting(GetPageKey(NextPage)));
-					text = (onScreen ? (TranslationLoadingFromCache ? TR.Messages["LoadingTranslatedPage", "Loading..."] : TR.Messages["TranslatingPage", "Translating..."]) + " " : "") + string.Format(TR.Messages["TranslatedPagesShort", "Translated {0}/{1}"], translated, total);
+					string doing = TranslationLoadingFromCache ? TR.Messages["LoadingTranslatedPage", "Loading..."] : (TranslationRedrawing ? TR.Messages["RedrawingPage", "Redrawing..."] : TR.Messages["TranslatingPage", "Translating..."]);
+					text = (onScreen ? doing + " " : "") + string.Format(TR.Messages["TranslatedPagesShort", "Translated {0}/{1}"], translated, total);
 					if (preTranslate != null && preTranslateTotal > 0)
 					{
 						text += string.Format("   (getting ahead: {0}/{1})", preTranslateDone, preTranslateTotal);
