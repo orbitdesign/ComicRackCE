@@ -1112,6 +1112,21 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 
 		public int CurrentMousePage => currentMousePage;
 
+		/// <summary>True when the page is one of those on screen now (in two page layout, either of the two).</summary>
+		public bool IsPageDisplayed(int page)
+		{
+			if (!IsValid || page < 0)
+			{
+				return false;
+			}
+			if (page == CurrentPage || (TwoPageDisplay && page == NextPage))
+			{
+				return true;
+			}
+			int[] shown = DisplayedPages;
+			return shown != null && shown.Contains(page);
+		}
+
 		protected int NextPage
 		{
 			get

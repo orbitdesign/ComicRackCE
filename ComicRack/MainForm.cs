@@ -1514,8 +1514,10 @@ namespace cYo.Projects.ComicRack.Viewer
 			InsertMenuItemsAfter(cmMagnify, cmTranslatePages, cmTranslationEditor, cmTranslationCache, cmTranslationExport, cmTranslationSettings);
 			commands.Add(ToggleTranslatePages, true, () => readerControl != null && readerControl.TranslatePages, miTranslatePages, cmTranslatePages);
 			commands.Add(OpenTranslationSettings, miTranslationSettings, cmTranslationSettings);
-			commands.Add(OpenTranslationEditor, miTranslationEditor, cmTranslationEditor);
-			commands.Add(OpenTranslationCache, miTranslationCache, cmTranslationCache);
+			commands.Add(OpenTranslationEditor, miTranslationEditor);
+			commands.Add(OpenTranslationEditorAtMouse, cmTranslationEditor);
+			commands.Add(OpenTranslationCache, miTranslationCache);
+			commands.Add(OpenTranslationCacheAtMouse, cmTranslationCache);
 			commands.Add(OpenTranslationExport, miTranslationExport, cmTranslationExport);
 			commands.Add(ComicDisplay.TogglePaperTexture, true, () => !string.IsNullOrEmpty(ComicDisplay.PaperTexture), miPaperTexture);
 			commands.Add(delegate
@@ -3076,7 +3078,30 @@ namespace cYo.Projects.ComicRack.Viewer
 
 		private TranslationEditorForm translationEditor;
 
+		/// <summary>The reader's right-click menu: opens the editor on the page that was right clicked (the right one of two, too).</summary>
+		internal void OpenTranslationEditorAtMouse()
+		{
+			int clicked = readerControl != null ? readerControl.CurrentMousePage : -1;
+			if (readerControl == null || !readerControl.IsPageDisplayed(clicked))
+			{
+				OpenTranslationEditor();
+				return;
+			}
+			if (translationEditor != null && !translationEditor.IsDisposed)
+			{
+				translationEditor.ShowPage(clicked);
+				translationEditor.Activate();
+				return;
+			}
+			OpenTranslationEditor(clicked);
+		}
+
 		internal void OpenTranslationEditor()
+		{
+			OpenTranslationEditor(-1);
+		}
+
+		internal void OpenTranslationEditor(int startPage)
 		{
 			if (readerControl == null || readerControl.Book == null)
 			{
@@ -3088,12 +3113,22 @@ namespace cYo.Projects.ComicRack.Viewer
 				translationEditor.Activate();
 				return;
 			}
-			translationEditor = new TranslationEditorForm(readerControl);
+			translationEditor = new TranslationEditorForm(readerControl, startPage);
 			translationEditor.FormClosed += delegate
 			{
 				translationEditor = null;
 			};
 			translationEditor.Show(this);
+		}
+
+		/// <summary>The reader's right-click menu: "This page" means the page that was right clicked (the right one of two, too).</summary>
+		internal void OpenTranslationCacheAtMouse()
+		{
+			if (readerControl != null)
+			{
+				int clicked = readerControl.CurrentMousePage;
+				TranslationTools.ShowCacheDialog(this, readerControl, null, null, readerControl.IsPageDisplayed(clicked) ? clicked : -1);
+			}
 		}
 
 		internal void OpenTranslationCache()

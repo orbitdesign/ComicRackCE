@@ -1482,9 +1482,16 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 
 		public override UIComponent UIComponent => UIComponent.Content;
 
-		public TranslationEditorForm(ComicDisplayControl reader)
+		//The page to open on (the one right clicked in two page layout); -1 for the reader's current page.
+		private int startPage = -1;
+
+		//The page the editor's own < and > buttons asked the reader to show.
+		private int wantedPage = -1;
+
+		public TranslationEditorForm(ComicDisplayControl reader, int startPage = -1)
 		{
 			this.reader = reader;
+			this.startPage = startPage;
 			Text = "Translation Editor";
 			AutoScaleDimensions = new SizeF(6f, 13f);
 			AutoScaleMode = AutoScaleMode.Font;
@@ -1881,7 +1888,7 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			btDeleteCache.Click += delegate
 			{
 				TranslationCacheScope scope = tileBox.Checked ? TranslationCacheScope.Box : (tileBook.Checked ? TranslationCacheScope.Book : TranslationCacheScope.Page);
-				TranslationTools.ApplyCache(this, reader, scope, tileEdits.Checked, canvas.Selected, ReadAgain);
+				TranslationTools.ApplyCache(this, reader, scope, tileEdits.Checked, canvas.Selected, ReadAgain, page);
 			};
 			btExport.Click += delegate { TranslationTools.ShowExportDialog(this, reader); };
 		}
@@ -1900,7 +1907,7 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			reader.PageChanged += reader_PageChanged;
 			reader.BookChanged += reader_BookChanged;
 			reader.TranslationStatusChanged += reader_StatusChanged;
-			LoadPage(reader.CurrentPage);
+			LoadPage(reader.IsPageDisplayed(startPage) ? startPage : reader.CurrentPage);
 			UpdateLed();
 		}
 
@@ -1930,7 +1937,37 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 				commitTimer.Stop();
 				Commit();
 			}
-			LoadPage(reader.CurrentPage);
+			//In two page layout the editor stays on the page it shows (or goes to the one its own buttons asked for) while that page is on screen.
+			int target = wantedPage >= 0 && reader.IsPageDisplayed(wantedPage) ? wantedPage : (reader.IsPageDisplayed(page) ? page : reader.CurrentPage);
+			wantedPage = -1;
+			if (target != page)
+			{
+				LoadPage(target);
+			}
+		}
+
+		/// <summary>Shows a page of the open book in the editor (the reader keeps showing what it shows when that page is on screen).</summary>
+		public void ShowPage(int newPage)
+		{
+			if (reader.Book == null || newPage < 0)
+			{
+				return;
+			}
+			if (pendingCommit)
+			{
+				commitTimer.Stop();
+				Commit();
+			}
+			if (!reader.IsPageDisplayed(newPage))
+			{
+				wantedPage = newPage;
+				reader.Book.CurrentPage = newPage;
+				return;
+			}
+			if (newPage != page)
+			{
+				LoadPage(newPage);
+			}
 		}
 
 		private void reader_BookChanged(object sender, EventArgs e)
@@ -1972,7 +2009,7 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			BeginInvokeSafe(delegate
 			{
 				pendingCommit = false;
-				LoadPage(reader.CurrentPage);
+				LoadPage(reader.IsPageDisplayed(page) ? page : reader.CurrentPage);
 			});
 		}
 
@@ -1982,8 +2019,8 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			{
 				return;
 			}
-			int target = Math.Max(0, Math.Min(reader.Book.ProviderPageCount - 1, reader.CurrentPage + offset));
-			reader.Book.CurrentPage = target;
+			int from = page >= 0 ? page : reader.CurrentPage;
+			ShowPage(Math.Max(0, Math.Min(reader.Book.ProviderPageCount - 1, from + offset)));
 		}
 
 		private void LoadPage(int newPage)

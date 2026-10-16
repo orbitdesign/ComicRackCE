@@ -689,7 +689,7 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 	public static class TranslationTools
 	{
 		/// <summary>Forgets translations: one box (through readAgain), the page on screen or the whole book.</summary>
-		public static void ApplyCache(IWin32Window owner, ComicDisplayControl reader, TranslationCacheScope scope, bool deleteEdits, TranslationBox selected, Action<TranslationBox, bool> readAgain)
+		public static void ApplyCache(IWin32Window owner, ComicDisplayControl reader, TranslationCacheScope scope, bool deleteEdits, TranslationBox selected, Action<TranslationBox, bool> readAgain, int page = -1)
 		{
 			PageTranslationService service = reader.TranslationService;
 			if (service == null || reader.Book == null)
@@ -704,7 +704,8 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 				readAgain?.Invoke(selected, deleteEdits);
 				break;
 			case TranslationCacheScope.Page:
-				service.ForgetPage(reader.GetTranslationPageKey(reader.CurrentPage), bookKey, !deleteEdits);
+				//The page meant (the one the editor shows, or the one right clicked in two page layout), else the reader's current one.
+				service.ForgetPage(reader.GetTranslationPageKey(page >= 0 ? page : reader.CurrentPage), bookKey, !deleteEdits);
 				break;
 			case TranslationCacheScope.Book:
 				if (MessageBox.Show(owner, "Forget the translation of every page of this book" + (deleteEdits ? " and all your own changes" : "") + "?", "Delete Translation Cache", MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes)
@@ -715,7 +716,7 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			}
 		}
 
-		public static void ShowCacheDialog(IWin32Window owner, ComicDisplayControl reader, TranslationBox selected, Action<TranslationBox, bool> readAgain)
+		public static void ShowCacheDialog(IWin32Window owner, ComicDisplayControl reader, TranslationBox selected, Action<TranslationBox, bool> readAgain, int page = -1)
 		{
 			PageTranslationService service = reader.TranslationService;
 			if (service == null || reader.Book == null)
@@ -738,7 +739,7 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 					readAgain?.Invoke(selected, dialog.DeleteEdits);
 					break;
 				case TranslationCacheScope.Page:
-					service.ForgetPage(reader.GetTranslationPageKey(reader.CurrentPage), bookKey, !dialog.DeleteEdits);
+					service.ForgetPage(reader.GetTranslationPageKey(page >= 0 ? page : reader.CurrentPage), bookKey, !dialog.DeleteEdits);
 					break;
 				case TranslationCacheScope.Book:
 					if (MessageBox.Show(owner, "Forget the translation of every page of this book" + (dialog.DeleteEdits ? " and all your own changes" : "") + "?", "Delete Translation Cache", MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes)
