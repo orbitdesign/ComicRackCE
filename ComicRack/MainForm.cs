@@ -1510,6 +1510,13 @@ namespace cYo.Projects.ComicRack.Viewer
 			{
 				Name = "cmTranslationExport"
 			};
+			//the same pictures as in the translator button's menu
+			int translatorIcon = Math.Max(16, (int)Math.Round(16 * DeviceDpi / 96.0));
+			miTranslatePages.Image = cmTranslatePages.Image = TranslationButtons.ActionIcon(TranslationButtons.TranslationAction.Translate, translatorIcon);
+			miTranslationEditor.Image = cmTranslationEditor.Image = TranslationButtons.ActionIcon(TranslationButtons.TranslationAction.Edit, translatorIcon);
+			miTranslationCache.Image = cmTranslationCache.Image = TranslationButtons.ActionIcon(TranslationButtons.TranslationAction.DeleteCache, translatorIcon);
+			miTranslationExport.Image = cmTranslationExport.Image = TranslationButtons.ActionIcon(TranslationButtons.TranslationAction.Export, translatorIcon);
+			miTranslationSettings.Image = cmTranslationSettings.Image = TranslationButtons.ActionIcon(TranslationButtons.TranslationAction.Settings, translatorIcon);
 			InsertMenuItemsAfter(miMagnify, miTranslatePages, miTranslationEditor, miTranslationCache, miTranslationExport, miTranslationSettings);
 			InsertMenuItemsAfter(cmMagnify, cmTranslatePages, cmTranslationEditor, cmTranslationCache, cmTranslationExport, cmTranslationSettings);
 			commands.Add(ToggleTranslatePages, true, () => readerControl != null && readerControl.TranslatePages, miTranslatePages, cmTranslatePages);

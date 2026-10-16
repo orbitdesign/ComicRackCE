@@ -603,7 +603,8 @@ namespace cYo.Projects.ComicRack.Viewer
 				Text = "Translate Pages"
 			};
 			pair.Translator.ButtonClick += delegate { Main?.ToggleTranslatePages(); };
-			pair.StatusPanel = new ToolStripMenuItem("Show Translation Status Panel");
+			int iconSize = Math.Max(16, strip.ImageScalingSize.Height);
+			pair.StatusPanel = new ToolStripMenuItem("Show Translation Status Panel", ActionIcon(TranslationAction.StatusPanel, iconSize));
 			pair.StatusPanel.Click += delegate
 			{
 				ComicDisplayControl reader = Main?.TranslationReader;
@@ -615,11 +616,11 @@ namespace cYo.Projects.ComicRack.Viewer
 			};
 			pair.Translator.DropDownItems.Add(pair.StatusPanel);
 			pair.Translator.DropDownItems.Add(new ToolStripSeparator());
-			pair.Translator.DropDownItems.Add(new ToolStripMenuItem("Edit Translated Text...", null, delegate { Main?.OpenTranslationEditor(); }));
-			pair.Translator.DropDownItems.Add(new ToolStripMenuItem("Delete Translation Cache...", null, delegate { Main?.OpenTranslationCache(); }));
-			pair.Translator.DropDownItems.Add(new ToolStripMenuItem("Export Translated Book...", null, delegate { Main?.OpenTranslationExport(); }));
+			pair.Translator.DropDownItems.Add(new ToolStripMenuItem("Edit Translated Text...", ActionIcon(TranslationAction.Edit, iconSize), delegate { Main?.OpenTranslationEditor(); }));
+			pair.Translator.DropDownItems.Add(new ToolStripMenuItem("Delete Translation Cache...", ActionIcon(TranslationAction.DeleteCache, iconSize), delegate { Main?.OpenTranslationCache(); }));
+			pair.Translator.DropDownItems.Add(new ToolStripMenuItem("Export Translated Book...", ActionIcon(TranslationAction.Export, iconSize), delegate { Main?.OpenTranslationExport(); }));
 			pair.Translator.DropDownItems.Add(new ToolStripSeparator());
-			pair.Translator.DropDownItems.Add(new ToolStripMenuItem("Translation Settings...", null, delegate { Main?.OpenTranslationSettings(); }));
+			pair.Translator.DropDownItems.Add(new ToolStripMenuItem("Translation Settings...", ActionIcon(TranslationAction.Settings, iconSize), delegate { Main?.OpenTranslationSettings(); }));
 			pair.Translator.DropDownOpening += delegate
 			{
 				pair.StatusPanel.Checked = Main?.TranslationReader?.TranslationStatusVisible ?? true;
@@ -633,7 +634,7 @@ namespace cYo.Projects.ComicRack.Viewer
 				Text = "Translator and Ollama"
 			};
 			pair.Services.ButtonClick += delegate { TranslationServices.ToggleAll(Main); };
-			pair.StateItem = new ToolStripMenuItem { Enabled = false };
+			pair.StateItem = new ToolStripMenuItem { Enabled = false, Image = ActionIcon(TranslationAction.Info, iconSize) };
 			pair.HelperItem = new ToolStripMenuItem();
 			pair.HelperItem.Click += delegate { TranslationServices.ToggleHelper(Main); };
 			pair.OllamaItem = new ToolStripMenuItem();
@@ -643,7 +644,7 @@ namespace cYo.Projects.ComicRack.Viewer
 			pair.Services.DropDownItems.Add(pair.HelperItem);
 			pair.Services.DropDownItems.Add(pair.OllamaItem);
 			pair.Services.DropDownItems.Add(new ToolStripSeparator());
-			pair.ExitItem = new ToolStripMenuItem("Stop both when ComicRack closes");
+			pair.ExitItem = new ToolStripMenuItem("Stop both when ComicRack closes", ActionIcon(TranslationAction.StopOnExit, iconSize));
 			pair.ExitItem.Click += delegate { Program.Settings.TranslatorStopOnExit = !Program.Settings.TranslatorStopOnExit; };
 			pair.Services.DropDownItems.Add(pair.ExitItem);
 			pair.Services.DropDownOpening += delegate
@@ -863,6 +864,10 @@ namespace cYo.Projects.ComicRack.Viewer
 			p.StateItem.Text = state;
 			p.HelperItem.Text = helper ? "Stop Translator Helper" : "Start Translator Helper";
 			p.OllamaItem.Text = ollama ? "Stop Ollama" : "Start Ollama";
+			//what a click does: a red square stops, a green triangle starts
+			int itemSize = Math.Max(16, p.Services.Owner?.ImageScalingSize.Height ?? 16);
+			p.HelperItem.Image = ActionIcon(helper ? TranslationAction.HelperStop : TranslationAction.HelperStart, itemSize);
+			p.OllamaItem.Image = ActionIcon(ollama ? TranslationAction.OllamaStop : TranslationAction.OllamaStart, itemSize);
 			p.HelperItem.Enabled = p.OllamaItem.Enabled = !TranslationServices.Busy;
 			string action = TranslationServices.Busy ? "working..." : (helper || ollama ? "Click to stop both." : "Click to start both.");
 			p.Services.ToolTipText = state + " " + action + (string.IsNullOrEmpty(TranslationServices.Problem) ? "" : "  Problem: " + TranslationServices.Problem);
@@ -976,6 +981,252 @@ namespace cYo.Projects.ComicRack.Viewer
 				}
 				icons[key] = bmp;
 				return bmp;
+			}
+		}
+
+		/// <summary>The translator's menu entries, each with a picture of its own.</summary>
+		public enum TranslationAction
+		{
+			StatusPanel,
+			Edit,
+			DeleteCache,
+			Export,
+			Settings,
+			Info,
+			HelperStart,
+			HelperStop,
+			OllamaStart,
+			OllamaStop,
+			StopOnExit,
+			Translate
+		}
+
+		/// <summary>The picture of a translator menu entry (shared, do not dispose): drawn to be readable on a light or a dark menu.</summary>
+		public static Bitmap ActionIcon(TranslationAction kind, int size)
+		{
+			string key = "a" + (int)kind + "-" + size;
+			lock (icons)
+			{
+				if (icons.TryGetValue(key, out Bitmap cached))
+				{
+					return cached;
+				}
+				Bitmap bmp = new Bitmap(size, size);
+				using (Graphics g = Graphics.FromImage(bmp))
+				{
+					g.SmoothingMode = SmoothingMode.AntiAlias;
+					g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;
+					DrawAction(g, kind, size);
+				}
+				icons[key] = bmp;
+				return bmp;
+			}
+		}
+
+		private static void DrawAction(Graphics g, TranslationAction kind, int size)
+		{
+			float u = size / 16f;
+			Color paper = Color.FromArgb(240, 240, 244);
+			Color rim = Color.FromArgb(70, 70, 78);
+			Color amber = Color.FromArgb(245, 175, 30);
+			Color blue = Color.FromArgb(70, 150, 245);
+			Color red = Color.FromArgb(220, 65, 55);
+			Color green = Color.FromArgb(60, 180, 90);
+			using (Pen rimPen = new Pen(rim, Math.Max(1f, u)) { LineJoin = LineJoin.Round })
+			using (Pen faint = new Pen(Color.FromArgb(150, rim), Math.Max(1f, u)))
+			using (SolidBrush paperBrush = new SolidBrush(paper))
+			{
+				switch (kind)
+				{
+				case TranslationAction.StatusPanel:
+					{
+						//a status bar with the translator's bubble and its text
+						RectangleF bar = new RectangleF(0.8f * u, 4.5f * u, 14.4f * u, 7 * u);
+						g.FillRectangle(paperBrush, bar);
+						g.DrawRectangle(rimPen, bar.X, bar.Y, bar.Width, bar.Height);
+						using (SolidBrush a = new SolidBrush(amber))
+						{
+							g.FillEllipse(a, 2.2f * u, 5.8f * u, 4.6f * u, 4 * u);
+							g.FillPolygon(a, new[] { new PointF(3 * u, 9 * u), new PointF(2.6f * u, 10.8f * u), new PointF(4.6f * u, 9.4f * u) });
+						}
+						g.DrawLine(faint, 8.3f * u, 7 * u, 13.6f * u, 7 * u);
+						g.DrawLine(faint, 8.3f * u, 9 * u, 12 * u, 9 * u);
+						break;
+					}
+				case TranslationAction.Edit:
+					{
+						//a page of text and a pencil
+						RectangleF page = new RectangleF(1.5f * u, 1 * u, 9.5f * u, 13.5f * u);
+						g.FillRectangle(paperBrush, page);
+						g.DrawRectangle(rimPen, page.X, page.Y, page.Width, page.Height);
+						for (int i = 0; i < 4; i++)
+						{
+							g.DrawLine(faint, 3.2f * u, (4 + 2.4f * i) * u, (i == 3 ? 6.5f : 9.3f) * u, (4 + 2.4f * i) * u);
+						}
+						using (Pen pencil = new Pen(amber, Math.Max(2f, 2.6f * u)) { StartCap = LineCap.Flat, EndCap = LineCap.Triangle })
+						{
+							g.DrawLine(pencil, 14.8f * u, 4.2f * u, 8.6f * u, 12.6f * u);
+						}
+						using (Pen tip = new Pen(rim, Math.Max(1f, 1.2f * u)))
+						{
+							g.DrawLine(tip, 8.9f * u, 12.2f * u, 8 * u, 13.6f * u);
+						}
+						break;
+					}
+				case TranslationAction.DeleteCache:
+					{
+						//a bin with its lid
+						PointF[] body = { new PointF(3.5f * u, 5 * u), new PointF(12.5f * u, 5 * u), new PointF(11.5f * u, 15 * u), new PointF(4.5f * u, 15 * u) };
+						g.FillPolygon(paperBrush, body);
+						g.DrawPolygon(rimPen, body);
+						g.DrawLine(faint, 6.5f * u, 7 * u, 6.8f * u, 13 * u);
+						g.DrawLine(faint, 9.5f * u, 7 * u, 9.2f * u, 13 * u);
+						using (Pen lid = new Pen(red, Math.Max(1.6f, 2 * u)) { StartCap = LineCap.Round, EndCap = LineCap.Round })
+						{
+							g.DrawLine(lid, 2 * u, 3.4f * u, 14 * u, 3.4f * u);
+							g.DrawLine(lid, 6.3f * u, 1.4f * u, 9.7f * u, 1.4f * u);
+						}
+						break;
+					}
+				case TranslationAction.Export:
+					{
+						//an open book, and a blue arrow taking it out (saved as a file)
+						PointF[] left = { new PointF(0.6f * u, 5 * u), new PointF(6.6f * u, 6.3f * u), new PointF(6.6f * u, 15 * u), new PointF(0.6f * u, 13.7f * u) };
+						PointF[] right = { new PointF(12.6f * u, 5 * u), new PointF(6.6f * u, 6.3f * u), new PointF(6.6f * u, 15 * u), new PointF(12.6f * u, 13.7f * u) };
+						g.FillPolygon(paperBrush, left);
+						g.FillPolygon(paperBrush, right);
+						g.DrawPolygon(rimPen, left);
+						g.DrawPolygon(rimPen, right);
+						g.DrawLine(faint, 2 * u, 8.3f * u, 5.2f * u, 9 * u);
+						g.DrawLine(faint, 2 * u, 10.6f * u, 5.2f * u, 11.3f * u);
+						using (Pen arrow = new Pen(blue, Math.Max(1.6f, 2.2f * u)) { StartCap = LineCap.Round, EndCap = LineCap.Round, LineJoin = LineJoin.Round })
+						{
+							g.DrawLine(arrow, 9.2f * u, 6.8f * u, 14.8f * u, 1.2f * u);
+							g.DrawLines(arrow, new[] { new PointF(10.6f * u, 1.2f * u), new PointF(14.8f * u, 1.2f * u), new PointF(14.8f * u, 5.4f * u) });
+						}
+						break;
+					}
+				case TranslationAction.Settings:
+					{
+						//a gear
+						PointF c = new PointF(8 * u, 8 * u);
+						List<PointF> teeth = new List<PointF>();
+						for (int i = 0; i < 32; i++)
+						{
+							double angle = Math.PI * 2 * i / 32;
+							float r = (i % 4 == 0 || i % 4 == 1) ? 7.2f * u : 5.4f * u;
+							teeth.Add(new PointF(c.X + (float)Math.Cos(angle) * r, c.Y + (float)Math.Sin(angle) * r));
+						}
+						using (SolidBrush steel = new SolidBrush(Color.FromArgb(165, 165, 175)))
+						{
+							g.FillPolygon(steel, teeth.ToArray());
+						}
+						g.DrawPolygon(rimPen, teeth.ToArray());
+						g.FillEllipse(paperBrush, c.X - 2.4f * u, c.Y - 2.4f * u, 4.8f * u, 4.8f * u);
+						g.DrawEllipse(rimPen, c.X - 2.4f * u, c.Y - 2.4f * u, 4.8f * u, 4.8f * u);
+						break;
+					}
+				case TranslationAction.Info:
+					{
+						using (SolidBrush b = new SolidBrush(blue))
+						{
+							g.FillEllipse(b, 1 * u, 1 * u, 14 * u, 14 * u);
+						}
+						using (SolidBrush white = new SolidBrush(Color.White))
+						{
+							g.FillEllipse(white, 7 * u, 3.4f * u, 2.2f * u, 2.2f * u);
+							g.FillRectangle(white, 7.05f * u, 6.6f * u, 2.1f * u, 6 * u);
+						}
+						break;
+					}
+				case TranslationAction.HelperStart:
+				case TranslationAction.HelperStop:
+					{
+						//the translator's bubble, with what a click does
+						GraphicsState state = g.Save();
+						g.ScaleTransform(0.78f, 0.78f);
+						DrawSpeechBubble(g, size, amber);
+						g.Restore(state);
+						DrawBadge(g, u, kind == TranslationAction.HelperStart, green, red);
+						break;
+					}
+				case TranslationAction.OllamaStart:
+				case TranslationAction.OllamaStop:
+					{
+						//a chip (the language model), with what a click does
+						RectangleF chip = new RectangleF(2.5f * u, 2 * u, 8.5f * u, 8.5f * u);
+						using (Pen pins = new Pen(Color.FromArgb(150, 150, 160), Math.Max(1f, u)))
+						{
+							for (int i = 0; i < 3; i++)
+							{
+								float p = (3.9f + 2.8f * i) * u;
+								g.DrawLine(pins, p, 0.5f * u, p, 2 * u);
+								g.DrawLine(pins, p, 10.5f * u, p, 12 * u);
+								g.DrawLine(pins, 1 * u, p - 1.4f * u + 0.6f * u, 2.5f * u, p - 1.4f * u + 0.6f * u);
+								g.DrawLine(pins, 11 * u, p - 1.4f * u + 0.6f * u, 12.5f * u, p - 1.4f * u + 0.6f * u);
+							}
+						}
+						using (SolidBrush body = new SolidBrush(Color.FromArgb(95, 95, 108)))
+						{
+							g.FillRectangle(body, chip);
+						}
+						g.DrawRectangle(rimPen, chip.X, chip.Y, chip.Width, chip.Height);
+						using (Font font = new Font("Segoe UI", Math.Max(5f, 5.4f * u), FontStyle.Bold, GraphicsUnit.Pixel))
+						using (StringFormat sf = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center })
+						{
+							g.DrawString("AI", font, Brushes.White, chip, sf);
+						}
+						DrawBadge(g, u, kind == TranslationAction.OllamaStart, green, red);
+						break;
+					}
+				case TranslationAction.StopOnExit:
+					{
+						//a door standing open in its frame, and an arrow out of it
+						using (Pen frame = new Pen(Color.FromArgb(150, 150, 160), Math.Max(1f, 1.2f * u)))
+						{
+							g.DrawRectangle(frame, 1.2f * u, 1 * u, 8.6f * u, 14 * u);
+						}
+						PointF[] door = { new PointF(1.2f * u, 1 * u), new PointF(6.6f * u, 2.6f * u), new PointF(6.6f * u, 13.4f * u), new PointF(1.2f * u, 15 * u) };
+						g.FillPolygon(paperBrush, door);
+						g.DrawPolygon(rimPen, door);
+						using (SolidBrush knob = new SolidBrush(rim))
+						{
+							g.FillEllipse(knob, 4.6f * u, 7.4f * u, 1.5f * u, 1.5f * u);
+						}
+						using (Pen arrow = new Pen(red, Math.Max(1.6f, 2.2f * u)) { StartCap = LineCap.Round, EndCap = LineCap.Round, LineJoin = LineJoin.Round })
+						{
+							g.DrawLine(arrow, 8.5f * u, 11.5f * u, 14.8f * u, 11.5f * u);
+							g.DrawLines(arrow, new[] { new PointF(12.3f * u, 9 * u), new PointF(14.8f * u, 11.5f * u), new PointF(12.3f * u, 14 * u) });
+						}
+						break;
+					}
+				default:
+					DrawSpeechBubble(g, size, amber);
+					break;
+				}
+			}
+		}
+
+		/// <summary>A small round badge at the lower right: a green triangle (starts) or a red square (stops).</summary>
+		private static void DrawBadge(Graphics g, float u, bool start, Color green, Color red)
+		{
+			RectangleF circle = new RectangleF(8.4f * u, 8.4f * u, 7.4f * u, 7.4f * u);
+			using (SolidBrush fill = new SolidBrush(start ? green : red))
+			using (Pen edge = new Pen(Color.White, Math.Max(1f, 0.9f * u)))
+			{
+				g.FillEllipse(fill, circle);
+				g.DrawEllipse(edge, circle);
+			}
+			using (SolidBrush white = new SolidBrush(Color.White))
+			{
+				if (start)
+				{
+					g.FillPolygon(white, new[] { new PointF(11.2f * u, 10.3f * u), new PointF(11.2f * u, 13.9f * u), new PointF(14.1f * u, 12.1f * u) });
+				}
+				else
+				{
+					g.FillRectangle(white, 10.6f * u, 10.6f * u, 3 * u, 3 * u);
+				}
 			}
 		}
 
