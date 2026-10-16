@@ -2491,6 +2491,7 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			string boxText = boxSelected ? box.Text ?? "" : "";
 			List<TranslationBox> onPage = canvas.Boxes.Where((TranslationBox b) => !b.IsHidden && !string.IsNullOrWhiteSpace(b.Text) && b.Src != null && b.Src.Length == 4).ToList();
 			List<int[]> pageRects = onPage.Select((TranslationBox b) => (int[])b.Src.Clone()).ToList();
+			List<string> pageTexts = onPage.Select((TranslationBox b) => b.Text ?? "").ToList();
 			string pageText = string.Join(" ", onPage.OrderByDescending((TranslationBox b) => (b.Text ?? "").Length).Take(2).Select((TranslationBox b) => b.Text));
 			int shownPage = page;
 			string bookKey = reader.TranslationBookKey;
@@ -2535,7 +2536,7 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 					}
 					else if (pageRects.Count > 0)
 					{
-						service.IdentifyPageFont(original.Item, pageRects, pageText, online, done);
+						service.IdentifyPageFont(original.Item, pageRects, pageText, online, done, pageTexts);
 					}
 					else
 					{
@@ -2547,7 +2548,9 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			{
 				service.InstallFont(family, use, done);
 			};
-			using (TranslationFontDialog dialog = new TranslationFontDialog(search, install, boxSelected))
+			Action<Action<List<FontFile>, string>> listFonts = delegate (Action<List<FontFile>, string> done) { service.ListFonts(done); };
+			string sampleText = boxSelected ? box.Translation ?? boxText : (onPage.FirstOrDefault()?.Translation ?? "");
+			using (TranslationFontDialog dialog = new TranslationFontDialog(search, install, boxSelected, listFonts, sampleText))
 			{
 				dialog.ShowDialog(this);
 			}

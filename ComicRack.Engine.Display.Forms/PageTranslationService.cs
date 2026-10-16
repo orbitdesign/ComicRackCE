@@ -512,7 +512,7 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 		}
 
 		/// <summary>Looks for the font of all the given boxes of one page together. The answer arrives on a background thread.</summary>
-		public void IdentifyPageFont(PageImage original, List<int[]> rects, string text, bool online, Action<FontIdentification, string> done)
+		public void IdentifyPageFont(PageImage original, List<int[]> rects, string text, bool online, Action<FontIdentification, string> done, List<string> texts = null)
 		{
 			byte[] data = original == null ? null : GetUploadBytes(original);
 			string url = ServerUrl;
@@ -524,7 +524,24 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 					{
 						throw new TranslationApiException("The page could not be read.", serverDown: false);
 					}
-					done(new TranslationApi(url).IdentifyPageFont(data, rects, text, online), null);
+					done(new TranslationApi(url).IdentifyPageFont(data, rects, text, online, texts), null);
+				}
+				catch (Exception ex)
+				{
+					done(null, ex.Message);
+				}
+			});
+		}
+
+		/// <summary>The font files on this computer the translator can use. The answer arrives on a background thread.</summary>
+		public void ListFonts(Action<List<FontFile>, string> done)
+		{
+			string url = ServerUrl;
+			ThreadPool.QueueUserWorkItem(delegate
+			{
+				try
+				{
+					done(new TranslationApi(url).FontsOnPc(), null);
 				}
 				catch (Exception ex)
 				{

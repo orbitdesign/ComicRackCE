@@ -363,6 +363,34 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 
 		/// <summary>A small picture (PNG) of the box's own text set in this font.</summary>
 		public byte[] Preview { get; set; }
+
+		/// <summary>True for a Google font that is also installed on this computer (it was found under both).</summary>
+		public bool InstalledCopy { get; set; }
+	}
+
+	/// <summary>The fonts that match one kind of lettering among the boxes (capitals, mixed case).</summary>
+	public class FontGroup
+	{
+		public string Label { get; set; } = "";
+
+		public int Boxes { get; set; }
+
+		public byte[] Crop { get; set; }
+
+		public List<FontMatch> Matches { get; set; } = new List<FontMatch>();
+
+		public List<string> Notes { get; set; } = new List<string>();
+	}
+
+	/// <summary>A font file on this computer that the translator can use.</summary>
+	public class FontFile
+	{
+		public string Name { get; set; } = "";
+
+		public string Path { get; set; } = "";
+
+		/// <summary>"installed" (Windows), "translator" (its fonts folder) or "candidates".</summary>
+		public string Source { get; set; } = "";
 	}
 
 	/// <summary>A place to look for a font that the helper does not search by itself (opened in the user's browser).</summary>
@@ -378,6 +406,9 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 	public class FontIdentification
 	{
 		public List<FontMatch> Matches { get; set; } = new List<FontMatch>();
+
+		/// <summary>When the boxes have more than one kind of lettering: the matches of each kind (the first is the same as Matches).</summary>
+		public List<FontGroup> Groups { get; set; } = new List<FontGroup>();
 
 		public List<FontLink> Links { get; set; } = new List<FontLink>();
 

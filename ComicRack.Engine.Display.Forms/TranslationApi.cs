@@ -141,7 +141,7 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 		}
 
 		/// <summary>Looks for the font of all the given boxes of one page together.</summary>
-		public FontIdentification IdentifyPageFont(byte[] page, IEnumerable<int[]> rects, string text, bool online)
+		public FontIdentification IdentifyPageFont(byte[] page, IEnumerable<int[]> rects, string text, bool online, IEnumerable<string> texts = null)
 		{
 			using (MemoryStream ms = new MemoryStream())
 			{
@@ -160,6 +160,16 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 						w.WriteEndArray();
 					}
 					w.WriteEndArray();
+					if (texts != null)
+					{
+						//each box's own text, so that its kind of lettering (capitals or mixed case) is known
+						w.WriteStartArray("texts");
+						foreach (string t in texts)
+						{
+							w.WriteStringValue(t ?? "");
+						}
+						w.WriteEndArray();
+					}
 					w.WriteString("text", text ?? "");
 					w.WriteBoolean("online", online);
 					w.WriteEndObject();
@@ -189,6 +199,46 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 			}
 		}
 
+		/// <summary>Every font file on this computer that the translator can use, sorted by name.</summary>
+		public List<FontFile> FontsOnPc()
+		{
+			using (JsonDocument doc = JsonDocument.Parse(Send("/api/fonts-on-pc", Encoding.UTF8.GetBytes("{}"), "application/json", 120000)))
+			{
+				List<FontFile> list = new List<FontFile>();
+				if (doc.RootElement.TryGetProperty("fonts", out JsonElement fonts) && fonts.ValueKind == JsonValueKind.Array)
+				{
+					foreach (JsonElement e in fonts.EnumerateArray())
+					{
+						list.Add(new FontFile { Name = TranslationBox.GetString(e, "name"), Path = TranslationBox.GetString(e, "path"), Source = TranslationBox.GetString(e, "source") });
+					}
+				}
+				return list;
+			}
+		}
+
+		private static List<FontMatch> ReadMatches(JsonElement parent)
+		{
+			List<FontMatch> list = new List<FontMatch>();
+			if (parent.TryGetProperty("matches", out JsonElement matches) && matches.ValueKind == JsonValueKind.Array)
+			{
+				foreach (JsonElement e in matches.EnumerateArray())
+				{
+					string preview = TranslationBox.GetString(e, "preview");
+					list.Add(new FontMatch
+					{
+						Family = TranslationBox.GetString(e, "family"),
+						Source = TranslationBox.GetString(e, "source"),
+						Category = TranslationBox.GetString(e, "category"),
+						Url = TranslationBox.GetString(e, "url"),
+						Score = (int)TranslationBox.GetDouble(e, "score"),
+						InstalledCopy = TranslationBox.GetBool(e, "installed_copy"),
+						Preview = string.IsNullOrEmpty(preview) ? null : Convert.FromBase64String(preview)
+					});
+				}
+			}
+			return list;
+		}
+
 		private static FontIdentification ReadIdentification(byte[] json)
 		{
 			{
@@ -210,20 +260,24 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 					{
 						result.Notes = notes.EnumerateArray().Select((JsonElement n) => n.GetString() ?? "").ToList();
 					}
-					if (root.TryGetProperty("matches", out JsonElement matches) && matches.ValueKind == JsonValueKind.Array)
+					result.Matches = ReadMatches(root);
+					if (root.TryGetProperty("groups", out JsonElement groups) && groups.ValueKind == JsonValueKind.Array)
 					{
-						foreach (JsonElement e in matches.EnumerateArray())
+						foreach (JsonElement g in groups.EnumerateArray())
 						{
-							string preview = TranslationBox.GetString(e, "preview");
-							result.Matches.Add(new FontMatch
+							string gcrop = TranslationBox.GetString(g, "crop");
+							FontGroup group = new FontGroup
 							{
-								Family = TranslationBox.GetString(e, "family"),
-								Source = TranslationBox.GetString(e, "source"),
-								Category = TranslationBox.GetString(e, "category"),
-								Url = TranslationBox.GetString(e, "url"),
-								Score = (int)TranslationBox.GetDouble(e, "score"),
-								Preview = string.IsNullOrEmpty(preview) ? null : Convert.FromBase64String(preview)
-							});
+								Label = TranslationBox.GetString(g, "label"),
+								Boxes = (int)TranslationBox.GetDouble(g, "boxes"),
+								Crop = string.IsNullOrEmpty(gcrop) ? null : Convert.FromBase64String(gcrop),
+								Matches = ReadMatches(g)
+							};
+							if (g.TryGetProperty("notes", out JsonElement gnotes) && gnotes.ValueKind == JsonValueKind.Array)
+							{
+								group.Notes = gnotes.EnumerateArray().Select((JsonElement n) => n.GetString() ?? "").ToList();
+							}
+							result.Groups.Add(group);
 						}
 					}
 					if (root.TryGetProperty("external", out JsonElement external) && external.ValueKind == JsonValueKind.Array)
