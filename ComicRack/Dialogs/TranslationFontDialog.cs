@@ -466,30 +466,13 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			btApplySel.Text = "Apply selected font";
 			rows.Controls.Clear();
 			int y = 4;
-			foreach (FontMatch match in matches)
+			//one list, best first: the closest fonts and the best Google fonts besides them (open licence, free to install), so that
+			//Google fonts are always among the choices even when fonts on this computer score better
+			List<FontMatch> all = (google == null || google.Count == 0) ? matches : matches.Concat(google).OrderByDescending((FontMatch m) => m.Score).ToList();
+			foreach (FontMatch match in all)
 			{
 				rows.Controls.Add(MakeRow(match, y));
 				y += 86;
-			}
-			//the best Google fonts besides the ones above: open licence, free to install, always shown
-			if (google != null && google.Count > 0)
-			{
-				Label head = new Label
-				{
-					Text = "Best from Google Fonts (open licence, free to install):",
-					Location = new Point(4, y + 6),
-					Size = new Size(738, 18),
-					Font = new Font(Font, FontStyle.Bold),
-					Name = "lblGoogleHead"
-				};
-				head.MouseEnter += delegate { if (!rows.Focused) { rows.Focus(); } };
-				rows.Controls.Add(head);
-				y += 28;
-				foreach (FontMatch match in google)
-				{
-					rows.Controls.Add(MakeRow(match, y));
-					y += 86;
-				}
 			}
 			rows.AutoScrollMinSize = new Size(0, y + 6);
 			rows.AutoScrollPosition = new Point(0, 0);

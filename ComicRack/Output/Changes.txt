@@ -1,4 +1,4 @@
-﻿orbitdesign Build 1.119 (based on Community Edition 0.9.184):
+﻿orbitdesign Build 1.120 (based on Community Edition 0.9.184):
 
 * 1.1 FIX: Hardware acceleration stability. Fixed OpenGL extension detection, replaced the deprecated automatic mip map generation that crashed some drivers, checked texture uploads for errors, and added a startup guard that switches hardware acceleration off for one session if ComicRack failed to start last time.
 * 1.2 NEW: Direct2D renderer for the reader. Used by default when hardware acceleration is on, with OpenGL and then software rendering as fallbacks. Handles graphics device resets, uses high quality cubic sampling for "Enable Hardware Filters", and supports paper textures. Start with -hwgl to use the old OpenGL renderer.
@@ -3689,3 +3689,4 @@ Build 0.9.0:
 * 1.117 NEW: Translation editor: the selected box shows the font it is lettered in (family and style, such as Comic Sans MS Bold, its size and its file), and "Choose font..." letters this box (or the selected boxes) in any font the translator can use, with the box's own text as the sample; the other boxes keep their fonts. "Auto" lets the translator choose again. The choice is kept with the book's edits and can be undone. Needs helper 1.37.
 * 1.118 FIX: Ctrl + mouse wheel zooms into the page at 100% too (110%, 120%...), as it does once zoomed in; before, at 100% it turned the page. The wheel alone still turns pages.
 * 1.119 NEW: Match Font lists the best Google Fonts matches in a section of their own under the closest fonts (open licence, free to install), so they are shown even when fonts on this computer score better. Needs helper 1.39, which also compares every Google handwriting and display font with Latin letters (about 740 instead of 125; the first search fetches them once) and closes its search workers after 5 minutes without a search.
+* 1.120 CHANGE: Match Font shows one list again, best first: the best Google Fonts matches are mixed in with the closest fonts and sorted by score with them, instead of in a section of their own (they are still always among the choices).
