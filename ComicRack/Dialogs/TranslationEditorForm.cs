@@ -1506,6 +1506,13 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 
 		private ComboBox cboAlign;
 
+		//the font of the selected box: which one the helper used, and a font of its own
+		private Label lblBoxFont;
+
+		private Button btBoxFont;
+
+		private Button btBoxFontAuto;
+
 		private NumericUpDown nudRotation;
 
 		private CheckBox chkSkip;
@@ -1665,6 +1672,16 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			lblAutoSize = new Label { Location = new Point(222, y + 3), Size = new Size(110, 16), Name = "lblAutoSize", ForeColor = dark ? Color.FromArgb(150, 150, 150) : Color.FromArgb(110, 110, 110) };
 			side.Controls.AddRange(new Control[] { chkAuto, nudSize, lblAutoSize });
 			y += 30;
+			side.Controls.Add(new Label { Text = "Font:", Location = new Point(10, y + 1), Size = new Size(64, 16) });
+			lblBoxFont = new Label { Location = new Point(78, y + 1), Size = new Size(250, 30), AutoEllipsis = true, Name = "lblBoxFont" };
+			side.Controls.Add(lblBoxFont);
+			y += 34;
+			btBoxFont = new Button { Text = "Choose font...", Location = new Point(78, y), Size = new Size(118, 24), Name = "btBoxFont" };
+			btBoxFontAuto = new Button { Text = "Auto", Location = new Point(200, y), Size = new Size(64, 24), Name = "btBoxFontAuto" };
+			new ToolTip().SetToolTip(btBoxFont, "Letter this box (or the selected boxes) in a font of your choice; the other boxes keep theirs");
+			new ToolTip().SetToolTip(btBoxFontAuto, "Let the translator choose this box's font again (the page's or the book's font, or the closest one)");
+			side.Controls.AddRange(new Control[] { btBoxFont, btBoxFontAuto });
+			y += 32;
 			side.Controls.Add(new Label { Text = "Align:", Location = new Point(10, y + 3), Size = new Size(64, 16) });
 			cboAlign = new ComboBoxEx { Location = new Point(78, y), Size = new Size(138, 21), DropDownStyle = ComboBoxStyle.DropDownList, Name = "cboAlign" };
 			cboAlign.Items.AddRange(new object[] { "Left", "Center", "Right" });
@@ -1947,6 +1964,16 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 				}
 				box.Size = (double)nudSize.Value;
 				Touch();
+			};
+			btBoxFont.Click += delegate { ChooseBoxFont(); };
+			btBoxFontAuto.Click += delegate
+			{
+				foreach (TranslationBox b in canvas.AllSelected)
+				{
+					b.FontChoice = "";
+				}
+				Touch();
+				SyncControls();
 			};
 			cboAlign.SelectedIndexChanged += delegate
 			{
@@ -2363,6 +2390,9 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 				nudSize.Enabled = !chkAuto.Checked;
 				lblAutoSize.Text = box.AutoSize > 0 ? "(auto picks " + box.AutoSize.ToString("0.0") + ")" : "";
 				cboAlign.SelectedIndex = box.Align == "left" ? 0 : box.Align == "right" ? 2 : 1;
+				lblBoxFont.Text = BoxFontText(box);
+				btBoxFont.Enabled = service != null && !box.Skip;
+				btBoxFontAuto.Enabled = !string.IsNullOrEmpty(box.FontChoice);
 				nudRotation.Value = Math.Max(nudRotation.Minimum, Math.Min(nudRotation.Maximum, (decimal)Math.Round(box.Rotation * 2.0) / 2m));
 				chkSkip.Checked = box.Skip;
 			}
@@ -2371,12 +2401,65 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 				txtTranslation.Text = "";
 				chkAuto.Checked = true;
 				lblAutoSize.Text = "";
+				lblBoxFont.Text = "";
+				btBoxFont.Enabled = btBoxFontAuto.Enabled = false;
 				cboAlign.SelectedIndex = 1;
 				nudRotation.Value = 0;
 				chkSkip.Checked = false;
 			}
 			SyncShapeControls(box);
 			loading = was;
+		}
+
+		/// <summary>"Comic Sans MS Bold, 46.1 px" and, under it, the file and whether it was chosen for this box.</summary>
+		private static string BoxFontText(TranslationBox box)
+		{
+			string name = !string.IsNullOrEmpty(box.UsedFamily) ? box.UsedFamily + (string.IsNullOrEmpty(box.UsedStyle) ? "" : " " + box.UsedStyle) : box.UsedFont;
+			double size = box.Size > 0 ? box.Size : box.AutoSize;
+			string first = string.IsNullOrEmpty(name) ? "(not lettered yet)" : name + (size > 0 ? ", " + size.ToString("0.#") + " px" : "");
+			string second;
+			if (string.IsNullOrEmpty(box.FontChoice))
+			{
+				second = (string.IsNullOrEmpty(box.UsedFont) ? "" : box.UsedFont + " - ") + "chosen by the translator";
+			}
+			else if (box.FontChoiceMissing)
+			{
+				second = box.FontChoice + " not found; the usual font is used";
+			}
+			else if (!string.Equals(box.UsedFont, box.FontChoice, StringComparison.OrdinalIgnoreCase))
+			{
+				second = box.FontChoice + " - your choice (drawing...)";
+			}
+			else
+			{
+				second = box.FontChoice + " - your choice for this box";
+			}
+			return first + "\r\n" + second;
+		}
+
+		/// <summary>Lets the user pick a font for the selected box (or boxes) alone.</summary>
+		private void ChooseBoxFont()
+		{
+			TranslationBox box = canvas.Selected;
+			if (box == null || service == null)
+			{
+				return;
+			}
+			Action<Action<List<FontFile>, string>> listFonts = delegate (Action<List<FontFile>, string> done) { service.ListFonts(done); };
+			string current = !string.IsNullOrEmpty(box.FontChoice) ? box.FontChoice : box.UsedFont;
+			using (BoxFontDialog dialog = new BoxFontDialog(listFonts, box.Translation, current))
+			{
+				if (dialog.ShowDialog(this) != DialogResult.OK || string.IsNullOrEmpty(dialog.Chosen))
+				{
+					return;
+				}
+				foreach (TranslationBox b in canvas.AllSelected)
+				{
+					b.FontChoice = dialog.Chosen;
+				}
+			}
+			Touch();
+			SyncControls();
 		}
 
 		private void EnsureRect(TranslationBox box)

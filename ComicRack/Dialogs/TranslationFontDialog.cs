@@ -683,6 +683,169 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 		}
 	}
 
+	/// <summary>A font for one text box: the fonts the translator can use, with the box's own text as the sample.</summary>
+	public class BoxFontDialog : FormEx
+	{
+		private readonly string sample;
+
+		private readonly string current;
+
+		private List<FontFile> all = new List<FontFile>();
+
+		private readonly TextBox txtFilter;
+
+		private readonly ListBox lstFonts;
+
+		private readonly PictureBox picPreview;
+
+		private readonly Label lblInfo;
+
+		private readonly Button btUse;
+
+		private System.Drawing.Text.PrivateFontCollection loaded;
+
+		/// <summary>The chosen font's file name (what the helper looks the font up by).</summary>
+		public string Chosen { get; private set; }
+
+		public override UIComponent UIComponent => UIComponent.Content;
+
+		public BoxFontDialog(Action<Action<List<FontFile>, string>> listFonts, string sample, string current)
+		{
+			this.sample = string.IsNullOrWhiteSpace(sample) ? "The quick brown fox jumps over the lazy dog" : string.Join(" ", sample.Split((char[])null, StringSplitOptions.RemoveEmptyEntries));
+			this.current = current ?? "";
+			Text = "Font for This Box";
+			AutoScaleDimensions = new SizeF(6f, 13f);
+			AutoScaleMode = AutoScaleMode.Font;
+			StartPosition = FormStartPosition.CenterParent;
+			ShowInTaskbar = false;
+			MinimizeBox = false;
+			ClientSize = new Size(560, 470);
+			MinimumSize = new Size(440, 400);
+			Controls.Add(new Label { Text = "Find:", Location = new Point(14, 15), Size = new Size(40, 18) });
+			txtFilter = new TextBox { Location = new Point(56, 12), Size = new Size(490, 21), Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right, Name = "txtFilter" };
+			lstFonts = new ListBox { Location = new Point(14, 40), Size = new Size(532, 236), IntegralHeight = false, Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right, Name = "lstFonts" };
+			picPreview = new PictureBox { Location = new Point(14, 284), Size = new Size(532, 100), BackColor = Color.White, BorderStyle = BorderStyle.FixedSingle, Anchor = AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right, Name = "picPreview" };
+			lblInfo = new Label { Location = new Point(14, 390), Size = new Size(532, 34), Anchor = AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right, Text = "Reading the fonts on this computer...", Name = "lblInfo" };
+			btUse = new Button { Text = "Use for this box", Location = new Point(316, 432), Size = new Size(134, 26), Anchor = AnchorStyles.Bottom | AnchorStyles.Right, Enabled = false, Name = "btUse" };
+			Button cancel = new Button { Text = "Cancel", Location = new Point(456, 432), Size = new Size(90, 26), Anchor = AnchorStyles.Bottom | AnchorStyles.Right, DialogResult = DialogResult.Cancel };
+			Controls.AddRange(new Control[] { txtFilter, lstFonts, picPreview, lblInfo, btUse, cancel });
+			AcceptButton = btUse;
+			CancelButton = cancel;
+			txtFilter.TextChanged += delegate { Fill(); };
+			lstFonts.SelectedIndexChanged += delegate { Preview(); };
+			lstFonts.DoubleClick += delegate { Use(); };
+			btUse.Click += delegate { Use(); };
+			FormClosed += delegate { loaded?.Dispose(); picPreview.Image?.Dispose(); };
+			Shown += delegate
+			{
+				listFonts(delegate (List<FontFile> fonts, string error)
+				{
+					try
+					{
+						BeginInvoke(new Action(delegate
+						{
+							if (fonts == null)
+							{
+								lblInfo.Text = "The fonts could not be read: " + error;
+								return;
+							}
+							all = fonts;
+							Fill();
+						}));
+					}
+					catch (Exception)
+					{
+					}
+				});
+			};
+		}
+
+		private FontFile Selected => lstFonts.SelectedItem == null ? null : all.FirstOrDefault((FontFile f) => f.Name == (string)lstFonts.SelectedItem);
+
+		private void Fill()
+		{
+			string want = new string((txtFilter.Text ?? "").Where(char.IsLetterOrDigit).Select(char.ToLowerInvariant).ToArray());
+			lstFonts.BeginUpdate();
+			lstFonts.Items.Clear();
+			int pick = -1;
+			foreach (FontFile f in all)
+			{
+				string name = new string(f.Name.Where(char.IsLetterOrDigit).Select(char.ToLowerInvariant).ToArray());
+				if (want.Length > 0 && !name.Contains(want))
+				{
+					continue;
+				}
+				if (pick < 0 && string.Equals(Path.GetFileName(f.Path), current, StringComparison.OrdinalIgnoreCase))
+				{
+					pick = lstFonts.Items.Count;
+				}
+				lstFonts.Items.Add(f.Name);
+			}
+			lstFonts.EndUpdate();
+			if (lstFonts.Items.Count > 0)
+			{
+				lstFonts.SelectedIndex = Math.Max(0, pick);
+			}
+			else
+			{
+				Preview();
+			}
+		}
+
+		private void Preview()
+		{
+			FontFile f = Selected;
+			btUse.Enabled = f != null;
+			Image old = picPreview.Image;
+			picPreview.Image = null;
+			old?.Dispose();
+			loaded?.Dispose();
+			loaded = null;
+			if (f == null)
+			{
+				lblInfo.Text = all.Count == 0 ? lblInfo.Text : "No font has that name.";
+				return;
+			}
+			Bitmap bmp = new Bitmap(Math.Max(10, picPreview.ClientSize.Width), Math.Max(10, picPreview.ClientSize.Height));
+			using (Graphics g = Graphics.FromImage(bmp))
+			{
+				g.Clear(Color.White);
+				g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAlias;
+				try
+				{
+					loaded = new System.Drawing.Text.PrivateFontCollection();
+					loaded.AddFontFile(f.Path);
+					using (Font font = new Font(loaded.Families[0], 24f, FontStyle.Regular, GraphicsUnit.Pixel))
+					{
+						g.DrawString(sample, font, Brushes.Black, new RectangleF(6, 6, bmp.Width - 12, bmp.Height - 12));
+					}
+				}
+				catch (Exception)
+				{
+					using (Font font = new Font(SystemFonts.MessageBoxFont.FontFamily, 12f))
+					{
+						g.DrawString("No preview for this font here (the translator may still be able to use it).", font, Brushes.Gray, 6, 6);
+					}
+				}
+			}
+			picPreview.Image = bmp;
+			bool now = string.Equals(Path.GetFileName(f.Path), current, StringComparison.OrdinalIgnoreCase);
+			lblInfo.Text = f.Name + (now ? "   (the font of this box now)" : "") + "\r\n" + f.Path;
+		}
+
+		private void Use()
+		{
+			FontFile f = Selected;
+			if (f == null)
+			{
+				return;
+			}
+			Chosen = Path.GetFileName(f.Path);
+			DialogResult = DialogResult.OK;
+			Close();
+		}
+	}
+
 	public class FontPickerDialog : FormEx
 	{
 		private readonly Action<string, bool, Action<string, string>> install;

@@ -449,6 +449,7 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 				match.Corners = (int[])(edit.Corners ?? new int[4]).Clone();
 				match.Circular = edit.Circular;
 				match.Size = edit.Size;
+				match.FontChoice = edit.FontChoice;
 				match.Align = edit.Align;
 				match.Rotation = edit.Rotation;
 				match.Skip = edit.Skip;

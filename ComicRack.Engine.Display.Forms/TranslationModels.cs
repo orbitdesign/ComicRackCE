@@ -87,7 +87,21 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 		/// <summary>The font size the helper chose on the last render.</summary>
 		public double AutoSize { get; set; }
 
-		public bool HasManualSettings => Rect != null || HasShape || Size > 0 || Rotation != 0 || Skip || TextEdited || !string.Equals(Align, "center", StringComparison.OrdinalIgnoreCase);
+		/// <summary>A font file chosen for this box alone ("" lets the helper choose); it comes before the page's and the book's fonts.</summary>
+		public string FontChoice { get; set; } = "";
+
+		/// <summary>The font file the helper lettered this box with on the last render (never sent back).</summary>
+		public string UsedFont { get; set; } = "";
+
+		/// <summary>That font's family and style as the font names them ("Comic Sans MS", "Bold"); never sent back.</summary>
+		public string UsedFamily { get; set; } = "";
+
+		public string UsedStyle { get; set; } = "";
+
+		/// <summary>The helper could not find the chosen font file on the last render and used its usual font.</summary>
+		public bool FontChoiceMissing { get; set; }
+
+		public bool HasManualSettings => Rect != null || HasShape || Size > 0 || Rotation != 0 || Skip || TextEdited || !string.Equals(Align, "center", StringComparison.OrdinalIgnoreCase) || !string.IsNullOrEmpty(FontChoice);
 
 		/// <summary>True when this box differs from what the helper found, so it is kept with the book.</summary>
 		public bool IsEdited => Manual || HasManualSettings || Shape != null || !string.IsNullOrEmpty(MergedInto);
@@ -156,6 +170,7 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 			Align = "center";
 			Rotation = 0;
 			Skip = false;
+			FontChoice = "";
 		}
 
 		public void Write(Utf8JsonWriter w)
@@ -214,6 +229,10 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 				w.WriteString("merged_into", MergedInto);
 			}
 			w.WriteNumber("size", Size);
+			if (!string.IsNullOrEmpty(FontChoice))
+			{
+				w.WriteString("font_choice", FontChoice);
+			}
 			w.WriteString("align", Align ?? "center");
 			w.WriteNumber("rotation", Rotation);
 			w.WriteBoolean("skip", Skip);
@@ -237,7 +256,12 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 				Rotation = GetDouble(e, "rotation"),
 				Skip = GetBool(e, "skip"),
 				Bounds = GetInts(e, "bounds"),
-				AutoSize = GetDouble(e, "auto_size")
+				AutoSize = GetDouble(e, "auto_size"),
+				FontChoice = GetString(e, "font_choice"),
+				UsedFont = GetString(e, "font"),
+				UsedFamily = GetString(e, "font_family"),
+				UsedStyle = GetString(e, "font_style"),
+				FontChoiceMissing = GetBool(e, "font_choice_missing")
 			};
 			b.Form = (int)GetDouble(e, "kind");
 			b.ShapeAngle = GetDouble(e, "shape_angle");
