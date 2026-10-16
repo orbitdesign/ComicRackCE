@@ -469,6 +469,12 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 
 		public int Compared { get; set; }
 
+		/// <summary>How many of the compared fonts were looked at more closely (0 from an older helper).</summary>
+		public int LookedCloser { get; set; }
+
+		/// <summary>How long the helper searched, in seconds (0 from an older helper).</summary>
+		public double Seconds { get; set; }
+
 		/// <summary>The lettering as cut from the page (PNG).</summary>
 		public byte[] Crop { get; set; }
 

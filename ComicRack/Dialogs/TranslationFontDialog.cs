@@ -63,6 +63,9 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 
 		private System.Windows.Forms.Timer watch;
 
+		//the whole search, as the user waited for it (reading the pages, the helper's search, the answer)
+		private readonly System.Diagnostics.Stopwatch searchTime = new System.Diagnostics.Stopwatch();
+
 		private Button btStop;
 
 		private bool searching;
@@ -133,17 +136,17 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			new ToolTip().SetToolTip(optBook, "Looks at the lettering of up to 12 translated pages spread over the book, to find the one font that suits it best");
 			picCrop = new PictureBox { Location = new Point(14, 32), Size = new Size(772, 96), SizeMode = PictureBoxSizeMode.Zoom, BorderStyle = BorderStyle.FixedSingle, Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right };
 			Controls.Add(picCrop);
-			lblStatus = new Label { Location = new Point(14, 134), Size = new Size(772, 30), ForeColor = gray, Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right, Name = "lblStatus" };
+			lblStatus = new Label { Location = new Point(14, 134), Size = new Size(772, 50), ForeColor = gray, Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right, Name = "lblStatus" };
 			Controls.Add(lblStatus);
-			lblGroup = new Label { Text = "Lettering style:", Location = new Point(14, 170), Size = new Size(92, 18), Visible = false };
-			cboGroup = new ComboBox { Location = new Point(110, 166), Size = new Size(420, 21), DropDownStyle = ComboBoxStyle.DropDownList, Visible = false, Name = "cboGroup" };
+			lblGroup = new Label { Text = "Lettering style:", Location = new Point(14, 190), Size = new Size(92, 18), Visible = false };
+			cboGroup = new ComboBox { Location = new Point(110, 186), Size = new Size(420, 21), DropDownStyle = ComboBoxStyle.DropDownList, Visible = false, Name = "cboGroup" };
 			Controls.AddRange(new Control[] { lblGroup, cboGroup });
 			new ToolTip().SetToolTip(cboGroup, "The boxes have more than one kind of lettering (capitals and mixed case); each kind is matched on its own");
 			cboGroup.SelectedIndexChanged += delegate { ShowGroup(); };
-			progress = new ProgressBar { Location = new Point(14, 192), Size = new Size(772, 8), Style = ProgressBarStyle.Marquee, Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right, Visible = false };
+			progress = new ProgressBar { Location = new Point(14, 212), Size = new Size(772, 8), Style = ProgressBarStyle.Marquee, Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right, Visible = false };
 			Controls.Add(progress);
 
-			rows = new Panel { Location = new Point(14, 204), Size = new Size(772, 272), AutoScroll = true, BorderStyle = BorderStyle.FixedSingle, Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right, Name = "rows" };
+			rows = new Panel { Location = new Point(14, 224), Size = new Size(772, 252), AutoScroll = true, BorderStyle = BorderStyle.FixedSingle, Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right, Name = "rows" };
 			rows.MouseEnter += delegate { if (!rows.Focused) { rows.Focus(); } };
 			Controls.Add(rows);
 
@@ -252,6 +255,7 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			btStop.Visible = cancelSearch != null;
 			btStop.Enabled = true;
 			watch.Start();
+			searchTime.Restart();
 			rows.Controls.Clear();
 			SetStatus((optBook.Checked ? "Reading a sample of the book's pages, then searching" : (optPage.Checked ? "Searching for this page's lettering in" : "Searching")) + " the fonts on this computer and Google Fonts. The first search builds a small cache of font shapes and can take several minutes; later ones take seconds.");
 			Scope scope = optBook.Checked ? Scope.Book : (optPage.Checked ? Scope.Page : Scope.Box);
@@ -270,6 +274,13 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 				{
 				}
 			});
+		}
+
+		/// <summary>"48 s", "2 min 05 s".</summary>
+		internal static string Duration(double seconds)
+		{
+			int s = (int)Math.Round(Math.Max(0, seconds));
+			return s < 60 ? s + " s" : (s / 60) + " min " + (s % 60).ToString("00") + " s";
 		}
 
 		/// <summary>While a search runs: shows which step it is on, how far it has got and how long it has taken.</summary>
@@ -294,7 +305,7 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 							return;
 						}
 						string count = info.Total > 0 ? " (" + info.Done + " of " + info.Total + ")" : "";
-						SetStatus(info.Stage + count + " - " + (int)info.Seconds + " s so far. The first search builds a font cache and takes several minutes; later ones take under a minute.");
+						SetStatus(info.Stage + count + " - " + Duration(info.Seconds) + " so far. The first search builds a font cache and takes a few minutes; later ones take seconds.");
 					}));
 				}
 				catch (Exception)
@@ -307,6 +318,7 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 		{
 			searching = false;
 			watch.Stop();
+			searchTime.Stop();
 			btStop.Visible = false;
 			progress.Visible = false;
 			btSearch.Enabled = true;
@@ -337,7 +349,8 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			}
 			else
 			{
-				SetStatus("The closest fonts, best first (" + result.Compared + " compared). A score is how near the lettering looks, not a certainty: handwriting and hand-drawn comic lettering often has no exact font. " + string.Join(" ", result.Notes));
+				string counted = result.Compared + " fonts compared" + (result.LookedCloser > 0 ? ", the best " + result.LookedCloser + " looked at closely" : "");
+				SetStatus("The closest fonts, best first (" + counted + "; the search took " + Duration(searchTime.Elapsed.TotalSeconds) + "). A score is how near the lettering looks, not a certainty: handwriting and hand-drawn comic lettering often has no exact font. " + string.Join(" ", result.Notes));
 			}
 			cboGroup.Items.Clear();
 			bool several = result.Groups.Count > 1;

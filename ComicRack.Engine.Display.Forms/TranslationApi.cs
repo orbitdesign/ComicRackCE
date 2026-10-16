@@ -284,6 +284,8 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 					{
 						Error = TranslationBox.GetString(root, "error"),
 						Compared = (int)TranslationBox.GetDouble(root, "compared"),
+						LookedCloser = (int)TranslationBox.GetDouble(root, "looked_closer"),
+						Seconds = TranslationBox.GetDouble(root, "seconds"),
 						CandidatesFolder = TranslationBox.GetString(root, "candidates_folder"),
 						Label = TranslationBox.GetString(root, "label")
 					};
