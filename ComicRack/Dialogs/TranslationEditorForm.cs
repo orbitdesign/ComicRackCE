@@ -964,6 +964,7 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 				}
 				if (Selected != null && Extra.Count == 0 && !Selected.Skip && Selected.Shape == null)
 				{
+					StartPress(e.Location);      //before a handle, a corner or a point is taken: they may change the box at once
 					if (HitRotation(Selected, e.Location))
 					{
 						drag = Drag.Rotate;
@@ -1008,8 +1009,57 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 				}
 			}
 
+			//Where the button went down, whether the pointer has really moved since, and the box as it was then: a click on a
+			//box only selects it. Windows sends a mouse move even when the pointer has not moved, and the move code then gave the
+			//box its own area (a hand-drawn rectangle), which turns the helper's line-by-line lettering off for good.
+			private Point pressedAt;
+
+			private bool pressMoved;
+
+			private TranslationBox pressedBox;
+
+			private void StartPress(Point at)
+			{
+				pressedAt = at;
+				pressMoved = false;
+				pressedBox = Selected?.Clone();
+			}
+
+			/// <summary>False until the pointer has moved a few pixels from where the button went down.</summary>
+			private bool PressMoved(Point at)
+			{
+				if (!pressMoved && Math.Abs(at.X - pressedAt.X) + Math.Abs(at.Y - pressedAt.Y) >= 4)
+				{
+					pressMoved = true;
+				}
+				return pressMoved;
+			}
+
+			/// <summary>A press that did not move: the box is put back as it was (what the press started, such as taking the
+			/// helper's outline as the box's shape, is undone).</summary>
+			private void UndoPress()
+			{
+				TranslationBox was = pressedBox;
+				if (was == null || Selected == null || Selected.Id != was.Id)
+				{
+					return;
+				}
+				Selected.Rect = (int[])was.Rect?.Clone();
+				Selected.Form = was.Form;
+				Selected.Points = (int[])was.Points?.Clone();
+				Selected.Corners = (int[])(was.Corners ?? new int[4]).Clone();
+				Selected.Circular = was.Circular;
+				Selected.ShapeAngle = was.ShapeAngle;
+				Selected.Rotation = was.Rotation;
+				Selected.Shape = was.Shape?.Select((int[] part) => (int[])part.Clone()).ToList();
+			}
+
 			private void BeginEdit(Drag kind, Point at)
 			{
+				if (kind == Drag.Move)
+				{
+					StartPress(at);      //the box may have been selected by this press: it is taken as it is now
+				}
 				drag = kind;
 				dragStart = ToImage(at);
 				startRect = (int[])AreaOf(Selected).Clone();
@@ -1055,10 +1105,16 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 				case Drag.Resize:
 				case Drag.Corner:
 				case Drag.Vertex:
-					ApplyDrag(ToImage(e.Location));
+					if (PressMoved(e.Location))
+					{
+						ApplyDrag(ToImage(e.Location));
+					}
 					return;
 				case Drag.Rotate:
-					RotateTo(e.Location);
+					if (PressMoved(e.Location))
+					{
+						RotateTo(e.Location);
+					}
 					return;
 				}
 				Cursor = AddMode ? Cursors.Cross : CursorAt(e.Location);
@@ -1317,6 +1373,13 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 				case Drag.Rotate:
 				case Drag.Corner:
 				case Drag.Vertex:
+					if (!pressMoved)
+					{
+						//only a click: the box is selected, nothing about it changed
+						UndoPress();
+						Invalidate();
+						break;
+					}
 					if (kind == Drag.Corner)
 					{
 						CornersEdited?.Invoke(Selected);
