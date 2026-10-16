@@ -2009,10 +2009,12 @@ namespace cYo.Projects.ComicRack.Engine.Display
 			else
 			{
 				scrollLines = (float)Math.Abs(e.Delta / SystemInformation.MouseWheelScrollDelta) * MouseWheelSpeed;
-				if (PageLayout == PageLayoutMode.Continuous || ImagePartCount != 1)
+				if (PageLayout == PageLayoutMode.Continuous || ImagePartCount != 1 || (Control.ModifierKeys & Keys.Control) != 0)
 				{
 					//Scrolling within a page you are zoomed into, or a continuous strip: every tick
 					//moves the page itself and has to react at once, with nothing held back.
+					//With Ctrl held the wheel zooms (Ctrl+Wheel is Zoom In / Zoom Out), also at 100%,
+					//where the whole page fits and the wheel alone turns pages.
 					keyboardMap.HandleKey((e.Delta > 0) ? CommandKey.MouseWheelUp : CommandKey.MouseWheelDown, Control.ModifierKeys);
 				}
 				else
