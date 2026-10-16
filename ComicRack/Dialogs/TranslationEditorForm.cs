@@ -1555,7 +1555,7 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			lblBrush = new Label { Location = new Point(272, y + 4), Size = new Size(56, 16), Name = "lblBrush", Text = "24 px" };
 			side.Controls.AddRange(new Control[] { tbBrush, lblBrush });
 			y += 36;
-			btIdentify = new Button { Text = "Identify the font of this text...", Location = new Point(10, y), Size = new Size(318, 28), Name = "btIdentify" };
+			btIdentify = new Button { Text = "Match the font (box, page or book)...", Location = new Point(10, y), Size = new Size(318, 28), Name = "btIdentify" };
 			new ToolTip().SetToolTip(btIdentify, "Finds the fonts that look most like the selected box's original lettering (installed fonts and Google Fonts), shows them and lets you install one");
 			side.Controls.Add(btIdentify);
 			y += 38;
@@ -2443,22 +2443,48 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 		/// <summary>Opens the window that finds the fonts closest to the selected box's lettering.</summary>
 		private void IdentifyFont()
 		{
-			TranslationBox box = canvas.Selected;
-			if (box == null || box.Skip && box.Src == null)
-			{
-				SetStatus("Select the text box whose lettering you want to identify first.");
-				return;
-			}
 			if (key == null || service == null)
 			{
+				SetStatus("Open a translated page first.");
 				return;
 			}
-			int[] rect = (int[])box.Src.Clone();
-			string text = box.Text ?? "";
+			TranslationBox box = canvas.Selected;
+			bool boxSelected = box != null && box.Src != null && box.Src.Length == 4;
+			int[] rect = boxSelected ? (int[])box.Src.Clone() : null;
+			string boxText = boxSelected ? box.Text ?? "" : "";
+			List<TranslationBox> onPage = canvas.Boxes.Where((TranslationBox b) => !b.IsHidden && !string.IsNullOrWhiteSpace(b.Text) && b.Src != null && b.Src.Length == 4).ToList();
+			List<int[]> pageRects = onPage.Select((TranslationBox b) => (int[])b.Src.Clone()).ToList();
+			string pageText = string.Join(" ", onPage.OrderByDescending((TranslationBox b) => (b.Text ?? "").Length).Take(2).Select((TranslationBox b) => b.Text));
 			int shownPage = page;
-			PageKey shownKey = key;
-			Action<bool, Action<FontIdentification, string>> search = delegate (bool online, Action<FontIdentification, string> done)
+			string bookKey = reader.TranslationBookKey;
+			int pageCount = reader.Book?.ProviderPageCount ?? 0;
+			Action<TranslationFontDialog.Scope, bool, Action<FontIdentification, string>> search = delegate (TranslationFontDialog.Scope scope, bool online, Action<FontIdentification, string> done)
 			{
+				if (scope == TranslationFontDialog.Scope.Book)
+				{
+					//Up to 12 translated pages spread evenly over the book (the helper reads the boxes it stored for each).
+					List<int> translated = Enumerable.Range(0, pageCount).Where((int i) => service.Store.IsTranslated(bookKey, i)).ToList();
+					List<int> sample = translated.Count <= 12 ? translated : Enumerable.Range(0, 12).Select((int n) => translated[n * (translated.Count - 1) / 11]).Distinct().ToList();
+					List<byte[]> pages = new List<byte[]>();
+					foreach (int i in sample)
+					{
+						using (IItemLock<PageImage> item = reader.GetOriginalPage(i))
+						{
+							byte[] bytes = item?.Item != null ? service.UploadBytesOf(item.Item) : null;
+							if (bytes != null)
+							{
+								pages.Add(bytes);
+							}
+						}
+					}
+					if (pages.Count == 0)
+					{
+						done(null, "No page of this book is translated yet. Translate some pages first, then match again.");
+						return;
+					}
+					service.IdentifyBookFont(pages, online, done);
+					return;
+				}
 				using (IItemLock<PageImage> original = reader.GetOriginalPage(shownPage))
 				{
 					if (original?.Item == null)
@@ -2466,14 +2492,25 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 						done(null, "The page could not be read.");
 						return;
 					}
-					service.IdentifyFont(original.Item, rect, text, online, done);
+					if (scope == TranslationFontDialog.Scope.Box && rect != null)
+					{
+						service.IdentifyFont(original.Item, rect, boxText, online, done);
+					}
+					else if (pageRects.Count > 0)
+					{
+						service.IdentifyPageFont(original.Item, pageRects, pageText, online, done);
+					}
+					else
+					{
+						done(null, "This page has no text boxes to look at.");
+					}
 				}
 			};
 			Action<string, bool, Action<string, string>> install = delegate (string family, bool use, Action<string, string> done)
 			{
 				service.InstallFont(family, use, done);
 			};
-			using (TranslationFontDialog dialog = new TranslationFontDialog(search, install))
+			using (TranslationFontDialog dialog = new TranslationFontDialog(search, install, boxSelected))
 			{
 				dialog.ShowDialog(this);
 			}

@@ -136,7 +136,63 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 					w.WriteBoolean("online", online);
 					w.WriteEndObject();
 				}
-				using (JsonDocument doc = JsonDocument.Parse(Send("/api/identify-font", ms.ToArray(), "application/json", 1800000)))
+				return ReadIdentification(Send("/api/identify-font", ms.ToArray(), "application/json", 1800000));
+			}
+		}
+
+		/// <summary>Looks for the font of all the given boxes of one page together.</summary>
+		public FontIdentification IdentifyPageFont(byte[] page, IEnumerable<int[]> rects, string text, bool online)
+		{
+			using (MemoryStream ms = new MemoryStream())
+			{
+				using (Utf8JsonWriter w = new Utf8JsonWriter(ms))
+				{
+					w.WriteStartObject();
+					w.WriteString("image", Convert.ToBase64String(page));
+					w.WriteStartArray("rects");
+					foreach (int[] rect in rects)
+					{
+						w.WriteStartArray();
+						foreach (int v in rect)
+						{
+							w.WriteNumberValue(v);
+						}
+						w.WriteEndArray();
+					}
+					w.WriteEndArray();
+					w.WriteString("text", text ?? "");
+					w.WriteBoolean("online", online);
+					w.WriteEndObject();
+				}
+				return ReadIdentification(Send("/api/identify-fonts", ms.ToArray(), "application/json", 1800000));
+			}
+		}
+
+		/// <summary>Looks for the font of a book from a sample of its pages: the helper uses the boxes it stored for each (pages not translated yet are left out).</summary>
+		public FontIdentification IdentifyBookFont(IEnumerable<byte[]> pages, bool online)
+		{
+			using (MemoryStream ms = new MemoryStream())
+			{
+				using (Utf8JsonWriter w = new Utf8JsonWriter(ms))
+				{
+					w.WriteStartObject();
+					w.WriteStartArray("images");
+					foreach (byte[] page in pages)
+					{
+						w.WriteStringValue(Convert.ToBase64String(page));
+					}
+					w.WriteEndArray();
+					w.WriteBoolean("online", online);
+					w.WriteEndObject();
+				}
+				return ReadIdentification(Send("/api/identify-fonts", ms.ToArray(), "application/json", 1800000));
+			}
+		}
+
+		private static FontIdentification ReadIdentification(byte[] json)
+		{
+			{
+				using (JsonDocument doc = JsonDocument.Parse(json))
 				{
 					JsonElement root = doc.RootElement;
 					FontIdentification result = new FontIdentification

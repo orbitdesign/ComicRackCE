@@ -511,6 +511,55 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 			});
 		}
 
+		/// <summary>Looks for the font of all the given boxes of one page together. The answer arrives on a background thread.</summary>
+		public void IdentifyPageFont(PageImage original, List<int[]> rects, string text, bool online, Action<FontIdentification, string> done)
+		{
+			byte[] data = original == null ? null : GetUploadBytes(original);
+			string url = ServerUrl;
+			ThreadPool.QueueUserWorkItem(delegate
+			{
+				try
+				{
+					if (data == null)
+					{
+						throw new TranslationApiException("The page could not be read.", serverDown: false);
+					}
+					done(new TranslationApi(url).IdentifyPageFont(data, rects, text, online), null);
+				}
+				catch (Exception ex)
+				{
+					done(null, ex.Message);
+				}
+			});
+		}
+
+		/// <summary>The bytes of a page as they are sent to the helper (so that it finds what it stored for it).</summary>
+		public byte[] UploadBytesOf(PageImage image)
+		{
+			return image == null ? null : GetUploadBytes(image);
+		}
+
+		/// <summary>Looks for the font of a book from a sample of its pages. The answer arrives on a background thread.</summary>
+		public void IdentifyBookFont(List<byte[]> pages, bool online, Action<FontIdentification, string> done)
+		{
+			string url = ServerUrl;
+			ThreadPool.QueueUserWorkItem(delegate
+			{
+				try
+				{
+					if (pages == null || pages.Count == 0)
+					{
+						throw new TranslationApiException("No translated pages of this book could be read.", serverDown: false);
+					}
+					done(new TranslationApi(url).IdentifyBookFont(pages, online), null);
+				}
+				catch (Exception ex)
+				{
+					done(null, ex.Message);
+				}
+			});
+		}
+
 		/// <summary>Installs a font the search found into the helper (and uses it for the lettering when asked). The answer arrives on a background thread.</summary>
 		public void InstallFont(string family, bool use, Action<string, string> done)
 		{

@@ -18,7 +18,21 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 	/// </summary>
 	public class TranslationFontDialog : FormEx
 	{
-		private readonly Action<bool, Action<FontIdentification, string>> search;
+		/// <summary>What the search looks at.</summary>
+		public enum Scope
+		{
+			Box,
+			Page,
+			Book
+		}
+
+		private readonly Action<Scope, bool, Action<FontIdentification, string>> search;
+
+		private RadioButton optBox;
+
+		private RadioButton optPage;
+
+		private RadioButton optBook;
 
 		private readonly Action<string, bool, Action<string, string>> install;
 
@@ -44,11 +58,11 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 
 		public override UIComponent UIComponent => UIComponent.Content;
 
-		public TranslationFontDialog(Action<bool, Action<FontIdentification, string>> search, Action<string, bool, Action<string, string>> install)
+		public TranslationFontDialog(Action<Scope, bool, Action<FontIdentification, string>> search, Action<string, bool, Action<string, string>> install, bool boxSelected)
 		{
 			this.search = search;
 			this.install = install;
-			Text = "Identify Font";
+			Text = "Match Font";
 			AutoScaleDimensions = new SizeF(6f, 13f);
 			AutoScaleMode = AutoScaleMode.Font;
 			StartPosition = FormStartPosition.CenterParent;
@@ -57,7 +71,12 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			ClientSize = new Size(800, 700);
 			Color gray = ThemeManager.IsDarkModeEnabled ? Color.FromArgb(150, 150, 150) : Color.FromArgb(110, 110, 110);
 
-			Controls.Add(new Label { Text = "The lettering in the selected box:", Location = new Point(14, 12), Size = new Size(400, 18) });
+			Controls.Add(new Label { Text = "Match the font of:", Location = new Point(14, 12), Size = new Size(110, 18) });
+			optBox = new RadioButton { Text = "The selected box", Location = new Point(126, 9), Size = new Size(130, 22), Enabled = boxSelected, Checked = boxSelected, Name = "optBox" };
+			optPage = new RadioButton { Text = "This page (all its boxes)", Location = new Point(262, 9), Size = new Size(180, 22), Checked = !boxSelected, Name = "optPage" };
+			optBook = new RadioButton { Text = "Whole book (a sample of its translated pages)", Location = new Point(448, 9), Size = new Size(330, 22), Name = "optBook" };
+			Controls.AddRange(new Control[] { optBox, optPage, optBook });
+			new ToolTip().SetToolTip(optBook, "Looks at the lettering of up to 12 translated pages spread over the book, to find the one font that suits it best");
 			picCrop = new PictureBox { Location = new Point(14, 32), Size = new Size(772, 96), SizeMode = PictureBoxSizeMode.Zoom, BorderStyle = BorderStyle.FixedSingle, Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right };
 			Controls.Add(picCrop);
 			lblStatus = new Label { Location = new Point(14, 134), Size = new Size(772, 34), ForeColor = gray, Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right, Name = "lblStatus" };
@@ -77,12 +96,12 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 
 			btCopy = new Button { Text = "Copy lettering picture", Location = new Point(14, 662), Size = new Size(150, 26), Anchor = AnchorStyles.Bottom | AnchorStyles.Left, Enabled = false, Name = "btCopy" };
 			Button btFolder = new Button { Text = "Open candidates folder", Location = new Point(170, 662), Size = new Size(150, 26), Anchor = AnchorStyles.Bottom | AnchorStyles.Left, Name = "btFolder" };
-			btSearch = new Button { Text = "Search again", Location = new Point(606, 662), Size = new Size(88, 26), Anchor = AnchorStyles.Bottom | AnchorStyles.Right, Name = "btSearch" };
+			btSearch = new Button { Text = "Match again", Location = new Point(606, 662), Size = new Size(88, 26), Anchor = AnchorStyles.Bottom | AnchorStyles.Right, Name = "btSearch" };
 			Button close = new Button { Text = "Close", Location = new Point(700, 662), Size = new Size(86, 26), Anchor = AnchorStyles.Bottom | AnchorStyles.Right, DialogResult = DialogResult.Cancel, Name = "btClose" };
 			Controls.AddRange(new Control[] { btCopy, btFolder, btSearch, close });
 			CancelButton = close;
 			new ToolTip().SetToolTip(btCopy, "Copies the lettering as a picture, to paste into WhatTheFont or Font Squirrel's Matcherator");
-			new ToolTip().SetToolTip(btFolder, "Fonts you download from dafont or Font Squirrel can be dropped here (zip files too); Search again then includes them");
+			new ToolTip().SetToolTip(btFolder, "Fonts you download from dafont or Font Squirrel can be dropped here (zip files too); Match again then includes them");
 
 			btCopy.Click += delegate
 			{
@@ -136,8 +155,10 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			btSearch.Enabled = false;
 			progress.Visible = true;
 			rows.Controls.Clear();
-			SetStatus("Searching the fonts on this computer and Google Fonts. The first search builds a small cache of font shapes and can take several minutes; later ones take seconds.");
-			search(true, delegate (FontIdentification result, string error)
+			SetStatus((optBook.Checked ? "Reading a sample of the book's pages, then searching" : (optPage.Checked ? "Searching for this page's lettering in" : "Searching")) + " the fonts on this computer and Google Fonts. The first search builds a small cache of font shapes and can take several minutes; later ones take seconds.");
+			Scope scope = optBook.Checked ? Scope.Book : (optPage.Checked ? Scope.Page : Scope.Box);
+			picCrop.Image = null;
+			search(scope, true, delegate (FontIdentification result, string error)
 			{
 				if (closed || IsDisposed)
 				{
@@ -209,7 +230,7 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 				b.Click += delegate { OpenPage(l.Url); };
 				links.Controls.Add(b);
 			}
-			lblFolder.Text = "Fonts you download from dafont, Font Squirrel and similar sites can be dropped (zip files too) in:\r\n" + result.CandidatesFolder + "\r\nThen press Search again to have them compared with this lettering. Check each font's licence before using it.";
+			lblFolder.Text = "Fonts you download from dafont, Font Squirrel and similar sites can be dropped (zip files too) in:\r\n" + result.CandidatesFolder + "\r\nThen press Match again to have them compared with this lettering. Check each font's licence before using it.";
 		}
 
 		private Control MakeRow(FontMatch match, int y)
