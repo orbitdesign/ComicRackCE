@@ -38,6 +38,14 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 
 		private ComboBox cboGroup;
 
+		//a font of the user's own for the lettering style shown (capitals or mixed case)
+		private Button btStyleOwn;
+
+		//applies the font of the chosen row to the lettering style shown
+		private Button btApplySel;
+
+		private Action applySelected;
+
 		private readonly Action<Action<List<FontFile>, string>> listFonts;
 
 		//Sets the font of one kind of lettering (family, capitals?, whole book?, done) for this page or the whole book.
@@ -139,8 +147,14 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			lblStatus = new Label { Location = new Point(14, 134), Size = new Size(772, 50), ForeColor = gray, Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right, Name = "lblStatus" };
 			Controls.Add(lblStatus);
 			lblGroup = new Label { Text = "Lettering style:", Location = new Point(14, 190), Size = new Size(92, 18), Visible = false };
-			cboGroup = new ComboBox { Location = new Point(110, 186), Size = new Size(420, 21), DropDownStyle = ComboBoxStyle.DropDownList, Visible = false, Name = "cboGroup" };
-			Controls.AddRange(new Control[] { lblGroup, cboGroup });
+			cboGroup = new ComboBox { Location = new Point(110, 186), Size = new Size(300, 21), DropDownStyle = ComboBoxStyle.DropDownList, Visible = false, Name = "cboGroup" };
+			btStyleOwn = new Button { Text = "My own font for this style...", Location = new Point(418, 184), Size = new Size(200, 25), Visible = false, Name = "btStyleOwn" };
+			btApplySel = new Button { Text = "Apply selected font", Location = new Point(624, 184), Size = new Size(162, 25), Visible = false, Enabled = false, AutoEllipsis = true, Name = "btApplySel" };
+			new ToolTip().SetToolTip(btApplySel, "Use the font of the row you clicked for the lettering style shown, on this page or the whole book (see Apply fonts to)");
+			btApplySel.Click += delegate { applySelected?.Invoke(); };
+			new ToolTip().SetToolTip(btStyleOwn, "Pick any font on this computer (or in the translator's fonts folder) for the lettering style shown, instead of one of the matches");
+			btStyleOwn.Click += delegate { PickOwnFont(CurrentCaps()); };
+			Controls.AddRange(new Control[] { lblGroup, cboGroup, btStyleOwn, btApplySel });
 			new ToolTip().SetToolTip(cboGroup, "The boxes have more than one kind of lettering (capitals and mixed case); each kind is matched on its own");
 			cboGroup.SelectedIndexChanged += delegate { ShowGroup(); };
 			progress = new ProgressBar { Location = new Point(14, 212), Size = new Size(772, 8), Style = ProgressBarStyle.Marquee, Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right, Visible = false };
@@ -180,7 +194,7 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			FormClosed += delegate { watch.Stop(); watch.Dispose(); };
 			Button btOwn = new Button { Text = "Use a font of my own...", Location = new Point(326, 662), Size = new Size(170, 26), Anchor = AnchorStyles.Bottom | AnchorStyles.Left, Enabled = listFonts != null, Name = "btOwn" };
 			new ToolTip().SetToolTip(btOwn, "Pick any font installed on this computer (or in the translator's fonts folder) and use it for the lettering");
-			btOwn.Click += delegate { PickOwnFont(); };
+			btOwn.Click += delegate { PickOwnFont(null); };
 			Controls.AddRange(new Control[] { btCopy, btFolder, btOwn, btSearch, close });
 			CancelButton = close;
 			new ToolTip().SetToolTip(btCopy, "Copies the lettering as a picture, to paste into WhatTheFont or Font Squirrel's Matcherator");
@@ -228,11 +242,13 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			{
 				//All the controls so far go into a panel on the left, the preview takes the rest.
 				//a window smaller than its content scrolls instead of cutting it off
-				Panel left = new Panel { Dock = DockStyle.Left, Width = 800, Name = "pnlLeft", AutoScroll = true, AutoScrollMinSize = new Size(780, 660) };
+				Panel left = new Panel { Size = new Size(800, ClientSize.Height), Name = "pnlLeft", AutoScroll = true, AutoScrollMinSize = new Size(780, 660) };
+				//the panel has the window's height while the controls move in, so that the ones fixed to the bottom keep their place
 				foreach (Control c in Controls.Cast<Control>().ToList())
 				{
 					left.Controls.Add(c);
 				}
+				left.Dock = DockStyle.Left;
 				previewPanel = new FontPreviewPanel(previewFont, currentPicture, originalPicture) { Dock = DockStyle.Fill, Name = "previewPanel" };
 				Controls.Add(previewPanel);
 				Controls.Add(left);
@@ -356,6 +372,10 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			bool several = result.Groups.Count > 1;
 			lblGroup.Visible = several;
 			cboGroup.Visible = several;
+			btStyleOwn.Visible = listFonts != null && applyFont != null && string.IsNullOrEmpty(result.Error) && result.Matches.Count > 0;
+			btStyleOwn.Left = several ? cboGroup.Right + 8 : 14;
+			btApplySel.Visible = btStyleOwn.Visible;
+			btApplySel.Left = btStyleOwn.Right + 6;
 			if (several)
 			{
 				foreach (FontGroup group in result.Groups)
@@ -367,6 +387,7 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			else
 			{
 				ShowMatches(result.Matches);
+				NameStyleButton();
 			}
 			links.Controls.Clear();
 			int x = 0, row = 0;
@@ -388,8 +409,15 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			lblFolder.Text = "Fonts you download from dafont, Font Squirrel and similar sites can be dropped (zip files too) in:\r\n" + result.CandidatesFolder + "\r\nThen press Match again to have them compared with this lettering. Check each font's licence before using it.";
 		}
 
+		/// <summary>The style button says which lettering it is for.</summary>
+		private void NameStyleButton()
+		{
+			btStyleOwn.Text = CurrentCaps() ? "My own font for capital letters..." : "My own font for mixed case...";
+		}
+
 		private void ShowGroup()
 		{
+			NameStyleButton();
 			if (last == null || cboGroup.SelectedIndex < 0 || cboGroup.SelectedIndex >= last.Groups.Count)
 			{
 				return;
@@ -411,22 +439,31 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			ShowMatches(group.Matches);
 		}
 
-		/// <summary>Marks a row as the chosen one and draws the page with its font in the preview.</summary>
-		private void SelectRow(Panel row, FontMatch match)
+		/// <summary>Marks a row as the chosen one (Apply selected font then uses it) and draws the page with its font in the preview.</summary>
+		private void SelectRow(Panel row, FontMatch match, Action apply)
 		{
+			applySelected = apply;
+			btApplySel.Enabled = apply != null && applyFont != null;
+			btApplySel.Text = "Apply " + match.Family;
 			if (selectedRow != null && !selectedRow.IsDisposed)
 			{
 				selectedRow.BackColor = SystemColors.Control;
 			}
 			selectedRow = row;
 			row.BackColor = ThemeManager.IsDarkModeEnabled ? Color.FromArgb(50, 70, 100) : Color.FromArgb(210, 225, 245);
-			previewPanel.Kind = CurrentCaps() ? 0 : 1;
-			previewPanel.ShowFont(string.IsNullOrEmpty(match.File) ? match.Family + ".ttf" : match.File);
+			if (previewPanel != null)
+			{
+				previewPanel.Kind = CurrentCaps() ? 0 : 1;
+				previewPanel.ShowFont(string.IsNullOrEmpty(match.File) ? match.Family + ".ttf" : match.File);
+			}
 		}
 
 		private void ShowMatches(List<FontMatch> matches)
 		{
 			selectedRow = null;
+			applySelected = null;
+			btApplySel.Enabled = false;
+			btApplySel.Text = "Apply selected font";
 			rows.Controls.Clear();
 			int y = 4;
 			foreach (FontMatch match in matches)
@@ -438,8 +475,9 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			rows.AutoScrollPosition = new Point(0, 0);
 		}
 
-		/// <summary>Lets the user pick any font the translator can use and use it for the lettering.</summary>
-		private void PickOwnFont()
+		/// <summary>Lets the user pick any font the translator can use and use it for the lettering: for one style (capitals when
+		/// `caps` is true, mixed case when false) or, with null, for either.</summary>
+		private void PickOwnFont(bool? caps)
 		{
 			if (listFonts == null)
 			{
@@ -447,6 +485,10 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			}
 			using (FontPickerDialog picker = new FontPickerDialog(listFonts, install, sample, applyFont, currentFonts, optApplyBook.Checked, previewFont, currentPicture, originalPicture))
 			{
+				if (caps.HasValue)
+				{
+					picker.ForStyle(caps.Value);
+				}
 				picker.ShowDialog(this);
 				if (!string.IsNullOrEmpty(picker.UsedFile))
 				{
@@ -490,17 +532,15 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			{
 				c.MouseEnter += delegate { if (!rows.Focused) { rows.Focus(); } };
 			}
-			if (previewPanel != null)
+			//a click on the row (not on its buttons) chooses it, for the preview and for Apply selected font; so does pressing a button
+			Action applyThis = delegate { Apply(match.Family, caps, use, get, done, report: true); };
+			EventHandler choose = delegate { SelectRow(row, match, applyThis); };
+			foreach (Control c in new Control[] { row, preview, name, sub, done })
 			{
-				//a click on the row (not on its buttons) chooses it for the preview; so does pressing a button
-				EventHandler choose = delegate { SelectRow(row, match); };
-				foreach (Control c in new Control[] { row, preview, name, sub, done })
-				{
-					c.Click += choose;
-				}
-				use.Click += choose;
-				get.Click += choose;
+				c.Click += choose;
 			}
+			use.Click += choose;
+			get.Click += choose;
 			return row;
 		}
 
@@ -518,7 +558,7 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			return defaultCaps;
 		}
 
-		private void Apply(string family, bool caps, Button use, Button get, Label done)
+		private void Apply(string family, bool caps, Button use, Button get, Label done, bool report = false)
 		{
 			if (applyFont == null)
 			{
@@ -541,6 +581,10 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 						use.Enabled = true;
 						get.Enabled = true;
 						done.Text = error != null ? "Failed: " + error : file + " is now the " + (caps ? "capitals" : "mixed-case") + " font of " + (book ? "this book" : "this page") + ".";
+						if (report)
+						{
+							SetStatus(error != null ? "The font could not be applied: " + error : file + " is now used for the " + (caps ? "capital-letter" : "mixed-case") + " lettering of " + (book ? "this book" : "this page") + ". The pages are drawn again with it.");
+						}
 					}));
 				}
 				catch (Exception)
@@ -647,7 +691,14 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 
 		private readonly Func<bool, StyleFonts> currentFonts;
 
-		private readonly string sample;
+		private string sample;
+
+		//the lettering style the window was opened for (null: either)
+		private bool? style;
+
+		private Label lblCapsName;
+
+		private Label lblMixedName;
 
 		private List<FontFile> all = new List<FontFile>();
 
@@ -676,6 +727,8 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 		private RadioButton optBook;
 
 		private Button btCopy;
+
+		private Button btApply;
 
 		private FontPreviewPanel previewPanel;
 
@@ -720,11 +773,13 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			Controls.AddRange(new Control[] { txtFilter, lstFonts, picPreview, lblInfo });
 
 			//the two kinds of lettering, and where the choice applies
-			Controls.Add(new Label { Text = "Capital letters:", Location = new Point(14, 418), Size = new Size(96, 18), Anchor = AnchorStyles.Bottom | AnchorStyles.Left });
+			lblCapsName = new Label { Text = "Capital letters:", Location = new Point(14, 418), Size = new Size(96, 18), Anchor = AnchorStyles.Bottom | AnchorStyles.Left, Name = "lblCapsName" };
+			Controls.Add(lblCapsName);
 			lblCaps = new Label { Location = new Point(112, 418), Size = new Size(250, 18), ForeColor = gray, AutoEllipsis = true, Anchor = AnchorStyles.Bottom | AnchorStyles.Left, Name = "lblCaps" };
 			btCaps = new Button { Text = "Use selected font", Location = new Point(368, 413), Size = new Size(130, 26), Enabled = false, Anchor = AnchorStyles.Bottom | AnchorStyles.Left, Name = "btCaps" };
 			btClearCaps = new Button { Text = "Default", Location = new Point(504, 413), Size = new Size(102, 26), Anchor = AnchorStyles.Bottom | AnchorStyles.Left, Name = "btClearCaps" };
-			Controls.Add(new Label { Text = "Mixed case:", Location = new Point(14, 452), Size = new Size(96, 18), Anchor = AnchorStyles.Bottom | AnchorStyles.Left });
+			lblMixedName = new Label { Text = "Mixed case:", Location = new Point(14, 452), Size = new Size(96, 18), Anchor = AnchorStyles.Bottom | AnchorStyles.Left, Name = "lblMixedName" };
+			Controls.Add(lblMixedName);
 			lblMixed = new Label { Location = new Point(112, 452), Size = new Size(250, 18), ForeColor = gray, AutoEllipsis = true, Anchor = AnchorStyles.Bottom | AnchorStyles.Left, Name = "lblMixed" };
 			btMixed = new Button { Text = "Use selected font", Location = new Point(368, 447), Size = new Size(130, 26), Enabled = false, Anchor = AnchorStyles.Bottom | AnchorStyles.Left, Name = "btMixed" };
 			btClearMixed = new Button { Text = "Default", Location = new Point(504, 447), Size = new Size(102, 26), Anchor = AnchorStyles.Bottom | AnchorStyles.Left, Name = "btClearMixed" };
@@ -738,12 +793,23 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 
 			btCopy = new Button { Text = "Copy to translator", Location = new Point(14, 552), Size = new Size(130, 26), Anchor = AnchorStyles.Bottom | AnchorStyles.Left, Enabled = false, Name = "btCopy" };
 			Button close = new Button { Text = "Close", Location = new Point(520, 552), Size = new Size(86, 26), Anchor = AnchorStyles.Bottom | AnchorStyles.Right, DialogResult = DialogResult.Cancel };
-			Controls.AddRange(new Control[] { btCopy, close });
+			btApply = new Button { Text = "Apply to both styles", Location = new Point(370, 552), Size = new Size(144, 26), Anchor = AnchorStyles.Bottom | AnchorStyles.Right, Enabled = false, Name = "btApply" };
+			new ToolTip().SetToolTip(btApply, "Use the selected font (for this page or the whole book, see Apply to) and close this window");
+			btApply.Click += delegate { ApplyAndClose(); };
+			Controls.AddRange(new Control[] { btCopy, btApply, close });
 			CancelButton = close;
 			new ToolTip().SetToolTip(btCopy, "Copies the font into the translator's fonts folder, so it shows in the translator's settings, without using it");
 
 			txtFilter.TextChanged += delegate { Fill(); };
 			lstFonts.SelectedIndexChanged += delegate { Preview(); };
+			//opened for one style: a double click uses the font for it
+			lstFonts.DoubleClick += delegate
+			{
+				if (style.HasValue && Chosen != null && applyFont != null)
+				{
+					ApplyAndClose();
+				}
+			};
 			btCaps.Click += delegate { SetSlot(true, Chosen?.Name); };
 			btMixed.Click += delegate { SetSlot(false, Chosen?.Name); };
 			btClearCaps.Click += delegate { SetSlot(true, null); };
@@ -754,11 +820,13 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			ShowSlots();
 			if (previewFont != null)
 			{
-				Panel left = new Panel { Dock = DockStyle.Left, Width = 620, Name = "pnlLeft", AutoScroll = true, AutoScrollMinSize = new Size(600, 560) };
+				Panel left = new Panel { Size = new Size(620, ClientSize.Height), Name = "pnlLeft", AutoScroll = true, AutoScrollMinSize = new Size(600, 560) };
+				//the panel has the window's height while the controls move in, so that the ones fixed to the bottom keep their place
 				foreach (Control c in Controls.Cast<Control>().ToList())
 				{
 					left.Controls.Add(c);
 				}
+				left.Dock = DockStyle.Left;
 				previewPanel = new FontPreviewPanel(previewFont, currentPicture, originalPicture) { Dock = DockStyle.Fill, Name = "previewPanel" };
 				Controls.Add(previewPanel);
 				Controls.Add(left);
@@ -789,6 +857,31 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			};
 		}
 
+		/// <summary>Opens the window for one lettering style: its row stands out, its button is the one Enter presses, the sample and the
+		/// preview are of that style, and a double click in the list uses the font for it. The other style can still be set.</summary>
+		public void ForStyle(bool caps)
+		{
+			style = caps;
+			Text = "Use a Font of My Own - " + (caps ? "Capital Letters" : "Mixed Case");
+			Label name = caps ? lblCapsName : lblMixedName;
+			name.Font = new Font(name.Font, FontStyle.Bold);
+			name.ForeColor = Color.FromArgb(255, 160, 40);
+			name.Text = (caps ? "Capital letters:" : "Mixed case:");
+			Button use = caps ? btCaps : btMixed;
+			use.Text = "Use for this style";
+			btApply.Text = "Apply";
+			AcceptButton = btApply;
+			if (caps)
+			{
+				sample = sample.ToUpperInvariant();
+			}
+			if (previewPanel != null)
+			{
+				previewPanel.Kind = caps ? 0 : 1;
+			}
+			lblInfo.Text = "Choose a font for the " + (caps ? "capital-letter" : "mixed-case") + " lettering,then press Apply (or double-click it).";
+		}
+
 		/// <summary>Shows the fonts set now for the page or the book.</summary>
 		private void ShowSlots()
 		{
@@ -800,9 +893,34 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			btClearMixed.Enabled = can && !string.IsNullOrEmpty(now.Mixed);
 			btCaps.Enabled = can && Chosen != null;
 			btMixed.Enabled = can && Chosen != null;
+			btApply.Enabled = can && Chosen != null;
 		}
 
-		private void SetSlot(bool caps, string family)
+		/// <summary>Uses the selected font for the style the window was opened for (or for both styles), then closes the window.</summary>
+		private void ApplyAndClose()
+		{
+			string family = Chosen?.Name;
+			if (family == null || applyFont == null)
+			{
+				return;
+			}
+			btApply.Enabled = false;
+			Action close = delegate
+			{
+				DialogResult = DialogResult.OK;
+				Close();
+			};
+			if (style.HasValue)
+			{
+				SetSlot(style.Value, family, close);
+			}
+			else
+			{
+				SetSlot(true, family, delegate { SetSlot(false, family, close); });
+			}
+		}
+
+		private void SetSlot(bool caps, string family, Action succeeded = null)
 		{
 			if (applyFont == null)
 			{
@@ -831,6 +949,10 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 							lblInfo.Text = UsedFile + " The pages are drawn again with it.";
 						}
 						ShowSlots();
+						if (error == null)
+						{
+							succeeded?.Invoke();
+						}
 					}));
 				}
 				catch (Exception)
