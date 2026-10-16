@@ -406,6 +406,9 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 
 		public List<FontMatch> Matches { get; set; } = new List<FontMatch>();
 
+		/// <summary>The best Google fonts for this kind of lettering besides the ones in Matches (free to install).</summary>
+		public List<FontMatch> GoogleMatches { get; set; } = new List<FontMatch>();
+
 		public List<string> Notes { get; set; } = new List<string>();
 	}
 
@@ -483,6 +486,9 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 	public class FontIdentification
 	{
 		public List<FontMatch> Matches { get; set; } = new List<FontMatch>();
+
+		/// <summary>The best Google fonts besides the ones in Matches, listed on their own (helper 1.38 and later).</summary>
+		public List<FontMatch> GoogleMatches { get; set; } = new List<FontMatch>();
 
 		/// <summary>When the boxes have more than one kind of lettering: the matches of each kind (the first is the same as Matches).</summary>
 		public List<FontGroup> Groups { get; set; } = new List<FontGroup>();

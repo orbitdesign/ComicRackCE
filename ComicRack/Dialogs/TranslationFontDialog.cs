@@ -386,7 +386,7 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			}
 			else
 			{
-				ShowMatches(result.Matches);
+				ShowMatches(result.Matches, result.GoogleMatches);
 				NameStyleButton();
 			}
 			links.Controls.Clear();
@@ -436,7 +436,7 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 				{
 				}
 			}
-			ShowMatches(group.Matches);
+			ShowMatches(group.Matches, group.GoogleMatches);
 		}
 
 		/// <summary>Marks a row as the chosen one (Apply selected font then uses it) and draws the page with its font in the preview.</summary>
@@ -458,7 +458,7 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			}
 		}
 
-		private void ShowMatches(List<FontMatch> matches)
+		private void ShowMatches(List<FontMatch> matches, List<FontMatch> google = null)
 		{
 			selectedRow = null;
 			applySelected = null;
@@ -470,6 +470,26 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			{
 				rows.Controls.Add(MakeRow(match, y));
 				y += 86;
+			}
+			//the best Google fonts besides the ones above: open licence, free to install, always shown
+			if (google != null && google.Count > 0)
+			{
+				Label head = new Label
+				{
+					Text = "Best from Google Fonts (open licence, free to install):",
+					Location = new Point(4, y + 6),
+					Size = new Size(738, 18),
+					Font = new Font(Font, FontStyle.Bold),
+					Name = "lblGoogleHead"
+				};
+				head.MouseEnter += delegate { if (!rows.Focused) { rows.Focus(); } };
+				rows.Controls.Add(head);
+				y += 28;
+				foreach (FontMatch match in google)
+				{
+					rows.Controls.Add(MakeRow(match, y));
+					y += 86;
+				}
 			}
 			rows.AutoScrollMinSize = new Size(0, y + 6);
 			rows.AutoScrollPosition = new Point(0, 0);

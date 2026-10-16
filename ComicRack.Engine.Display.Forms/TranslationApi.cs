@@ -250,10 +250,10 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 			}
 		}
 
-		private static List<FontMatch> ReadMatches(JsonElement parent)
+		private static List<FontMatch> ReadMatches(JsonElement parent, string name = "matches")
 		{
 			List<FontMatch> list = new List<FontMatch>();
-			if (parent.TryGetProperty("matches", out JsonElement matches) && matches.ValueKind == JsonValueKind.Array)
+			if (parent.TryGetProperty(name, out JsonElement matches) && matches.ValueKind == JsonValueKind.Array)
 			{
 				foreach (JsonElement e in matches.EnumerateArray())
 				{
@@ -299,6 +299,7 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 						result.Notes = notes.EnumerateArray().Select((JsonElement n) => n.GetString() ?? "").ToList();
 					}
 					result.Matches = ReadMatches(root);
+					result.GoogleMatches = ReadMatches(root, "google_matches");
 					if (root.TryGetProperty("groups", out JsonElement groups) && groups.ValueKind == JsonValueKind.Array)
 					{
 						foreach (JsonElement g in groups.EnumerateArray())
@@ -309,7 +310,8 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 								Label = TranslationBox.GetString(g, "label"),
 								Boxes = (int)TranslationBox.GetDouble(g, "boxes"),
 								Crop = string.IsNullOrEmpty(gcrop) ? null : Convert.FromBase64String(gcrop),
-								Matches = ReadMatches(g)
+								Matches = ReadMatches(g),
+								GoogleMatches = ReadMatches(g, "google_matches")
 							};
 							if (g.TryGetProperty("notes", out JsonElement gnotes) && gnotes.ValueKind == JsonValueKind.Array)
 							{
