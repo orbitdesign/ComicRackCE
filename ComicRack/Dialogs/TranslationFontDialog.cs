@@ -1382,7 +1382,38 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			full.Click += delegate { cvFont.ZoomTo(1f); };
 			minus.Click += delegate { cvFont.ZoomTo(cvFont.Zoom / 1.25f); };
 			plus.Click += delegate { cvFont.ZoomTo(cvFont.Zoom * 1.25f); };
-			cboView.SelectedIndexChanged += delegate { ApplyView(); };
+			cboView.SelectedIndexChanged += delegate
+			{
+				ApplyView();
+				try
+				{
+					Program.Settings.TranslatorPreviewView = cboView.SelectedIndex;
+				}
+				catch (Exception)
+				{
+				}
+			};
+			//the view chosen last time, set once the window shows (so that it can widen the window for the panes)
+			bool restored = false;
+			VisibleChanged += delegate
+			{
+				if (restored || !Visible)
+				{
+					return;
+				}
+				restored = true;
+				try
+				{
+					int saved = Program.Settings.TranslatorPreviewView;
+					if (saved > 0 && saved < cboView.Items.Count)
+					{
+						cboView.SelectedIndex = saved;
+					}
+				}
+				catch (Exception)
+				{
+				}
+			};
 			cboKind.SelectedIndexChanged += delegate { Redraw(wanted); };
 			wait = new System.Windows.Forms.Timer { Interval = 350 };
 			wait.Tick += delegate

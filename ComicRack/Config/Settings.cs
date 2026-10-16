@@ -206,6 +206,8 @@ namespace cYo.Projects.ComicRack.Viewer.Config
 
 		private int translatorOverlayOpacity = 50;
 
+		private int translatorPreviewView;
+
 		private string translatorEditorSize = string.Empty;
 
 		private string translatorMatchFontSize = string.Empty;
@@ -1519,6 +1521,26 @@ namespace cYo.Projects.ComicRack.Viewer.Config
 				if (translatorOverlayOpacity != value)
 				{
 					translatorOverlayOpacity = value;
+					FireEvent(null);
+				}
+			}
+		}
+
+		/// <summary>The font preview's view chosen last time: 0 the page with the font, 1 page now beside it, 2 the original beside it, 3 all three.</summary>
+		[Browsable(false)]
+		[DefaultValue(0)]
+		public int TranslatorPreviewView
+		{
+			get
+			{
+				return translatorPreviewView;
+			}
+			set
+			{
+				value = Math.Max(0, Math.Min(3, value));
+				if (translatorPreviewView != value)
+				{
+					translatorPreviewView = value;
 					FireEvent(null);
 				}
 			}
