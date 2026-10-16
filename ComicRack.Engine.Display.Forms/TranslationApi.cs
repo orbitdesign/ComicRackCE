@@ -27,6 +27,34 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 			return ReadPage(Send("/api/analyze", page, "application/octet-stream", 900000));
 		}
 
+		/// <summary>
+		/// True when the helper already read and translated this page (given by its fingerprint), so showing it only loads what it
+		/// stored. A quick call that answers false when the helper cannot say (an older helper, or not reachable).
+		/// </summary>
+		public bool IsCached(string sha)
+		{
+			try
+			{
+				using (MemoryStream ms = new MemoryStream())
+				{
+					using (Utf8JsonWriter w = new Utf8JsonWriter(ms))
+					{
+						w.WriteStartObject();
+						w.WriteString("sha", sha);
+						w.WriteEndObject();
+					}
+					using (JsonDocument doc = JsonDocument.Parse(Send("/api/cached", ms.ToArray(), "application/json", 4000)))
+					{
+						return TranslationBox.GetBool(doc.RootElement, "cached");
+					}
+				}
+			}
+			catch (Exception)
+			{
+				return false;
+			}
+		}
+
 		public PageAnalysis Render(byte[] page, IEnumerable<TranslationBox> boxList, IEnumerable<ProtectStroke> protect = null)
 		{
 			List<TranslationBox> boxes = boxList.ToList();
@@ -87,6 +115,88 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 						Text = TranslationBox.GetString(doc.RootElement, "text"),
 						Translation = TranslationBox.GetString(doc.RootElement, "translation")
 					};
+				}
+			}
+		}
+
+		/// <summary>
+		/// Asks the helper which font the lettering inside a rectangle of the page is set in: the closest fonts on this computer and
+		/// in Google Fonts, with a picture of the box's text in each. The first search can take several minutes.
+		/// </summary>
+		public FontIdentification IdentifyFont(byte[] page, int[] rect, string text, bool online)
+		{
+			using (MemoryStream ms = new MemoryStream())
+			{
+				using (Utf8JsonWriter w = new Utf8JsonWriter(ms))
+				{
+					w.WriteStartObject();
+					w.WriteString("image", Convert.ToBase64String(page));
+					TranslationBox.WriteInts(w, "rect", rect);
+					w.WriteString("text", text ?? "");
+					w.WriteBoolean("online", online);
+					w.WriteEndObject();
+				}
+				using (JsonDocument doc = JsonDocument.Parse(Send("/api/identify-font", ms.ToArray(), "application/json", 1800000)))
+				{
+					JsonElement root = doc.RootElement;
+					FontIdentification result = new FontIdentification
+					{
+						Error = TranslationBox.GetString(root, "error"),
+						Compared = (int)TranslationBox.GetDouble(root, "compared"),
+						CandidatesFolder = TranslationBox.GetString(root, "candidates_folder")
+					};
+					string crop = TranslationBox.GetString(root, "crop");
+					if (!string.IsNullOrEmpty(crop))
+					{
+						result.Crop = Convert.FromBase64String(crop);
+					}
+					if (root.TryGetProperty("notes", out JsonElement notes) && notes.ValueKind == JsonValueKind.Array)
+					{
+						result.Notes = notes.EnumerateArray().Select((JsonElement n) => n.GetString() ?? "").ToList();
+					}
+					if (root.TryGetProperty("matches", out JsonElement matches) && matches.ValueKind == JsonValueKind.Array)
+					{
+						foreach (JsonElement e in matches.EnumerateArray())
+						{
+							string preview = TranslationBox.GetString(e, "preview");
+							result.Matches.Add(new FontMatch
+							{
+								Family = TranslationBox.GetString(e, "family"),
+								Source = TranslationBox.GetString(e, "source"),
+								Category = TranslationBox.GetString(e, "category"),
+								Url = TranslationBox.GetString(e, "url"),
+								Score = (int)TranslationBox.GetDouble(e, "score"),
+								Preview = string.IsNullOrEmpty(preview) ? null : Convert.FromBase64String(preview)
+							});
+						}
+					}
+					if (root.TryGetProperty("external", out JsonElement external) && external.ValueKind == JsonValueKind.Array)
+					{
+						foreach (JsonElement e in external.EnumerateArray())
+						{
+							result.Links.Add(new FontLink { Name = TranslationBox.GetString(e, "family"), About = TranslationBox.GetString(e, "about"), Url = TranslationBox.GetString(e, "url") });
+						}
+					}
+					return result;
+				}
+			}
+		}
+
+		/// <summary>Has the helper copy a font it found into its fonts folder and, when asked, use it for the lettering. Returns the file name.</summary>
+		public string InstallFont(string family, bool use)
+		{
+			using (MemoryStream ms = new MemoryStream())
+			{
+				using (Utf8JsonWriter w = new Utf8JsonWriter(ms))
+				{
+					w.WriteStartObject();
+					w.WriteString("family", family);
+					w.WriteBoolean("use", use);
+					w.WriteEndObject();
+				}
+				using (JsonDocument doc = JsonDocument.Parse(Send("/api/install-font", ms.ToArray(), "application/json", 300000)))
+				{
+					return TranslationBox.GetString(doc.RootElement, "file");
 				}
 			}
 		}

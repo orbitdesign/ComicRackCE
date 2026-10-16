@@ -2280,7 +2280,19 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 		/// <summary>Raised when what the status light and page count show may have changed.</summary>
 		public event EventHandler TranslationStatusChanged;
 
-		/// <summary>Supplies the translator's picture for the status panel: the state ("on", "busy" or "problem") and the size in pixels.</summary>
+		/// <summary>True while the pages being shown are only loaded from the helper's stored translations (the light is blue, not amber).</summary>
+		[Browsable(false)]
+		[DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+		public bool TranslationLoadingFromCache
+		{
+			get
+			{
+				PageTranslationService service = pageTranslator;
+				return translatePages && service != null && IsValid && service.IsLoadingFromCache;
+			}
+		}
+
+		/// <summary>Supplies the translator's picture for the status panel: the state ("on", "busy", "loading" or "problem") and the size in pixels.</summary>
 		public Func<string, int, Bitmap> TranslationIconProvider { get; set; }
 
 		private string translationIconState;
@@ -2326,7 +2338,7 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 			//The page list can still be loading (the count grows), so also use the count the book was last known to have.
 			total = Math.Max(Book.ProviderPageCount, Book.Comic.PageCount);
 			translated = Math.Min(service.Store.TranslatedPageCount(TranslationBookKey), total);
-			busy = service.IsBusy;
+			busy = service.IsBusyForLight;
 			problem = service.Status;
 		}
 
@@ -2351,7 +2363,7 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 				else
 				{
 					bool onScreen = pageTranslator.IsWaiting(GetPageKey(CurrentPage)) || (TwoPageDisplay && pageTranslator.IsWaiting(GetPageKey(NextPage)));
-					text = (onScreen ? TR.Messages["TranslatingPage", "Translating..."] + " " : "") + string.Format(TR.Messages["TranslatedPagesShort", "Translated {0}/{1}"], translated, total);
+					text = (onScreen ? (TranslationLoadingFromCache ? TR.Messages["LoadingTranslatedPage", "Loading..."] : TR.Messages["TranslatingPage", "Translating..."]) + " " : "") + string.Format(TR.Messages["TranslatedPagesShort", "Translated {0}/{1}"], translated, total);
 					if (preTranslate != null && preTranslateTotal > 0)
 					{
 						text += string.Format("   (getting ahead: {0}/{1})", preTranslateDone, preTranslateTotal);
@@ -2362,7 +2374,7 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 			{
 				//The translator's own picture at the left of the panel, coloured by what it is doing.
 				GetTranslationStatus(out int doneNow, out int totalNow, out bool busyNow, out string problemNow);
-				string state = !string.IsNullOrEmpty(problemNow) ? "problem" : (busyNow ? "busy" : "on");
+				string state = !string.IsNullOrEmpty(problemNow) ? "problem" : (busyNow ? (TranslationLoadingFromCache ? "loading" : "busy") : "on");
 				if (state != translationIconState || translateOverlay.Icon == null)
 				{
 					translationIconState = state;

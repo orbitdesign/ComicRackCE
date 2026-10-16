@@ -1389,6 +1389,8 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 
 		private Button btBrush;
 
+		private Button btIdentify;
+
 		private Button btEraser;
 
 		private Button btClearProtect;
@@ -1553,6 +1555,10 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			lblBrush = new Label { Location = new Point(272, y + 4), Size = new Size(56, 16), Name = "lblBrush", Text = "24 px" };
 			side.Controls.AddRange(new Control[] { tbBrush, lblBrush });
 			y += 36;
+			btIdentify = new Button { Text = "Identify the font of this text...", Location = new Point(10, y), Size = new Size(318, 28), Name = "btIdentify" };
+			new ToolTip().SetToolTip(btIdentify, "Finds the fonts that look most like the selected box's original lettering (installed fonts and Google Fonts), shows them and lets you install one");
+			side.Controls.Add(btIdentify);
+			y += 38;
 			side.Controls.Add(new Label { Text = "Text boxes on this page:", Location = new Point(10, y), Size = new Size(300, 16) });
 			y += 18;
 			lstBoxes = new ListBox { Location = new Point(10, y), Size = new Size(318, 96), Name = "lstBoxes", IntegralHeight = false, HorizontalScrollbar = true, SelectionMode = SelectionMode.MultiExtended };
@@ -1697,6 +1703,7 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			btNext.Click += delegate { MovePage(1); };
 			btFit.Click += delegate { canvas.Fit(); };
 			btAdd.Click += delegate { SetAddMode(!canvas.AddMode); };
+			btIdentify.Click += delegate { IdentifyFont(); };
 			btBrush.Click += delegate { SetBrushMode(canvas.Brush == PageCanvas.BrushKind.Paint ? PageCanvas.BrushKind.Off : PageCanvas.BrushKind.Paint); };
 			btEraser.Click += delegate { SetBrushMode(canvas.Brush == PageCanvas.BrushKind.Erase ? PageCanvas.BrushKind.Off : PageCanvas.BrushKind.Erase); };
 			btClearProtect.Click += delegate
@@ -2105,11 +2112,12 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 		{
 			reader.GetTranslationStatus(out int translated, out int total, out bool busy, out string problem);
 			//The translator button's own picture, coloured by the state (grey off, green on, amber busy, red problem).
-			Bitmap led = TranslationButtons.StatusIcon(!string.IsNullOrEmpty(problem) ? TranslationLed.Problem : (busy ? TranslationLed.Busy : TranslationLed.On), 18);
+			bool fromCache = busy && reader.TranslationLoadingFromCache;
+			Bitmap led = TranslationButtons.StatusIcon(!string.IsNullOrEmpty(problem) ? TranslationLed.Problem : (fromCache ? TranslationLed.Loading : (busy ? TranslationLed.Busy : TranslationLed.On)), 18);
 			Image old = picLed.Image;
 			picLed.Image = led;
 			old?.Dispose();
-			lblLed.Text = !string.IsNullOrEmpty(problem) ? problem : (busy ? "Translating... " : "") + translated + " / " + total + " pages translated";
+			lblLed.Text = !string.IsNullOrEmpty(problem) ? problem :(busy ? (fromCache ? "Loading... " : "Translating... ") : "") + translated + " / " + total + " pages translated";
 		}
 
 		private void SyncList()
@@ -2430,6 +2438,45 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 				SetStatus("Rub over a protect stroke to take it away.");
 			}
 			canvas.Invalidate();
+		}
+
+		/// <summary>Opens the window that finds the fonts closest to the selected box's lettering.</summary>
+		private void IdentifyFont()
+		{
+			TranslationBox box = canvas.Selected;
+			if (box == null || box.Skip && box.Src == null)
+			{
+				SetStatus("Select the text box whose lettering you want to identify first.");
+				return;
+			}
+			if (key == null || service == null)
+			{
+				return;
+			}
+			int[] rect = (int[])box.Src.Clone();
+			string text = box.Text ?? "";
+			int shownPage = page;
+			PageKey shownKey = key;
+			Action<bool, Action<FontIdentification, string>> search = delegate (bool online, Action<FontIdentification, string> done)
+			{
+				using (IItemLock<PageImage> original = reader.GetOriginalPage(shownPage))
+				{
+					if (original?.Item == null)
+					{
+						done(null, "The page could not be read.");
+						return;
+					}
+					service.IdentifyFont(original.Item, rect, text, online, done);
+				}
+			};
+			Action<string, bool, Action<string, string>> install = delegate (string family, bool use, Action<string, string> done)
+			{
+				service.InstallFont(family, use, done);
+			};
+			using (TranslationFontDialog dialog = new TranslationFontDialog(search, install))
+			{
+				dialog.ShowDialog(this);
+			}
 		}
 
 		/// <summary>Saves the page's protect strokes and has the page drawn again with them.</summary>

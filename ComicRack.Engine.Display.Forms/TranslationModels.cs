@@ -346,6 +346,54 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 		public string Translation { get; set; }
 	}
 
+	/// <summary>A font the helper found to be like the lettering of a box.</summary>
+	public class FontMatch
+	{
+		public string Family { get; set; } = "";
+
+		/// <summary>"google" (an open font from Google Fonts), "installed" (on this computer), "translator" (in the helper's fonts folder) or "candidates".</summary>
+		public string Source { get; set; } = "";
+
+		public string Category { get; set; } = "";
+
+		public string Url { get; set; } = "";
+
+		/// <summary>0 to 100: how near its lettering is.</summary>
+		public int Score { get; set; }
+
+		/// <summary>A small picture (PNG) of the box's own text set in this font.</summary>
+		public byte[] Preview { get; set; }
+	}
+
+	/// <summary>A place to look for a font that the helper does not search by itself (opened in the user's browser).</summary>
+	public class FontLink
+	{
+		public string Name { get; set; } = "";
+
+		public string About { get; set; } = "";
+
+		public string Url { get; set; } = "";
+	}
+
+	public class FontIdentification
+	{
+		public List<FontMatch> Matches { get; set; } = new List<FontMatch>();
+
+		public List<FontLink> Links { get; set; } = new List<FontLink>();
+
+		public List<string> Notes { get; set; } = new List<string>();
+
+		public int Compared { get; set; }
+
+		/// <summary>The lettering as cut from the page (PNG).</summary>
+		public byte[] Crop { get; set; }
+
+		/// <summary>Where fonts downloaded from other sites can be dropped to be compared too.</summary>
+		public string CandidatesFolder { get; set; } = "";
+
+		public string Error { get; set; } = "";
+	}
+
 	/// <summary>
 	/// A stroke of the protect brush: artwork the user painted over so that the helper leaves it as it is (does not wipe it as
 	/// text) and does not letter over it. Points are x, y pairs in page pixels; Radius is the brush's radius in page pixels.

@@ -88,6 +88,9 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 			//Asked for by pre-translating: not dropped to make room for the page being read.
 			public bool Keep;
 
+			//Whether the helper already has this page stored (only loading it, no reading or translating); null until asked.
+			public bool? FromCache;
+
 			public int ImageIndex;
 		}
 
@@ -170,6 +173,74 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 					return entries.Values.Count((Entry e) => e.State == State.Pending || e.State == State.Working);
 				}
 			}
+		}
+
+		/// <summary>
+		/// True while pages are only being loaded from what the helper stored: everything that is waiting or being drawn is already
+		/// translated, so nothing is really being read or translated. False as soon as one page needs real work, or when it is not known yet.
+		/// </summary>
+		public bool IsLoadingFromCache
+		{
+			get
+			{
+				lock (sync)
+				{
+					List<Entry> active = entries.Values.Where(IsShownByLight).ToList();
+					return active.Count > 0 && active.All((Entry e) => !e.RenderOnly && e.FromCache == true);
+				}
+			}
+		}
+
+		/// <summary>
+		/// True while anything is being read, translated, drawn or loaded from what was stored, the pages loaded ahead in the background
+		/// included: the status light stays on (blue while it is only stored pages, amber when something needs real work) until all of it is done.
+		/// </summary>
+		public bool IsBusyForLight
+		{
+			get
+			{
+				lock (sync)
+				{
+					return entries.Values.Any(IsShownByLight);
+				}
+			}
+		}
+
+		private static bool IsShownByLight(Entry e)
+		{
+			return e.State == State.Pending || e.State == State.Working;
+		}
+
+		private static string Fingerprint(byte[] data)
+		{
+			using (System.Security.Cryptography.SHA1 sha = System.Security.Cryptography.SHA1.Create())
+			{
+				return BitConverter.ToString(sha.ComputeHash(data)).Replace("-", "").ToLowerInvariant();
+			}
+		}
+
+		/// <summary>Asks the helper, off the worker thread, whether a page that was just requested is already stored, so the light shows it from the start.</summary>
+		private void CheckCache(Entry entry, byte[] data)
+		{
+			string url = ServerUrl;
+			ThreadPool.QueueUserWorkItem(delegate
+			{
+				bool cached = false;
+				try
+				{
+					cached = new TranslationApi(url).IsCached(Fingerprint(data));
+				}
+				catch (Exception)
+				{
+				}
+				lock (sync)
+				{
+					if (entry.FromCache == null)
+					{
+						entry.FromCache = cached;
+					}
+				}
+			});
 		}
 
 		/// <summary>True while any page is being translated or waiting to be.</summary>
@@ -301,7 +372,7 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 			}
 			lock (sync)
 			{
-				entries[key] = new Entry
+				Entry fresh = new Entry
 				{
 					State = State.Pending,
 					Source = data,
@@ -312,6 +383,8 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 					ImageIndex = key.Index,
 					Keep = keep
 				};
+				entries[key] = fresh;
+				CheckCache(fresh, data);
 				TrimPending();
 				EnsureWorker();
 			}
@@ -343,6 +416,7 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 				entry.Boxes = list;
 				entry.Source = data;
 				entry.RenderOnly = true;
+				entry.FromCache = false;
 				entry.Version++;
 				entry.Priority = -1;
 				entry.Order = ++order;
@@ -407,6 +481,45 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 						throw new TranslationApiException("The page could not be read.", serverDown: false);
 					}
 					done(new TranslationApi(url).ReadRegion(data, rect), null);
+				}
+				catch (Exception ex)
+				{
+					done(null, ex.Message);
+				}
+			});
+		}
+
+		/// <summary>Looks for the font of the lettering inside a rectangle of the page. The answer arrives on a background thread.</summary>
+		public void IdentifyFont(PageImage original, int[] rect, string text, bool online, Action<FontIdentification, string> done)
+		{
+			byte[] data = original == null ? null : GetUploadBytes(original);
+			string url = ServerUrl;
+			ThreadPool.QueueUserWorkItem(delegate
+			{
+				try
+				{
+					if (data == null)
+					{
+						throw new TranslationApiException("The page could not be read.", serverDown: false);
+					}
+					done(new TranslationApi(url).IdentifyFont(data, rect, text, online), null);
+				}
+				catch (Exception ex)
+				{
+					done(null, ex.Message);
+				}
+			});
+		}
+
+		/// <summary>Installs a font the search found into the helper (and uses it for the lettering when asked). The answer arrives on a background thread.</summary>
+		public void InstallFont(string family, bool use, Action<string, string> done)
+		{
+			string url = ServerUrl;
+			ThreadPool.QueueUserWorkItem(delegate
+			{
+				try
+				{
+					done(new TranslationApi(url).InstallFont(family, use), null);
 				}
 				catch (Exception ex)
 				{

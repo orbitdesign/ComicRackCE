@@ -528,7 +528,10 @@ namespace cYo.Projects.ComicRack.Viewer
 		Off,
 		On,
 		Busy,
-		Problem
+		Problem,
+
+		/// <summary>Blue: pages are only being loaded from what was translated before.</summary>
+		Loading
 	}
 
 	/// <summary>
@@ -806,6 +809,11 @@ namespace cYo.Projects.ComicRack.Viewer
 					led = TranslationLed.Problem;
 					tip = "Translate pages: " + problem;
 				}
+				else if (busy && reader.TranslationLoadingFromCache)
+				{
+					led = TranslationLed.Loading;
+					tip = "Translate pages: loading translated pages from the cache... " + translated + " / " + total + " pages done. Click to turn off.";
+				}
 				else if (busy)
 				{
 					led = TranslationLed.Busy;
@@ -932,6 +940,8 @@ namespace cYo.Projects.ComicRack.Viewer
 				return Color.FromArgb(245, 175, 30);
 			case TranslationLed.Problem:
 				return Color.FromArgb(230, 65, 55);
+			case TranslationLed.Loading:
+				return Color.FromArgb(70, 150, 245);
 			}
 			return Color.FromArgb(135, 135, 140);
 		}
