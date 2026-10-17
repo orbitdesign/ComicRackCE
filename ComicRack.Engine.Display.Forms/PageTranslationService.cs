@@ -146,6 +146,13 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 		/// </summary>
 		public event EventHandler StateChanged;
 
+		/// <summary>
+		/// Raised on a background thread when the helper has said whether a requested page is already stored: the status light can
+		/// change colour (blue while pages only load from the cache, amber while they are drawn again or translated). Nothing else
+		/// about the pages changed, so nothing needs to be asked for again.
+		/// </summary>
+		public event EventHandler LightChanged;
+
 		public class PageKeyEventArgs : EventArgs
 		{
 			public PageKey Key { get; }
@@ -259,13 +266,21 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 				catch (Exception)
 				{
 				}
+				bool known = false;
 				lock (sync)
 				{
 					if (entry.FromCache == null)
 					{
 						entry.FromCache = cached && picture && !edited;
 						entry.Redraw = cached && (!picture || edited);
+						known = entry.State == State.Pending || entry.State == State.Working;
 					}
+				}
+				//The light was set when the page was asked for, before this answer came; a page loaded from the cache is often done
+				//before the next look at the light, so it never turned blue.
+				if (known)
+				{
+					LightChanged?.Invoke(this, EventArgs.Empty);
 				}
 			});
 		}

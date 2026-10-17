@@ -752,6 +752,7 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 						};
 						pageTranslator.PageFinished += pageTranslator_PageFinished;
 						pageTranslator.StateChanged += pageTranslator_StateChanged;
+						pageTranslator.LightChanged += pageTranslator_LightChanged;
 					}
 				}
 				else
@@ -1329,6 +1330,7 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 			{
 				pageTranslator.PageFinished -= pageTranslator_PageFinished;
 				pageTranslator.StateChanged -= pageTranslator_StateChanged;
+				pageTranslator.LightChanged -= pageTranslator_LightChanged;
 				pageTranslator.Dispose();
 				pageTranslator = null;
 			}
@@ -2119,6 +2121,26 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 				{
 					UpdateTranslateOverlay();
 					Invalidate();
+				});
+			}
+			catch (InvalidOperationException)
+			{
+				//The window went away meanwhile.
+			}
+		}
+
+		//The helper said whether a page is stored: only the light and its text change.
+		private void pageTranslator_LightChanged(object sender, EventArgs e)
+		{
+			if (!base.IsHandleCreated || base.IsDisposed)
+			{
+				return;
+			}
+			try
+			{
+				BeginInvoke((Action)delegate
+				{
+					UpdateTranslateOverlay();
 				});
 			}
 			catch (InvalidOperationException)
