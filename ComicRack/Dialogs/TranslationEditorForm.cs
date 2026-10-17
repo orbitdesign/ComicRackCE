@@ -34,7 +34,8 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			Draw,
 			Corner,
 			Vertex,
-			Brush
+			Brush,
+			PolyPoint
 		}
 
 		/// <summary>The picture of the page with the outlines of its boxes on top.</summary>
@@ -126,6 +127,29 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			private bool panMoved;
 
 			public bool AddMode { get; set; }
+
+			/// <summary>The polygon tool: every click places a point of a new shape, which closes itself (a line with two points, a
+			/// closed polygon from three); see PolygonFinished.</summary>
+			public bool PolyMode { get; private set; }
+
+			private readonly List<Point> polyPoints = new List<Point>();
+
+			/// <summary>The point of the shape being drawn that was clicked last (-1: none): a click on a line joined to it adds a point on that line.</summary>
+			private int polyActive = -1;
+
+			/// <summary>The point of the shape being drawn that is being dragged.</summary>
+			private int polyIndex = -1;
+
+			/// <summary>The point of the selected polygon that was clicked last (-1: none), and the id of the box it belongs to (the page is drawn again after a change, and the boxes are new objects then).</summary>
+			private int activeVertex = -1;
+
+			private string activeBoxId;
+
+			/// <summary>Enter or a double click while drawing a polygon: the points placed so far (x, y, x, y...).</summary>
+			public event Action<int[]> PolygonFinished;
+
+			/// <summary>A short message for the status line.</summary>
+			public event Action<string> Notice;
 
 			public enum BrushKind
 			{
@@ -505,6 +529,8 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 				double t = Math.Max(0.1, Math.Min(0.9, ((q.X - ax) * dx + (q.Y - ay) * dy) / len2));
 				List<int> list = pts.ToList();
 				list.InsertRange(2 * (after + 1), new[] { (int)Math.Round(ax + t * dx), (int)Math.Round(ay + t * dy) });
+				activeBoxId = Selected.Id;
+				activeVertex = after + 1;
 				Selected.Points = list.ToArray();
 				Selected.Rect = TranslationShapes.PointsBounds(Selected.Points);
 				BoxChanging?.Invoke(this, EventArgs.Empty);
@@ -523,10 +549,195 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 				BakeAngle(Selected);
 				List<int> list = Selected.Points.ToList();
 				list.RemoveRange(2 * index, 2);
+				if (activeBoxId == Selected.Id)
+				{
+					activeVertex = activeVertex == index ? -1 : (activeVertex > index ? activeVertex - 1 : activeVertex);
+				}
 				Selected.Points = list.ToArray();
 				Selected.Rect = TranslationShapes.PointsBounds(Selected.Points);
 				BoxChanging?.Invoke(this, EventArgs.Empty);
 				BoxChanged?.Invoke(this, EventArgs.Empty);
+				Invalidate();
+			}
+
+			/// <summary>True when the pointer is on an edge of the selected polygon that is joined to the point clicked last; after is
+			/// the index of the point the edge starts at (where a new point goes in).</summary>
+			private bool EdgeNextToActive(Point p, out int after)
+			{
+				after = -1;
+				if (Selected == null || activeBoxId != Selected.Id || activeVertex < 0 || !HasVertices(Selected) || Extra.Count > 0 || !EdgeAt(p, out int edge))
+				{
+					return false;
+				}
+				int n = PointsOf(Selected).Length / 2;
+				if (activeVertex >= n || !(edge == activeVertex || (edge + 1) % n == activeVertex))
+				{
+					return false;
+				}
+				after = edge;
+				return true;
+			}
+
+			/// <summary>A right click on a point of the selected polygon takes it away (a shape keeps three).</summary>
+			private void RemoveVertexByClick(int index)
+			{
+				if (PointsOf(Selected).Length <= 6)
+				{
+					Notice?.Invoke("A shape keeps at least 3 points. Delete takes the whole box away.");
+					return;
+				}
+				RemoveVertex(index);
+			}
+
+			// ---- the polygon tool ----
+
+			private PointF PolyScreen(Point p)
+			{
+				return new PointF(p.X * zoom + pan.X, p.Y * zoom + pan.Y);
+			}
+
+			private PointF[] PolyScreenPoints()
+			{
+				return polyPoints.Select(PolyScreen).ToArray();
+			}
+
+			private Point PolyClamp(PointF q)
+			{
+				return new Point((int)Math.Max(0, Math.Min(imageSize.Width, Math.Round(q.X))), (int)Math.Max(0, Math.Min(imageSize.Height, Math.Round(q.Y))));
+			}
+
+			private int PolyPointAt(Point p)
+			{
+				for (int i = 0; i < polyPoints.Count; i++)
+				{
+					PointF s = PolyScreen(polyPoints[i]);
+					if (Math.Abs(p.X - s.X) <= 7 && Math.Abs(p.Y - s.Y) <= 7)
+					{
+						return i;
+					}
+				}
+				return -1;
+			}
+
+			/// <summary>The edge of a polygon (points on screen) under the pointer, or false; the edge from the last point back to the
+			/// first one counts only when the shape is closed (three points or more).</summary>
+			private static bool NearEdge(PointF[] v, bool closed, Point p, out int after)
+			{
+				after = -1;
+				int edges = closed ? v.Length : v.Length - 1;
+				for (int i = 0; i < edges; i++)
+				{
+					PointF a = v[i], b = v[(i + 1) % v.Length];
+					double dx = b.X - a.X, dy = b.Y - a.Y;
+					double len2 = dx * dx + dy * dy;
+					if (len2 < 1)
+					{
+						continue;
+					}
+					double t = Math.Max(0, Math.Min(1, ((p.X - a.X) * dx + (p.Y - a.Y) * dy) / len2));
+					double px = a.X + t * dx, py = a.Y + t * dy;
+					if ((p.X - px) * (p.X - px) + (p.Y - py) * (p.Y - py) <= 49)
+					{
+						after = i;
+						return true;
+					}
+				}
+				return false;
+			}
+
+			/// <summary>Starts a polygon: nothing is selected, the points are placed by clicking.</summary>
+			public void BeginPolygon()
+			{
+				polyPoints.Clear();
+				polyActive = -1;
+				polyIndex = -1;
+				PolyMode = true;
+				if (Selected != null || Extra.Count > 0)
+				{
+					Selected = null;
+					Extra.Clear();
+					SelectionChanged?.Invoke(this, EventArgs.Empty);
+				}
+				Invalidate();
+			}
+
+			/// <summary>Leaves the polygon tool, dropping the points placed so far.</summary>
+			public void EndPolygon()
+			{
+				PolyMode = false;
+				polyPoints.Clear();
+				polyActive = -1;
+				polyIndex = -1;
+				if (drag == Drag.PolyPoint)
+				{
+					drag = Drag.None;
+				}
+				Invalidate();
+			}
+
+			/// <summary>Enter or a double click: the shape is done (the form checks it has enough points).</summary>
+			public void FinishPolygon()
+			{
+				if (PolyMode)
+				{
+					PolygonFinished?.Invoke(polyPoints.SelectMany((Point p) => new[] { p.X, p.Y }).ToArray());
+				}
+			}
+
+			private void RemovePolyPoint(int index)
+			{
+				if (index < 0 || index >= polyPoints.Count)
+				{
+					return;
+				}
+				polyPoints.RemoveAt(index);
+				polyActive = polyActive == index ? -1 : (polyActive > index ? polyActive - 1 : polyActive);
+				Invalidate();
+			}
+
+			/// <summary>Backspace: the last point placed is taken away.</summary>
+			public void RemoveLastPolyPoint()
+			{
+				RemovePolyPoint(polyPoints.Count - 1);
+			}
+
+			private void MovePolyPoint(Point at)
+			{
+				if (polyIndex >= 0 && polyIndex < polyPoints.Count)
+				{
+					polyPoints[polyIndex] = PolyClamp(ToImage(at));
+					Invalidate();
+				}
+			}
+
+			/// <summary>A left click with the polygon tool: on a point it is the active point (and can be dragged); on a line joined to
+			/// the active point a point is added on that line; anywhere else a new point is placed (the shape closes itself).</summary>
+			private void PolyMouseDown(Point at)
+			{
+				int hit = PolyPointAt(at);
+				if (hit >= 0)
+				{
+					polyActive = hit;
+					polyIndex = hit;
+					drag = Drag.PolyPoint;
+					Invalidate();
+					return;
+				}
+				int n = polyPoints.Count;
+				PointF[] screen = PolyScreenPoints();
+				if (polyActive >= 0 && polyActive < n && n >= 2 && NearEdge(screen, n >= 3, at, out int after) && (after == polyActive || (after + 1) % n == polyActive))
+				{
+					PointF a = screen[after], b = screen[(after + 1) % n];
+					double dx = b.X - a.X, dy = b.Y - a.Y;
+					double len2 = Math.Max(1, dx * dx + dy * dy);
+					double t = Math.Max(0.1, Math.Min(0.9, ((at.X - a.X) * dx + (at.Y - a.Y) * dy) / len2));
+					polyPoints.Insert(after + 1, PolyClamp(ToImage(new Point((int)Math.Round(a.X + t * dx), (int)Math.Round(a.Y + t * dy)))));
+					polyActive = after + 1;
+					Invalidate();
+					return;
+				}
+				polyPoints.Add(PolyClamp(ToImage(at)));
+				polyActive = -1;
 				Invalidate();
 			}
 
@@ -785,12 +996,25 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 						if (HasVertices(box))
 						{
 							//A free polygon: a square dot on every point (drag it); double-click an edge to add a point, right-click a point to remove it.
-							foreach (PointF v in VertexScreen(box))
+							PointF[] vs = VertexScreen(box);
+							int act = activeBoxId == box.Id && vs.Length >= 3 ? activeVertex : -1;
+							if (act >= 0 && act < vs.Length)
 							{
-								g.FillRectangle(Brushes.White, v.X - 4, v.Y - 4, 8, 8);
+								//the point clicked last, with the two lines joined to it (a click on one of them adds a point there)
+								using (Pen join = new Pen(Color.FromArgb(255, 225, 120), 3.5f))
+								{
+									g.DrawLine(join, vs[act], vs[(act + 1) % vs.Length]);
+									g.DrawLine(join, vs[(act + vs.Length - 1) % vs.Length], vs[act]);
+								}
+							}
+							for (int vi = 0; vi < vs.Length; vi++)
+							{
+								PointF v = vs[vi];
+								float half = vi == act ? 5.5f : 4f;
+								g.FillRectangle(vi == act ? Brushes.DarkOrange : Brushes.White, v.X - half, v.Y - half, half * 2, half * 2);
 								using (Pen ring = new Pen(Color.FromArgb(255, 150, 20), 2f))
 								{
-									g.DrawRectangle(ring, v.X - 4, v.Y - 4, 8, 8);
+									g.DrawRectangle(ring, v.X - half, v.Y - half, half * 2, half * 2);
 								}
 							}
 						}
@@ -807,6 +1031,47 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 								}
 								g.DrawEllipse(Pens.White, h.X - 5, h.Y - 5, 10, 10);
 							}
+						}
+					}
+				}
+				if (PolyMode && polyPoints.Count > 0)
+				{
+					PointF[] ps = PolyScreenPoints();
+					using (Pen pen = new Pen(Color.FromArgb(70, 150, 255), 2f))
+					using (SolidBrush fill = new SolidBrush(Color.FromArgb(50, 70, 150, 255)))
+					{
+						if (ps.Length >= 3)
+						{
+							g.FillPolygon(fill, ps);
+							g.DrawPolygon(pen, ps);
+						}
+						else if (ps.Length == 2)
+						{
+							g.DrawLine(pen, ps[0], ps[1]);
+						}
+					}
+					if (polyActive >= 0 && polyActive < ps.Length && ps.Length >= 2)
+					{
+						using (Pen join = new Pen(Color.FromArgb(255, 225, 120), 3.5f))
+						{
+							int next = (polyActive + 1) % ps.Length, previous = (polyActive + ps.Length - 1) % ps.Length;
+							if (ps.Length >= 3 || polyActive == 0)
+							{
+								g.DrawLine(join, ps[polyActive], ps[next]);
+							}
+							if (ps.Length >= 3 || polyActive == 1)
+							{
+								g.DrawLine(join, ps[previous], ps[polyActive]);
+							}
+						}
+					}
+					for (int pi = 0; pi < ps.Length; pi++)
+					{
+						float half = pi == polyActive ? 5.5f : 4f;
+						g.FillRectangle(pi == polyActive ? Brushes.DarkOrange : Brushes.White, ps[pi].X - half, ps[pi].Y - half, half * 2, half * 2);
+						using (Pen ring = new Pen(Color.FromArgb(70, 150, 255), 2f))
+						{
+							g.DrawRectangle(ring, ps[pi].X - half, ps[pi].Y - half, half * 2, half * 2);
 						}
 					}
 				}
@@ -897,7 +1162,16 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 				Focus();
 				if (e.Button == MouseButtons.Right || e.Button == MouseButtons.Middle)
 				{
-					if (e.Button == MouseButtons.Right && !AddMode)
+					if (e.Button == MouseButtons.Right && PolyMode)
+					{
+						int pv = PolyPointAt(e.Location);
+						if (pv >= 0)
+						{
+							RemovePolyPoint(pv);
+							return;
+						}
+					}
+					if (e.Button == MouseButtons.Right && !AddMode && !PolyMode)
 					{
 						//A box under the pointer joins the selection when it is not in it yet.
 						TranslationBox under = HitBox(e.Location);
@@ -907,6 +1181,16 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 							Extra.Clear();
 							SelectionChanged?.Invoke(this, EventArgs.Empty);
 							Invalidate();
+						}
+					}
+					if (e.Button == MouseButtons.Right && !AddMode && !PolyMode && Brush == BrushKind.Off && Extra.Count == 0 && HasVertices(Selected))
+					{
+						//a right click on a point of the selected polygon takes that point away (not on a line: that is the menu)
+						int rv = VertexAt(e.Location);
+						if (rv >= 0)
+						{
+							RemoveVertexByClick(rv);
+							return;
 						}
 					}
 					drag = Drag.Pan;
@@ -927,6 +1211,11 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 					BrushTo(ToImage(e.Location));
 					brushAt = e.Location;
 					Invalidate();
+					return;
+				}
+				if (PolyMode)
+				{
+					PolyMouseDown(e.Location);
 					return;
 				}
 				if (AddMode)
@@ -972,6 +1261,22 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 						return;
 					}
 					int vertex = VertexAt(e.Location);
+					if (vertex < 0 && EdgeNextToActive(e.Location, out int joined))
+					{
+						//a point was clicked and now a line joined to it: a point is added there
+						InsertVertex(joined, e.Location);
+						return;
+					}
+					if (vertex >= 0)
+					{
+						activeBoxId = Selected.Id;
+						activeVertex = vertex;
+						Invalidate();
+					}
+					else
+					{
+						activeVertex = -1;
+					}
 						if (vertex >= 0)
 						{
 							AdoptAutoShape(Selected, true);
@@ -1101,6 +1406,9 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 					drawing = Rectangle.FromLTRB(Math.Min(e.X, (int)dragStart.X), Math.Min(e.Y, (int)dragStart.Y), Math.Max(e.X, (int)dragStart.X), Math.Max(e.Y, (int)dragStart.Y));
 					Invalidate();
 					return;
+				case Drag.PolyPoint:
+					MovePolyPoint(e.Location);
+					return;
 				case Drag.Move:
 				case Drag.Resize:
 				case Drag.Corner:
@@ -1117,7 +1425,7 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 					}
 					return;
 				}
-				Cursor = AddMode ? Cursors.Cross : CursorAt(e.Location);
+				Cursor = AddMode || PolyMode ? Cursors.Cross : CursorAt(e.Location);
 			}
 
 			private Cursor CursorAt(Point p)
@@ -1343,7 +1651,12 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 				Drag kind = drag;
 				drag = Drag.None;
 				Cursor = Cursors.Default;
-				if (kind == Drag.Pan && e.Button == MouseButtons.Right && !panMoved && Selected != null)
+				if (kind == Drag.PolyPoint)
+				{
+					Invalidate();
+					return;
+				}
+				if (kind == Drag.Pan && e.Button == MouseButtons.Right && !panMoved && Selected != null && !PolyMode)
 				{
 					ContextRequested?.Invoke(e.Location);
 					return;
@@ -1409,6 +1722,14 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			protected override void OnMouseDoubleClick(MouseEventArgs e)
 			{
 				base.OnMouseDoubleClick(e);
+				if (PolyMode)
+				{
+					if (e.Button == MouseButtons.Left)
+					{
+						FinishPolygon();
+					}
+					return;
+				}
 				if (e.Button == MouseButtons.Left && !AddMode && EdgeAt(e.Location, out int after))
 				{
 					InsertVertex(after, e.Location);
@@ -1445,6 +1766,12 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			protected override void OnKeyDown(KeyEventArgs e)
 			{
 				base.OnKeyDown(e);
+				if (PolyMode && e.KeyCode == Keys.Back)
+				{
+					RemoveLastPolyPoint();
+					e.Handled = true;
+					return;
+				}
 				if (Selected == null || Selected.Skip)
 				{
 					return;
@@ -1849,6 +2176,8 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 				Commit();
 			};
 			canvas.RegionDrawn += OnRegionDrawn;
+			canvas.PolygonFinished += OnPolygonFinished;
+			canvas.Notice += SetStatus;
 			canvas.CornersEdited += RememberShapeOf;
 			LoadRememberedShape();
 			canvas.ContextRequested += ShowBoxMenu;
@@ -1896,7 +2225,17 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 				}
 			};
 			chkOverlay.CheckedChanged += delegate { RefreshOverlay(); };
-			btAdd.Click += delegate { SetAddMode(!canvas.AddMode); };
+			btAdd.Click += delegate
+			{
+				if (canvas.PolyMode)
+				{
+					SetPolygonMode(false);
+				}
+				else
+				{
+					SetAddMode(!canvas.AddMode);
+				}
+			};
 			btUndo.Click += delegate { StepHistory(undo: true); };
 			btRedo.Click += delegate { StepHistory(undo: false); };
 			btIdentify.Click += delegate { IdentifyFont(); };
@@ -2695,6 +3034,11 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 		/// <summary>The little arrow beside "Add text box": pick the shape the next box is drawn with.</summary>
 		private void ShowAddShapeMenu()
 		{
+			BuildAddShapeMenu().Show(btAddShape, new Point(0, btAddShape.Height));
+		}
+
+		private ContextMenuStrip BuildAddShapeMenu()
+		{
 			ContextMenuStrip menu = new ContextMenuStrip();
 			string[] names = TranslationShapes.PresetNames;
 			for (int i = 0; i < names.Length; i++)
@@ -2710,7 +3054,11 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 				};
 				menu.Items.Add(item);
 			}
-			menu.Show(btAddShape, new Point(0, btAddShape.Height));
+			menu.Items.Add(new ToolStripSeparator());
+			ToolStripMenuItem polygon = new ToolStripMenuItem("Polygon (click the points)") { Checked = canvas.PolyMode };
+			polygon.Click += delegate { SetPolygonMode(true); };
+			menu.Items.Add(polygon);
+			return menu;
 		}
 
 		/// <summary>A change was made: draw the page again shortly (many small changes become one redraw).</summary>
@@ -3176,6 +3524,10 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 
 		private void SetAddMode(bool on)
 		{
+			if (canvas.PolyMode)
+			{
+				canvas.EndPolygon();      //a polygon being drawn is dropped
+			}
 			if (on && canvas.Brush != PageCanvas.BrushKind.Off)
 			{
 				canvas.Brush = PageCanvas.BrushKind.Off;
@@ -3191,7 +3543,49 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			}
 		}
 
+		/// <summary>The polygon tool: every click on the page places a point; the shape closes itself.</summary>
+		private void SetPolygonMode(bool on)
+		{
+			SetAddMode(false);            //ends the rectangle tool and a polygon in progress
+			if (!on)
+			{
+				return;
+			}
+			if (canvas.Brush != PageCanvas.BrushKind.Off)
+			{
+				canvas.Brush = PageCanvas.BrushKind.Off;
+				btBrush.Text = "Protect brush";
+				btEraser.Text = "Erase strokes";
+			}
+			canvas.BeginPolygon();
+			btAdd.Text = "Click the points...";
+			canvas.Cursor = Cursors.Cross;
+			SetStatus("Click to place the points; the shape closes itself. Click a point and then a line next to it to add a point there, right-click a point to remove it, drag a point to move it. Enter or double-click finishes, Esc or Delete drops it.");
+		}
+
+		private void OnPolygonFinished(int[] points)
+		{
+			if (points.Length < 6)
+			{
+				SetStatus("A shape needs at least 3 points: click more points, or press Esc to drop it.");
+				return;
+			}
+			int[] rect = TranslationShapes.PointsBounds(points);
+			if (rect[2] - rect[0] < 16 || rect[3] - rect[1] < 16)
+			{
+				SetStatus("That shape is too small: move the points apart, or press Esc to drop it.");
+				return;
+			}
+			ReadNewRegion(rect, points);
+		}
+
 		private void OnRegionDrawn(int[] rect)
+		{
+			ReadNewRegion(rect, null);
+		}
+
+		/// <summary>Reads and translates the text in a region just drawn; the new box has the shape of the polygon when there is one.</summary>
+		private void ReadNewRegion(int[] rect, int[] polygon)
 		{
 			SetAddMode(false);
 			if (service == null || key == null)
@@ -3228,7 +3622,17 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 							Translation = region.Translation,
 							Manual = true
 						};
-						ApplyRememberedShape(box, rect);
+						if (polygon != null)
+						{
+							box.Form = TranslationShapes.FreePolygon;
+							box.Corners = new int[4];
+							box.Circular = false;
+							box.Points = (int[])polygon.Clone();
+						}
+						else
+						{
+							ApplyRememberedShape(box, rect);
+						}
 					canvas.Boxes.Add(box);
 						canvas.Selected = box;
 						SyncList();
@@ -3494,6 +3898,20 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 
 		protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
 		{
+			if (canvas.PolyMode && !(ActiveControl is TextBoxBase || ActiveControl is NumericUpDown || ActiveControl is ComboBox))
+			{
+				if (keyData == Keys.Enter)
+				{
+					canvas.FinishPolygon();
+					return true;
+				}
+				if (keyData == Keys.Delete || keyData == Keys.Escape)
+				{
+					SetPolygonMode(false);
+					SetStatus("The shape was dropped.");
+					return true;
+				}
+			}
 			if (keyData == Keys.Delete && (canvas.Focused || lstBoxes.Focused))
 			{
 				DeleteSelected();
