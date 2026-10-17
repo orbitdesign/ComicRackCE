@@ -1317,6 +1317,15 @@ namespace cYo.Projects.ComicRack.Viewer
 					Name = scanItem.Name + "Quick",
 					ToolTipText = "Scan a few chosen folders once for new books (local, mapped drives or network folders)"
 				};
+				//Ctrl+Alt+S anywhere in the main window (on the File menu's entry; the toolbar menu's shows it)
+				if (scanItem == miScan)
+				{
+					quick.ShortcutKeys = Keys.Control | Keys.Alt | Keys.S;
+				}
+				else
+				{
+					quick.ShortcutKeyDisplayString = "Ctrl+Alt+S";
+				}
 				ToolStrip owner = scanItem.GetCurrentParent() ?? scanItem.Owner;
 				ToolStripItemCollection items = (scanItem.OwnerItem as ToolStripDropDownItem)?.DropDownItems ?? owner?.Items;
 				if (items != null)
