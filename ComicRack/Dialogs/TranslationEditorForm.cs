@@ -3560,7 +3560,7 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			canvas.BeginPolygon();
 			btAdd.Text = "Click the points...";
 			canvas.Cursor = Cursors.Cross;
-			SetStatus("Click to place the points; the shape closes itself. Click a point and then a line next to it to add a point there, right-click a point to remove it, drag a point to move it. Enter or double-click finishes, Esc or Delete drops it.");
+			SetStatus("Click to place the points; the shape closes itself. Click a point and then a line next to it to add a point there, right-click a point to remove it, drag a point to move it. Space, Enter or double-click finishes, Esc or Delete drops it.");
 		}
 
 		private void OnPolygonFinished(int[] points)
@@ -3900,7 +3900,7 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 		{
 			if (canvas.PolyMode && !(ActiveControl is TextBoxBase || ActiveControl is NumericUpDown || ActiveControl is ComboBox))
 			{
-				if (keyData == Keys.Enter)
+				if (keyData == Keys.Enter || keyData == Keys.Space)
 				{
 					canvas.FinishPolygon();
 					return true;
