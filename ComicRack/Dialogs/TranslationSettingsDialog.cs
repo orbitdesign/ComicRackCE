@@ -5,6 +5,7 @@ using System.Drawing;
 using System.IO;
 using System.Linq;
 using System.Net;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
 using System.Windows.Forms;
@@ -43,7 +44,8 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			["batch_size"] = "Pages per request",
 			["ollama_timeout"] = "Wait up to",
 			["jpeg_quality"] = "Image quality",
-			["cache_mb"] = "Maximum cache size"
+			["cache_mb"] = "Maximum cache size",
+			["cache_dir"] = "Cache folder"
 		};
 
 		private readonly System.Windows.Forms.Timer startPoll = new System.Windows.Forms.Timer { Interval = 1500 };
@@ -118,6 +120,45 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 
 		private Button btClearCache;
 
+		private Label lblCacheGb;
+
+		private TextBox txtCacheDir;
+
+		private Button btBrowseCache;
+
+		private Button btDefaultCache;
+
+		private Button btCopyCache;
+
+		private Button btStopCopy;
+
+		private Label lblFree;
+
+		private Label lblCopy;
+
+		/// <summary>The folder in use in the helper now, the default one, and the folder the stored pages were last copied to here (compared, not shown).</summary>
+		private string cacheActive;
+
+		private string cacheDefault;
+
+		private string copiedTo;
+
+		private string copyTarget;
+
+		private bool copyRunning;
+
+		private bool copyPollBusy;
+
+		private readonly System.Windows.Forms.Timer copyPoll = new System.Windows.Forms.Timer { Interval = 600 };
+
+		private readonly System.Windows.Forms.Timer freeCheck = new System.Windows.Forms.Timer { Interval = 600 };
+
+		private int freeToken;
+
+		private long freeBytes = -1;
+
+		private long totalBytes = -1;
+
 		private Label lblStatus;
 
 		private Label lblProblems;
@@ -176,6 +217,8 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			BuildControls(string.IsNullOrWhiteSpace(serverUrl) ? "http://127.0.0.1:8790" : serverUrl.Trim());
 			SetConnected(false);
 			startPoll.Tick += startPoll_Tick;
+			copyPoll.Tick += copyPoll_Tick;
+			freeCheck.Tick += freeCheck_Tick;
 			Shown += delegate
 			{
 				Connect(txtHelperUrl.Text);
@@ -184,6 +227,10 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			{
 				startPoll.Stop();
 				startPoll.Dispose();
+				copyPoll.Stop();
+				copyPoll.Dispose();
+				freeCheck.Stop();
+				freeCheck.Dispose();
 			};
 		}
 
@@ -300,15 +347,42 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			nudQuality = Number(speed, 170, 90, 50, 100, "nudQuality");
 			Place(speed, "%", 250, 93);
 
-			GroupBox cache = Group(storage, "Translated page cache", 8, 144, 556, 112);
+			GroupBox cache = Group(storage, "Translated page cache", 8, 144, 556, 280);
 			Place(cache, "Keep up to:", 14, 29);
-			nudCacheMb = Number(cache, 170, 26, 50, 100000, "nudCacheMb");
+			nudCacheMb = Number(cache, 170, 26, 50, 2000000, "nudCacheMb");
 			Place(cache, "MB", 250, 29);
+			lblCacheGb = Hint(cache, 290, 29, 250, 18);
+			lblCacheGb.Name = "lblCacheGb";
 			lblCacheInfo = new Label { Location = new Point(14, 60), Size = new Size(530, 18), Name = "lblCacheInfo" };
 			btClearCache = new Button { Text = "Clear cache", Location = new Point(14, 80), Size = new Size(100, 24), Name = "btClearCache" };
 			cache.Controls.AddRange(new Control[] { lblCacheInfo, btClearCache });
 			Hint(cache, 124, 83, 420, 26).Text = "Translated pages are remembered so a book opens instantly the second time.";
 			btClearCache.Click += delegate { ClearCache(); };
+
+			// where the pages are kept
+			Place(cache, "Cache folder:", 14, 125);
+			txtCacheDir = new TextBox { Location = new Point(100, 122), Size = new Size(314, 21), Name = "txtCacheDir" };
+			btBrowseCache = new Button { Text = "Browse...", Location = new Point(420, 120), Size = new Size(70, 24), Name = "btBrowseCache" };
+			btDefaultCache = new Button { Text = "Default", Location = new Point(496, 120), Size = new Size(48, 24), Name = "btDefaultCache" };
+			cache.Controls.AddRange(new Control[] { txtCacheDir, btBrowseCache, btDefaultCache });
+			lblFree = Hint(cache, 100, 148, 444, 18);
+			lblFree.Name = "lblFree";
+			btCopyCache = new Button { Text = "Copy the stored pages to this folder", Location = new Point(14, 174), Size = new Size(236, 24), Name = "btCopyCache" };
+			btStopCopy = new Button { Text = "Stop", Location = new Point(256, 174), Size = new Size(60, 24), Name = "btStopCopy", Visible = false };
+			cache.Controls.AddRange(new Control[] { btCopyCache, btStopCopy });
+			lblCopy = new Label { Location = new Point(14, 204), Size = new Size(530, 34), Name = "lblCopy" };
+			cache.Controls.Add(lblCopy);
+			Hint(cache, 14, 240, 530, 34).Text = "Pages are kept in this folder (another drive or a network folder will do). A new folder starts empty: copy first to take the stored pages along, then press OK or Apply to use it. The old folder is left as it is.";
+			txtCacheDir.TextChanged += delegate { CacheFolderEdited(); };
+			btBrowseCache.Click += delegate { BrowseCacheFolder(); };
+			btDefaultCache.Click += delegate { txtCacheDir.Text = cacheDefault ?? string.Empty; };
+			btCopyCache.Click += delegate { StartCopy(); };
+			btStopCopy.Click += delegate { StopCopy(); };
+			nudCacheMb.ValueChanged += delegate
+			{
+				UpdateCacheGb();
+				ShowFree();
+			};
 
 			// --- bottom area ---
 			lblStatus = new Label { Location = new Point(12, 478), Size = new Size(576, 18), Name = "lblStatus", AutoEllipsis = true };
@@ -470,6 +544,24 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			SetNumber(nudTimeout, s.GetInt("ollama_timeout", 180));
 			SetNumber(nudQuality, s.GetInt("jpeg_quality", 92));
 			SetNumber(nudCacheMb, s.GetInt("cache_mb", 2000));
+			cacheActive = s.CacheFolder;
+			cacheDefault = s.CacheDefaultFolder;
+			copiedTo = null;
+			string chosenFolder = s.GetString("cache_dir");
+			txtCacheDir.Text = string.IsNullOrEmpty(chosenFolder) ? cacheDefault : chosenFolder;
+			if (!copyRunning)
+			{
+				lblCopy.Text = string.Empty;
+				if (!HelperKeepsCacheFolder)
+				{
+					lblCopy.ForeColor = warnText;
+					lblCopy.Text = "Choosing the cache folder needs ComicTranslator 1.53 or newer. Restart the helper to get the new version.";
+				}
+			}
+			UpdateCacheGb();
+			UpdateCopyButtons();
+			freeCheck.Stop();
+			freeCheck.Start();
 			txtOllamaUrl.Text = s.GetString("ollama_url");
 
 			ApplyModelLists(s.OllamaReachable, s.OllamaModels, s.GetString("vision_model"), s.GetString("translate_model"));
@@ -563,7 +655,7 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			string source = cboSource.Text.Trim();
 			string font = cboFont.Text.Trim();
 			HelperChoice knownFont = state == null || !state.Choices.ContainsKey("fonts") ? null : state.Choices["fonts"].FirstOrDefault(f => f.Label == font);
-			return new Dictionary<string, object>
+			Dictionary<string, object> collected = new Dictionary<string, object>
 			{
 				["ocr_engine"] = ChoiceValue(cboOcr),
 				["translator"] = ChoiceValue(cboTranslator),
@@ -581,6 +673,11 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 				["jpeg_quality"] = (int)nudQuality.Value,
 				["cache_mb"] = (int)nudCacheMb.Value
 			};
+			if (HelperKeepsCacheFolder)
+			{
+				collected["cache_dir"] = CacheDirSetting();      //an older helper does not know the setting and would turn all of them down
+			}
+			return collected;
 		}
 
 		// ---- actions (each talks to the helper on a worker thread) ---------------------------
@@ -806,6 +903,10 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 				onSaved?.Invoke();
 				return;
 			}
+			if (CacheFolderChangedWithoutCopy() && MessageBox.Show(this, "The pages translated so far stay in " + cacheActive + ".\n\nIn the new folder, every page that is not there is translated again. Press \"Copy the stored pages to this folder\" first to take them along.\n\nUse the new folder without copying?", Text, MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes)
+			{
+				return;
+			}
 			Dictionary<string, object> settings = CollectSettings();
 			busy = true;
 			UpdateButtons();
@@ -849,6 +950,281 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 					MessageBox.Show(this, "The settings could not be saved: " + Describe(error), Text, MessageBoxButtons.OK, MessageBoxIcon.Warning);
 				}
 			});
+		}
+
+		// ---- the cache folder ----------------------------------------------------------------
+
+		private static string NormPath(string path)
+		{
+			path = (path ?? string.Empty).Trim().Trim('"');
+			if (path.Length == 0)
+			{
+				return string.Empty;
+			}
+			try
+			{
+				path = Path.GetFullPath(path);
+			}
+			catch (Exception)
+			{
+			}
+			return path.TrimEnd('\\', '/').ToLowerInvariant();
+		}
+
+		/// <summary>What is saved as the cache folder: nothing when it is the default one beside the helper.</summary>
+		private string CacheDirSetting()
+		{
+			string typed = (txtCacheDir.Text ?? string.Empty).Trim().Trim('"');
+			return typed.Length == 0 || NormPath(typed) == NormPath(cacheDefault) ? string.Empty : typed;
+		}
+
+		/// <summary>True when the folder to be used differs from the one in use, holds nothing copied from it here, and there are pages to lose.</summary>
+		private bool CacheFolderChangedWithoutCopy()
+		{
+			if (state == null || state.CachePages <= 0 || string.IsNullOrEmpty(cacheActive))
+			{
+				return false;
+			}
+			string setting = CacheDirSetting();
+			string wanted = NormPath(setting.Length == 0 ? cacheDefault : setting);
+			return wanted != NormPath(cacheActive) && wanted != copiedTo;
+		}
+
+		private void CacheFolderEdited()
+		{
+			if (loading)
+			{
+				return;
+			}
+			Edited();
+			UpdateCopyButtons();
+			freeCheck.Stop();
+			freeCheck.Start();
+		}
+
+		private void UpdateCacheGb()
+		{
+			double gb = (double)nudCacheMb.Value / 1024.0;
+			lblCacheGb.Text = "= " + (gb >= 100 ? gb.ToString("0") : gb.ToString("0.0")) + " GB (the oldest pages go first)";
+		}
+
+		/// <summary>Helpers from version 1.53 on report where they keep the pages and accept another folder.</summary>
+		private bool HelperKeepsCacheFolder => state != null && !string.IsNullOrEmpty(state.CacheDefaultFolder);
+
+		private void UpdateCopyButtons()
+		{
+			bool supported = HelperKeepsCacheFolder;
+			string typed = NormPath(txtCacheDir.Text);
+			btCopyCache.Enabled = supported && !copyRunning && typed.Length > 0 && typed != NormPath(cacheActive);
+			btStopCopy.Visible = copyRunning;
+			btBrowseCache.Enabled = btDefaultCache.Enabled = supported && !copyRunning;
+			txtCacheDir.Enabled = supported;
+			txtCacheDir.ReadOnly = copyRunning;
+		}
+
+		private static string SizeText(long bytes)
+		{
+			double gb = bytes / 1073741824.0;
+			return gb >= 1000 ? (gb / 1024.0).ToString("0.#") + " TB" : (gb >= 100 ? gb.ToString("0") : gb.ToString("0.#")) + " GB";
+		}
+
+		private void freeCheck_Tick(object sender, EventArgs e)
+		{
+			freeCheck.Stop();
+			string typed = (txtCacheDir.Text ?? string.Empty).Trim().Trim('"');
+			int token = ++freeToken;
+			freeBytes = totalBytes = -1;
+			if (typed.Length == 0 || state == null)
+			{
+				lblFree.Text = string.Empty;
+				return;
+			}
+			lblFree.ForeColor = grayText;
+			lblFree.Text = "Looking at the free space there...";
+			long free = -1, total = -1;
+			RunInBackground(delegate { DiskSpace.TryGet(typed, out free, out total); }, delegate (Exception error)
+			{
+				if (token != freeToken)
+				{
+					return;
+				}
+				freeBytes = free;
+				totalBytes = total;
+				ShowFree(true);
+			});
+		}
+
+		private bool freeShown;
+
+		/// <summary>Shows the free space of the chosen folder's drive, and warns when the size limit is more than that. `known`: the numbers were just looked up.</summary>
+		private void ShowFree(bool known = false)
+		{
+			if (!known && !freeShown)
+			{
+				return;
+			}
+			freeShown = true;
+			if (freeBytes < 0)
+			{
+				lblFree.ForeColor = warnText;
+				lblFree.Text = "That drive or network folder cannot be reached from here.";
+				return;
+			}
+			bool tooBig = (double)nudCacheMb.Value * 1048576.0 > freeBytes;
+			lblFree.ForeColor = tooBig ? warnText : grayText;
+			lblFree.Text = "Free on that drive: " + SizeText(freeBytes) + " of " + SizeText(totalBytes) + (tooBig ? ". The size limit above is more than that." : ".");
+		}
+
+		private void BrowseCacheFolder()
+		{
+			using (FolderBrowserDialog dlg = new FolderBrowserDialog())
+			{
+				dlg.Description = "Choose the folder translated pages are kept in (on this computer, another drive or the network).";
+				dlg.ShowNewFolderButton = true;
+				string start = (txtCacheDir.Text ?? string.Empty).Trim();
+				try
+				{
+					if (start.Length > 0 && !start.StartsWith("\\\\") && Directory.Exists(start))
+					{
+						dlg.SelectedPath = start;
+					}
+				}
+				catch (Exception)
+				{
+				}
+				if (dlg.ShowDialog(this) == DialogResult.OK && !string.IsNullOrEmpty(dlg.SelectedPath))
+				{
+					txtCacheDir.Text = dlg.SelectedPath;
+				}
+			}
+		}
+
+		private void StartCopy()
+		{
+			string to = (txtCacheDir.Text ?? string.Empty).Trim().Trim('"');
+			if (to.Length == 0 || state == null || copyRunning)
+			{
+				return;
+			}
+			copyRunning = true;
+			copiedTo = null;
+			lblCopy.ForeColor = grayText;
+			lblCopy.Text = "Starting...";
+			UpdateCopyButtons();
+			CacheCopyStatus first = null;
+			Dictionary<string, string> rejected = null;
+			RunInBackground(delegate
+			{
+				try
+				{
+					first = new TranslatorHelperClient(connectedUrl).StartCacheCopy(to);
+				}
+				catch (HelperRejectedException ex)
+				{
+					rejected = ex.Errors;
+				}
+			}, delegate (Exception error)
+			{
+				if (first == null)
+				{
+					copyRunning = false;
+					UpdateCopyButtons();
+					string why;
+					lblCopy.ForeColor = badText;
+					lblCopy.Text = rejected != null && rejected.TryGetValue("cache_dir", out why) ? "This folder " + why + "." : "The copy could not be started: " + (error != null ? Describe(error) : "the helper did not accept it") + ".";
+					return;
+				}
+				copyTarget = to;
+				copyPoll.Start();
+				ShowCopy(first);
+			});
+		}
+
+		private void copyPoll_Tick(object sender, EventArgs e)
+		{
+			if (copyPollBusy || connectedUrl == null)
+			{
+				return;
+			}
+			copyPollBusy = true;
+			CacheCopyStatus status = null;
+			RunInBackground(delegate { status = new TranslatorHelperClient(connectedUrl).GetCacheCopy(); }, delegate (Exception error)
+			{
+				copyPollBusy = false;
+				if (status == null)
+				{
+					lblCopy.ForeColor = warnText;
+					lblCopy.Text = "The helper is not answering (" + Describe(error) + "); still trying...";
+					return;
+				}
+				ShowCopy(status);
+			});
+		}
+
+		private void ShowCopy(CacheCopyStatus s)
+		{
+			if (!s.Done)
+			{
+				lblCopy.ForeColor = grayText;
+				lblCopy.Text = s.Total == 0 ? "Looking through the stored pages..." : "Copying: " + s.Files.ToString("N0") + " of " + s.Total.ToString("N0") + " files (" + s.Megabytes.ToString("0.#") + " MB copied so far)";
+				return;
+			}
+			copyPoll.Stop();
+			copyRunning = false;
+			if (!string.IsNullOrEmpty(s.Error))
+			{
+				lblCopy.ForeColor = badText;
+				lblCopy.Text = s.Error;
+			}
+			else if (s.Cancelled)
+			{
+				lblCopy.ForeColor = warnText;
+				lblCopy.Text = "Stopped after " + s.Files.ToString("N0") + " of " + s.Total.ToString("N0") + " files. Copy again to carry on: what is there already is not copied twice.";
+			}
+			else
+			{
+				copiedTo = NormPath(copyTarget);
+				lblCopy.ForeColor = goodText;
+				lblCopy.Text = "Copied " + s.Copied.ToString("N0") + " files (" + s.Megabytes.ToString("0.#") + " MB) to " + s.To + (s.Skipped > 0 ? "; " + s.Skipped.ToString("N0") + " were there already" : "") + ". Press OK or Apply to use that folder.";
+			}
+			UpdateCopyButtons();
+		}
+
+		private void StopCopy()
+		{
+			btStopCopy.Enabled = false;
+			RunInBackground(delegate { new TranslatorHelperClient(connectedUrl).CancelCacheCopy(); }, delegate (Exception error)
+			{
+				btStopCopy.Enabled = true;
+			});
+		}
+
+		/// <summary>The free space of the drive or network share a folder is on (the folder itself need not be there yet).</summary>
+		private static class DiskSpace
+		{
+			[DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+			private static extern bool GetDiskFreeSpaceEx(string directory, out ulong freeToCaller, out ulong total, out ulong totalFree);
+
+			public static void TryGet(string folder, out long free, out long total)
+			{
+				free = total = -1;
+				try
+				{
+					string probe = Path.GetFullPath(folder);
+					while (!string.IsNullOrEmpty(probe) && !Directory.Exists(probe))
+					{
+						probe = Path.GetDirectoryName(probe);
+					}
+					if (!string.IsNullOrEmpty(probe) && GetDiskFreeSpaceEx(probe, out ulong f, out ulong t, out ulong tf))
+					{
+						free = (long)f;
+						total = (long)t;
+					}
+				}
+				catch (Exception)
+				{
+				}
+			}
 		}
 
 		private void BrowseFont()

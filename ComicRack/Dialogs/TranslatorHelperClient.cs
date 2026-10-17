@@ -53,6 +53,11 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 
 		public double CacheMegabytes { get; set; }
 
+		/// <summary>The folder the translated pages are kept in now, and the one used when none is chosen (helper 1.53 and later).</summary>
+		public string CacheFolder { get; set; }
+
+		public string CacheDefaultFolder { get; set; }
+
 		public string GetString(string key)
 		{
 			object value;
@@ -70,6 +75,31 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			object value;
 			return Config.TryGetValue(key, out value) && value is bool && (bool)value;
 		}
+	}
+
+	/// <summary>How the helper's copy of the stored translated pages to another folder is getting on.</summary>
+	public class CacheCopyStatus
+	{
+		public bool Running { get; set; }
+
+		public bool Done { get; set; }
+
+		public bool Cancelled { get; set; }
+
+		public string Error { get; set; }
+
+		public string To { get; set; }
+
+		/// <summary>Files dealt with so far (copied or already there), of Total.</summary>
+		public int Files { get; set; }
+
+		public int Total { get; set; }
+
+		public int Copied { get; set; }
+
+		public int Skipped { get; set; }
+
+		public double Megabytes { get; set; }
 	}
 
 	public class TranslatorTestResult
@@ -157,6 +187,54 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 		public void ClearCache()
 		{
 			Send("POST", "/api/clear-cache", "{}", 30000);
+		}
+
+		/// <summary>Starts copying the stored pages to another folder (in the helper, in the background). Throws HelperRejectedException,
+		/// with the reason under "cache_dir", when the folder cannot be used.</summary>
+		public CacheCopyStatus StartCacheCopy(string folder)
+		{
+			return ParseCopy(Send("POST", "/api/cache-copy", ToJson(new Dictionary<string, object> { ["to"] = folder }), 15000));
+		}
+
+		public CacheCopyStatus GetCacheCopy()
+		{
+			return ParseCopy(Send("POST", "/api/cache-copy-status", "{}", 8000));
+		}
+
+		public CacheCopyStatus CancelCacheCopy()
+		{
+			return ParseCopy(Send("POST", "/api/cache-copy-cancel", "{}", 8000));
+		}
+
+		private static CacheCopyStatus ParseCopy(string json)
+		{
+			using (JsonDocument doc = JsonDocument.Parse(json))
+			{
+				JsonElement r = doc.RootElement;
+				return new CacheCopyStatus
+				{
+					Running = Flag(r, "running"),
+					Done = Flag(r, "done"),
+					Cancelled = Flag(r, "cancelled"),
+					Error = Str(r, "error"),
+					To = Str(r, "to"),
+					Files = Whole(r, "files"),
+					Total = Whole(r, "total"),
+					Copied = Whole(r, "copied"),
+					Skipped = Whole(r, "skipped"),
+					Megabytes = r.TryGetProperty("megabytes", out JsonElement m) && m.ValueKind == JsonValueKind.Number ? m.GetDouble() : 0
+				};
+			}
+		}
+
+		private static bool Flag(JsonElement e, string name)
+		{
+			return e.TryGetProperty(name, out JsonElement v) && v.ValueKind == JsonValueKind.True;
+		}
+
+		private static int Whole(JsonElement e, string name)
+		{
+			return e.TryGetProperty(name, out JsonElement v) && v.ValueKind == JsonValueKind.Number ? v.GetInt32() : 0;
 		}
 
 		// ---- plumbing -----------------------------------------------------------------
@@ -330,6 +408,8 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 				JsonElement cache = root.GetProperty("cache");
 				state.CachePages = cache.GetProperty("pages").GetInt32();
 				state.CacheMegabytes = cache.GetProperty("megabytes").GetDouble();
+				state.CacheFolder = Str(cache, "folder");
+				state.CacheDefaultFolder = Str(cache, "default");
 			}
 			return state;
 		}
