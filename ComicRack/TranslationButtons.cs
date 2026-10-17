@@ -755,9 +755,123 @@ namespace cYo.Projects.ComicRack.Viewer
 			}
 		}
 
+		private static ToolStripStatusLabel batchStatus;
+
+		private static int batchStatusLed = -1;
+
+		/// <summary>Adds the batch's progress to the status bar, before the given item: the book picture in the state's colour and
+		/// the book being translated with its pages; only while a batch runs or has books waiting. A click opens the batch menu.</summary>
+		public static void InstallBatchStatus(StatusStrip strip, ToolStripItem before)
+		{
+			batchStatus = new ToolStripStatusLabel
+			{
+				Name = "tsTranslationBatch",
+				BorderSides = ToolStripStatusLabelBorderSides.All,
+				BorderStyle = Border3DStyle.SunkenOuter,
+				DisplayStyle = ToolStripItemDisplayStyle.ImageAndText,
+				ImageAlign = ContentAlignment.MiddleLeft,
+				TextImageRelation = TextImageRelation.ImageBeforeText,
+				Visible = false
+			};
+			batchStatus.Click += delegate
+			{
+				Pair p;
+				lock (pairs)
+				{
+					p = pairs.FirstOrDefault((Pair x) => !x.Strip.IsDisposed && x.Strip.Visible && x.Ahead.Visible);
+				}
+				p?.Ahead.ShowDropDown();
+			};
+			int index = before != null ? strip.Items.IndexOf(before) : -1;
+			if (index >= 0)
+			{
+				strip.Items.Insert(index, batchStatus);
+			}
+			else
+			{
+				strip.Items.Add(batchStatus);
+			}
+			UpdateBatchStatus();
+		}
+
+		private static void UpdateBatchStatus()
+		{
+			ToolStripStatusLabel label = batchStatus;
+			if (label == null || label.Owner == null || label.Owner.IsDisposed)
+			{
+				return;
+			}
+			List<TranslationBatch.Item> waiting = TranslationBatch.Waiting;
+			bool running = TranslationBatch.IsRunning;
+			TranslationBatch.Item current = TranslationBatch.Current;
+			string problem = TranslationBatch.Problem;
+			bool show = running || waiting.Count > 0;
+			TranslationLed led = running ? TranslationLed.Busy : (problem != null ? TranslationLed.Problem : TranslationLed.On);
+			string text = "";
+			string tip = "";
+			if (running && current != null)
+			{
+				int pages = current.Pages;
+				string done = pages > 0 ? Math.Min(current.Translated, pages) + "/" + pages : PercentText(current);
+				int others = waiting.Count((TranslationBatch.Item i) => i != current);
+				text = (TranslationBatch.Yielding ? "Batch waiting: " : "Batch: ") + ShortTitle(current.Title) + "  " + done + (others > 0 ? "  (+" + others + (others == 1 ? " book" : " books") + ")" : "");
+				tip = (TranslationBatch.Yielding ? "Batch translation waiting while the reader translates pages. " : "Batch translation in the background: ") + "\"" + current.Title + "\", " + done + " pages" + (others > 0 ? "; " + others + " more " + (others == 1 ? "book" : "books") + " after it" : "") + ". Click for the batch menu.";
+			}
+			else if (running)
+			{
+				text = "Batch: starting...";
+				tip = "Batch translation starting. Click for the batch menu.";
+			}
+			else if (waiting.Count > 0)
+			{
+				text = (problem != null ? "Batch stopped: " : "Batch paused: ") + waiting.Count + (waiting.Count == 1 ? " book" : " books") + " waiting";
+				tip = text + "." + (problem != null ? " " + problem : "") + " Click to continue or forget the queue.";
+			}
+			int size = Math.Max(16, label.Owner.ImageScalingSize.Height);
+			if ((int)led != batchStatusLed || label.Image == null)
+			{
+				batchStatusLed = (int)led;
+				label.Image = GetBatchIcon(led, size);
+			}
+			if (label.Text != text)
+			{
+				label.Text = text;
+			}
+			label.ToolTipText = tip;
+			label.Visible = show;
+		}
+
+		private static string ShortTitle(string text)
+		{
+			text = text ?? "";
+			return text.Length > 40 ? text.Substring(0, 38) + "..." : text;
+		}
+
 		/// <summary>Brings every button up to date; safe to call from any thread.</summary>
 		public static void RefreshAll()
 		{
+			ToolStripStatusLabel label = batchStatus;
+			if (label?.Owner != null && !label.Owner.IsDisposed)
+			{
+				try
+				{
+					if (label.Owner.InvokeRequired)
+					{
+						if (label.Owner.IsHandleCreated)
+						{
+							label.Owner.BeginInvoke((Action)UpdateBatchStatus);
+						}
+					}
+					else
+					{
+						UpdateBatchStatus();
+					}
+				}
+				catch (Exception)
+				{
+					//The window is closing.
+				}
+			}
 			Pair[] copy;
 			lock (pairs)
 			{
@@ -810,7 +924,7 @@ namespace cYo.Projects.ComicRack.Viewer
 					led = TranslationLed.Problem;
 					tip = "Translate pages: " + problem;
 				}
-				else if (busy && reader.TranslationLoadingFromCache)
+				else if (busy && reader.TranslationLoadingFromCache && !reader.TranslatingInBackground)
 				{
 					led = TranslationLed.Loading;
 					tip = "Translate pages: loading translated pages from the cache... " + translated + " / " + total + " pages done. Click to turn off.";
@@ -819,6 +933,13 @@ namespace cYo.Projects.ComicRack.Viewer
 				{
 					led = TranslationLed.Busy;
 					tip = "Translate pages: " + (reader.TranslationRedrawing ? "drawing translated pages again (new settings or a new picture version; nothing is read or translated)... " : "translating... ") + translated + " / " + total + " pages done. Click to turn off.";
+				}
+				else if (reader.TranslatingInBackground)
+				{
+					//The reader has nothing to do, but a batch is translating: amber, as for any real translating.
+					led = TranslationLed.Busy;
+					string title = TranslationBatch.Current?.Title;
+					tip = "Translate pages: on, " + translated + " / " + total + " pages of this book translated. Batch translating" + (string.IsNullOrEmpty(title) ? "" : " \"" + title + "\"") + " in the background. Click to turn off.";
 				}
 				else
 				{
@@ -845,11 +966,14 @@ namespace cYo.Projects.ComicRack.Viewer
 			//The icon's colour tells the state: plain when idle, amber while translating ahead or a batch, blue while a
 			//batch is paused with books waiting, red when something stopped it.
 			TranslationLed aheadLed = ahead ? TranslationLed.Busy : (TranslationBatch.Problem != null && TranslationBatch.HasWaiting ? TranslationLed.Problem : (TranslationBatch.HasWaiting ? TranslationLed.On : TranslationLed.Off));
-			int aheadState = (int)aheadLed;
+			//A batch (running or with books waiting) shows the book of "Translate the selected books"; translating ahead in the
+			//book being read shows the pages with the arrow.
+			bool batch = TranslationBatch.IsRunning || TranslationBatch.HasWaiting;
+			int aheadState = (int)aheadLed + (batch ? 100 : 0);
 			if (aheadState != p.AheadLed || size != p.Size)
 			{
 				p.AheadLed = aheadState;
-				p.Ahead.Image = GetAheadIcon(aheadLed, size);
+				p.Ahead.Image = batch ? GetBatchIcon(aheadLed, size) : GetAheadIcon(aheadLed, size);
 			}
 			if (reader != null)
 			{
@@ -1004,7 +1128,8 @@ namespace cYo.Projects.ComicRack.Viewer
 		/// <summary>The picture of a translator menu entry (shared, do not dispose): drawn to be readable on a light or a dark menu.</summary>
 		public static Bitmap ActionIcon(TranslationAction kind, int size)
 		{
-			string key = "a" + (int)kind + "-" + size;
+			//its own names in the shared store ("a2-16" was also the translate-ahead button's amber picture)
+			string key = "act" + (int)kind + "-" + size;
 			lock (icons)
 			{
 				if (icons.TryGetValue(key, out Bitmap cached))
@@ -1320,6 +1445,43 @@ namespace cYo.Projects.ComicRack.Viewer
 								break;
 							}
 						}
+					}
+				}
+				icons[key] = bmp;
+				return bmp;
+			}
+		}
+
+		/// <summary>The batch's picture: an open book in the colour of the state (amber translating, blue paused, red stopped).</summary>
+		public static Bitmap GetBatchIcon(TranslationLed led, int size)
+		{
+			string key = "batch" + (int)led + "-" + size;
+			lock (icons)
+			{
+				if (icons.TryGetValue(key, out Bitmap cached))
+				{
+					return cached;
+				}
+				Bitmap bmp = new Bitmap(size, size);
+				using (Graphics g = Graphics.FromImage(bmp))
+				{
+					g.SmoothingMode = SmoothingMode.AntiAlias;
+					float u = size / 16f;
+					Color state = led == TranslationLed.Off ? Color.FromArgb(244, 244, 248) : (led == TranslationLed.On ? Color.FromArgb(95, 175, 235) : ColorOf(led));
+					PointF[] left = { new PointF(0.8f * u, 3.5f * u), new PointF(7.7f * u, 5 * u), new PointF(7.7f * u, 14 * u), new PointF(0.8f * u, 12.5f * u) };
+					PointF[] right = { new PointF(15.2f * u, 3.5f * u), new PointF(8.3f * u, 5 * u), new PointF(8.3f * u, 14 * u), new PointF(15.2f * u, 12.5f * u) };
+					using (SolidBrush fill = new SolidBrush(state))
+					using (Pen rim = new Pen(Color.FromArgb(40, 40, 46), Math.Max(1f, 0.9f * u)))
+					using (Pen line = new Pen(Color.FromArgb(170, 40, 40, 46), Math.Max(1f, u)))
+					{
+						g.FillPolygon(fill, left);
+						g.FillPolygon(fill, right);
+						g.DrawPolygon(rim, left);
+						g.DrawPolygon(rim, right);
+						g.DrawLine(line, 2.5f * u, 6.5f * u, 6 * u, 7.3f * u);
+						g.DrawLine(line, 2.5f * u, 9 * u, 6 * u, 9.8f * u);
+						g.DrawLine(line, 13.5f * u, 6.5f * u, 10 * u, 7.3f * u);
+						g.DrawLine(line, 13.5f * u, 9 * u, 10 * u, 9.8f * u);
 					}
 				}
 				icons[key] = bmp;

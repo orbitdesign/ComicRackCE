@@ -965,6 +965,7 @@ namespace cYo.Projects.ComicRack.Viewer
 			mainMenuStrip.SendToBack();
 			statusStrip.Items.Insert(statusStrip.Items.Count - 1, thumbSize);
 			TranslationButtons.Install(mainToolStrip, 0, separatorBefore: false, separatorAfter: true);
+			TranslationButtons.InstallBatchStatus(statusStrip, tsBook);
 			thumbSize.TrackBar.Scroll += TrackBar_Scroll;
 			ThumbRenderer.DefaultRatingImage1 = Resources.StarYellow.ToOptimized();
 			ThumbRenderer.DefaultRatingImage2 = Resources.StarBlue.ToOptimized();
@@ -4670,6 +4671,12 @@ namespace cYo.Projects.ComicRack.Viewer
 			pageDisplay.TranslationStatusChanged += delegate
 			{
 				TranslationButtons.RefreshAll();
+			};
+			//A batch translating in the background turns the light amber, and its pages count in the book being read.
+			pageDisplay.TranslationBackgroundBusy = () => TranslationBatch.IsWorking;
+			TranslationBatch.Changed += delegate
+			{
+				pageDisplay.RefreshTranslationStatus();
 			};
 			pageDisplay.TranslationIconProvider = (string state, int size) =>TranslationButtons.StatusIcon(state == "problem" ? TranslationLed.Problem : (state == "busy" ? TranslationLed.Busy : (state == "loading" ? TranslationLed.Loading : TranslationLed.On)), size);
 			pageDisplay.TranslationServerUrl = Program.Settings.TranslatorServerUrl;

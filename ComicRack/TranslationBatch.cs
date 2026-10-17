@@ -104,6 +104,10 @@ namespace cYo.Projects.ComicRack.Viewer
 		/// <summary>The book being translated now, or null.</summary>
 		public static Item Current { get; private set; }
 
+		/// <summary>True while the batch is translating in the background (running, and not holding back for the reader): the
+		/// translator's light is amber, as for any real translating.</summary>
+		public static bool IsWorking => IsRunning && !Yielding;
+
 		/// <summary>Adds books to the queue (those already in it are left where they are) and starts translating.</summary>
 		public static void Start(IEnumerable<ComicBook> books)
 		{

@@ -2344,6 +2344,48 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 		/// <summary>Supplies the translator's picture for the status panel: the state ("on", "busy", "loading" or "problem") and the size in pixels.</summary>
 		public Func<string, int, Bitmap> TranslationIconProvider { get; set; }
 
+		/// <summary>Tells whether translating goes on in the background outside the reader (a batch): the light is then amber,
+		/// even while the reader itself only shows translated pages.</summary>
+		public Func<bool> TranslationBackgroundBusy { get; set; }
+
+		/// <summary>True while translating goes on in the background outside the reader (see <see cref="TranslationBackgroundBusy"/>).</summary>
+		[Browsable(false)]
+		[DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+		public bool TranslatingInBackground
+		{
+			get
+			{
+				try
+				{
+					return translatePages && TranslationBackgroundBusy != null && TranslationBackgroundBusy();
+				}
+				catch (Exception)
+				{
+					return false;
+				}
+			}
+		}
+
+		/// <summary>Updates the light and the page count (from any thread): something outside the reader changed them.</summary>
+		public void RefreshTranslationStatus()
+		{
+			if (!base.IsHandleCreated || base.IsDisposed)
+			{
+				return;
+			}
+			try
+			{
+				BeginInvoke((Action)delegate
+				{
+					UpdateTranslateOverlay();
+				});
+			}
+			catch (InvalidOperationException)
+			{
+				//The window went away meanwhile.
+			}
+		}
+
 		private string translationIconState;
 
 		/// <summary>The helper's page translation, once translation has been turned on.</summary>
@@ -2424,7 +2466,8 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 			{
 				//The translator's own picture at the left of the panel, coloured by what it is doing.
 				GetTranslationStatus(out int doneNow, out int totalNow, out bool busyNow, out string problemNow);
-				string state = !string.IsNullOrEmpty(problemNow) ? "problem" : (busyNow ? (TranslationLoadingFromCache ? "loading" : "busy") : "on");
+				bool background = TranslatingInBackground;
+				string state = !string.IsNullOrEmpty(problemNow) ? "problem" : (busyNow && TranslationLoadingFromCache && !background ? "loading" : (busyNow || background ? "busy" : "on"));
 				if (state != translationIconState || translateOverlay.Icon == null)
 				{
 					translationIconState = state;
