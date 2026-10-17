@@ -1309,6 +1309,21 @@ namespace cYo.Projects.ComicRack.Viewer
 			}, () => ComicDisplay.Book != null, miSyncBrowser, cmSyncBrowser);
 			commands.Add(AddFolderToLibrary, miAddFolderToLibrary);
 			commands.Add(StartFullScan, miScan, tbScan);
+			//Quick Scan Folders: in the File menu and in the toolbar's menu, after Scan Book Folders
+			foreach (ToolStripMenuItem scanItem in new[] { miScan, tbScan })
+			{
+				ToolStripMenuItem quick = new ToolStripMenuItem("&Quick Scan Folders...", Resources.Scan, delegate { QuickScanFolders(); })
+				{
+					Name = scanItem.Name + "Quick",
+					ToolTipText = "Scan a few chosen folders once for new books (local, mapped drives or network folders)"
+				};
+				ToolStrip owner = scanItem.GetCurrentParent() ?? scanItem.Owner;
+				ToolStripItemCollection items = (scanItem.OwnerItem as ToolStripDropDownItem)?.DropDownItems ?? owner?.Items;
+				if (items != null)
+				{
+					items.Insert(items.IndexOf(scanItem) + 1, quick);
+				}
+			}
 			commands.Add(UpdateComics, miUpdateAllComicFiles, tbUpdateAllComicFiles);
 			commands.Add(GenerateFrontCoverCache, miCacheThumbnails, tbCacheThumbnails);
 			commands.Add(MenuSynchronizeDevices, miSynchronizeDevices, tsSynchronizeDevices);
@@ -2022,6 +2037,33 @@ namespace cYo.Projects.ComicRack.Viewer
 					});
 				}
 			});
+		}
+
+		/// <summary>
+		/// A short scan of a few chosen folders (Quick Scan Folders): the ticked folders are scanned once for books not in the library
+		/// yet, without removing anything and without making them watched folders. Local folders, mapped drives and network paths.
+		/// </summary>
+		public void QuickScanFolders()
+		{
+			List<QuickScanDialog.FolderEntry> folders = QuickScanDialog.BuildList(Program.Settings.QuickScanFolders, Program.Settings.QuickScanTicked, Program.Database.WatchFolders.Folders, Program.Settings.FavoriteFolders);
+			using (QuickScanDialog dialog = new QuickScanDialog(folders, Program.Settings.QuickScanSubfolders))
+			{
+				WindowMemory.Restore(dialog, () => Program.Settings.QuickScanWindowSize, dialog.MinimumSize, Screen.FromControl(this).WorkingArea);
+				WindowMemory.Watch(dialog, (string size) => Program.Settings.QuickScanWindowSize = size);
+				DialogResult result = dialog.ShowDialog(this);
+				//folders added or taken off the list are remembered even when the window was closed without scanning
+				List<string> recent = QuickScanDialog.UpdateRecent(Program.Settings.QuickScanFolders, result == DialogResult.OK ? dialog.SelectedFolders : null, dialog.AddedFolders, dialog.RemovedFolders);
+				Program.Settings.QuickScanFolders.Clear();
+				Program.Settings.QuickScanFolders.AddRange(recent);
+				if (result != DialogResult.OK || dialog.SelectedFolders.Count == 0)
+				{
+					return;
+				}
+				Program.Settings.QuickScanTicked.Clear();
+				Program.Settings.QuickScanTicked.AddRange(dialog.SelectedFolders);
+				Program.Settings.QuickScanSubfolders = dialog.IncludeSubfolders;
+				Program.Scanner.ScanFilesOrFolders(dialog.SelectedFolders, all: dialog.IncludeSubfolders, removeMissing: false);
+			}
 		}
 
 		public void AddFolderToLibrary()

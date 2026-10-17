@@ -1403,6 +1403,44 @@ namespace cYo.Projects.ComicRack.Viewer.Config
 			}
 		}
 
+		private readonly List<string> quickScanFolders = new List<string>();
+
+		private readonly List<string> quickScanTicked = new List<string>();
+
+		private bool quickScanSubfolders = true;
+
+		/// <summary>The folders scanned with Quick Scan Folders, most recent first (local folders, mapped drives and network paths).</summary>
+		[Browsable(false)]
+		public List<string> QuickScanFolders => quickScanFolders;
+
+		/// <summary>The folders that were ticked the last time Quick Scan Folders was used.</summary>
+		[Browsable(false)]
+		public List<string> QuickScanTicked => quickScanTicked;
+
+		/// <summary>Whether Quick Scan Folders also looks in the subfolders of the ticked folders.</summary>
+		[Browsable(false)]
+		[DefaultValue(true)]
+		public bool QuickScanSubfolders
+		{
+			get
+			{
+				return quickScanSubfolders;
+			}
+			set
+			{
+				if (quickScanSubfolders != value)
+				{
+					quickScanSubfolders = value;
+					FireEvent(null);
+				}
+			}
+		}
+
+		/// <summary>The size of the Quick Scan Folders window.</summary>
+		[Browsable(false)]
+		[DefaultValue(null)]
+		public string QuickScanWindowSize { get; set; }
+
 		/// <summary>
 		/// The shape the translation editor last used for a text box (preset number, kind, four corner sizes, circular corners),
 		/// kept so that the next box is drawn with it, also after ComicRack was restarted.
