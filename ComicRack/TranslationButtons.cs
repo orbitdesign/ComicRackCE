@@ -10,6 +10,7 @@ using System.Net;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Windows.Forms;
+using cYo.Common.Windows.Forms.Theme;
 using cYo.Projects.ComicRack.Engine;
 using cYo.Projects.ComicRack.Engine.Display.Forms;
 
@@ -790,6 +791,16 @@ namespace cYo.Projects.ComicRack.Viewer
 			else
 			{
 				strip.Items.Add(batchStatus);
+			}
+			//The theme gave the status bar's other entries their border when the window was made (the dark theme draws a faded
+			//grey one in place of the white sunken edge); it is applied again so this entry gets the same. Entries already
+			//themed are left as they are.
+			try
+			{
+				strip.Theme();
+			}
+			catch (Exception)
+			{
 			}
 			UpdateBatchStatus();
 		}
