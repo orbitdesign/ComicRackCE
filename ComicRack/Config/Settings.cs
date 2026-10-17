@@ -1441,6 +1441,11 @@ namespace cYo.Projects.ComicRack.Viewer.Config
 		[DefaultValue(null)]
 		public string QuickScanWindowSize { get; set; }
 
+		/// <summary>The widths of the columns of the Quick Scan Folders window ("folder,from,status").</summary>
+		[Browsable(false)]
+		[DefaultValue(null)]
+		public string QuickScanColumns { get; set; }
+
 		/// <summary>
 		/// The shape the translation editor last used for a text box (preset number, kind, four corner sizes, circular corners),
 		/// kept so that the next box is drawn with it, also after ComicRack was restarted.

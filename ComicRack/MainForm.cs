@@ -2059,6 +2059,8 @@ namespace cYo.Projects.ComicRack.Viewer
 			{
 				WindowMemory.Restore(dialog, () => Program.Settings.QuickScanWindowSize, dialog.MinimumSize, Screen.FromControl(this).WorkingArea);
 				WindowMemory.Watch(dialog, (string size) => Program.Settings.QuickScanWindowSize = size);
+				dialog.ColumnWidths = Program.Settings.QuickScanColumns;
+				dialog.ColumnWidthsChanged += (string widths) => Program.Settings.QuickScanColumns = widths;
 				DialogResult result = dialog.ShowDialog(this);
 				//folders added or taken off the list are remembered even when the window was closed without scanning
 				List<string> recent = QuickScanDialog.UpdateRecent(Program.Settings.QuickScanFolders, result == DialogResult.OK ? dialog.SelectedFolders : null, dialog.AddedFolders, dialog.RemovedFolders);

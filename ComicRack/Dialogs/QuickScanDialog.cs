@@ -75,6 +75,49 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 
 		public bool IncludeSubfolders => chkSubfolders.Checked;
 
+		private bool settingColumns;
+
+		/// <summary>Raised with the widths of the columns ("folder,from,status") after one was dragged to another width.</summary>
+		public event Action<string> ColumnWidthsChanged;
+
+		/// <summary>The widths of the three columns as "folder,from,status"; setting it (a saved value, before or after the window shows)
+		/// leaves the widths as they are when the value is not three sensible numbers.</summary>
+		public string ColumnWidths
+		{
+			get
+			{
+				return string.Join(",", list.Columns.Cast<ColumnHeader>().Select((ColumnHeader c) => c.Width));
+			}
+			set
+			{
+				string[] parts = (value ?? "").Split(',');
+				if (parts.Length != list.Columns.Count)
+				{
+					return;
+				}
+				int[] widths = new int[parts.Length];
+				for (int i = 0; i < parts.Length; i++)
+				{
+					if (!int.TryParse(parts[i].Trim(), out widths[i]) || widths[i] < 20 || widths[i] > 3000)
+					{
+						return;
+					}
+				}
+				settingColumns = true;
+				try
+				{
+					for (int i = 0; i < widths.Length; i++)
+					{
+						list.Columns[i].Width = widths[i];
+					}
+				}
+				finally
+				{
+					settingColumns = false;
+				}
+			}
+		}
+
 		public QuickScanDialog(IEnumerable<FolderEntry> folders, bool subfolders)
 		{
 			Text = "Quick Scan Folders";
@@ -111,6 +154,13 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			list.Columns.Add("Folder", 400);
 			list.Columns.Add("From", 90);
 			list.Columns.Add("Status", 110);
+			list.ColumnWidthChanged += delegate
+			{
+				if (!settingColumns)
+				{
+					ColumnWidthsChanged?.Invoke(ColumnWidths);
+				}
+			};
 			txtPath = new TextBox
 			{
 				Location = new Point(10, 302),
@@ -163,6 +213,8 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			btRemove.Click += delegate { RemoveSelected(); };
 			btScan.Click += delegate { Scan(); };
 			FormClosed += delegate { closed = true; };
+			SizeChanged += delegate { FitInfo(); };
+			FitInfo();
 			Shown += delegate
 			{
 				foreach (string path in list.Items.Cast<ListViewItem>().Select((ListViewItem i) => (string)i.Tag).ToList())
@@ -172,6 +224,26 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 				UpdateButtons();
 			};
 			UpdateButtons();
+		}
+
+		/// <summary>The text at the top is as many lines as the window's width needs (it was cut off in a narrow window), and the list
+		/// takes the room that is left between it and the box for typing a folder.</summary>
+		private void FitInfo()
+		{
+			if (lblInfo == null || list == null || txtPath == null || ClientSize.Width < 100)
+			{
+				return;
+			}
+			int width = ClientSize.Width - 20;
+			int height = TextRenderer.MeasureText(lblInfo.Text, lblInfo.Font, new Size(width, int.MaxValue), TextFormatFlags.WordBreak).Height + 4;
+			int top = lblInfo.Top + height + 4;
+			int bottom = txtPath.Top - 8;
+			if (bottom - top < 60)
+			{
+				return;                 //no room for a longer text: it keeps what it has
+			}
+			lblInfo.SetBounds(lblInfo.Left, lblInfo.Top, width, height);
+			list.SetBounds(list.Left, top, width, bottom - top);
 		}
 
 		/// <summary>A folder as it is compared and kept: full, without a closing separator ("\\server\share" stays as it is).</summary>
