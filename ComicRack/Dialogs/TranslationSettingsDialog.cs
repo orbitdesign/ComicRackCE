@@ -48,7 +48,8 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			["cache_dir"] = "Cache folder",
 			["start_minimized"] = "Start minimized",
 			["minimize_to_tray"] = "Minimize to the tray",
-			["inpainter"] = "Text over artwork"
+			["inpainter"] = "Text over artwork",
+			["vertical_chinese"] = "Vertical Chinese"
 		};
 
 		private readonly System.Windows.Forms.Timer startPoll = new System.Windows.Forms.Timer { Interval = 1500 };
@@ -112,6 +113,7 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 		private CheckBox chkUpper;
 
 		private CheckBox chkMatch;
+		private CheckBox chkVertical;
 		private CheckBox chkMinimized;
 		private CheckBox chkTray;
 
@@ -341,20 +343,22 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			cboTarget.SelectedIndexChanged += delegate { Edited(); };
 			cboDirection.SelectedIndexChanged += delegate { Edited(); };
 
-			GroupBox lettering = Group(languages, "Lettering", 8, 138, 556, 160);
+			GroupBox lettering = Group(languages, "Lettering", 8, 138, 556, 184);
 			Place(lettering, "Font:", 14, 27);
 			cboFont = new ComboBoxEx { Location = new Point(70, 24), Size = new Size(402, 21), DropDownStyle = ComboBoxStyle.DropDown, Name = "cboFont" };
 			btBrowseFont = new Button { Text = "Browse...", Location = new Point(478, 22), Size = new Size(68, 24), Name = "btBrowseFont" };
 			chkUpper = new CheckBox { Text = "Upper case, like comic lettering", Location = new Point(70, 54), AutoSize = true, Name = "chkUpper" };
 			chkMatch = new CheckBox { Text = "Match the original lettering (size, weight, style, colour)", Location = new Point(70, 78), AutoSize = true, Name = "chkMatch" };
-			lettering.Controls.AddRange(new Control[] { cboFont, btBrowseFont, chkUpper, chkMatch });
+			chkVertical = new CheckBox { Text = "Chinese: set the text vertically (top to bottom, columns from the right)", Location = new Point(70, 156), AutoSize = true, Name = "chkVertical" };
+			lettering.Controls.AddRange(new Control[] { cboFont, btBrowseFont, chkUpper, chkMatch, chkVertical });
+			chkVertical.CheckedChanged += delegate { Edited(); };
 			Hint(lettering, 70, 104, 470, 48).Text = "With matching on, each text keeps the size and look of the original and the closest installed font is chosen (leave Font empty; fonts you put in the helper's fonts folder are tried too). Signs and titles are set along their original lines.";
 			cboFont.TextChanged += delegate { Edited(); };
 			chkUpper.CheckedChanged += delegate { Edited(); };
 			chkMatch.CheckedChanged += delegate { Edited(); };
 			btBrowseFont.Click += delegate { BrowseFont(); };
 
-			GroupBox removing = Group(languages, "Removing the original text", 8, 304, 556, 104);
+			GroupBox removing = Group(languages, "Removing the original text", 8, 328, 556, 104);
 			Place(removing, "Text over artwork:", 14, 27);
 			cboInpaint = DropDown(removing, 130, 24, 410, "cboInpaint");
 			lblInpaintHint = Hint(removing, 130, 52, 410, 44);
@@ -568,6 +572,8 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 
 			chkUpper.Checked = s.GetBool("uppercase");
 			chkMatch.Checked = !s.Config.ContainsKey("match_style") || s.GetBool("match_style");
+			chkVertical.Enabled = s.Config.ContainsKey("vertical_chinese");        //helpers before 1.62 only set Chinese in lines
+			chkVertical.Checked = !s.Config.ContainsKey("vertical_chinese") || s.GetBool("vertical_chinese");
 			chkMinimized.Enabled = s.Config.ContainsKey("start_minimized");      //an older helper does not know the setting
 			chkMinimized.Checked = !s.Config.ContainsKey("start_minimized") || s.GetBool("start_minimized");
 			chkTray.Enabled = s.Config.ContainsKey("minimize_to_tray");          //helpers before 1.58 have no tray icon
@@ -782,6 +788,10 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			if (chkMinimized.Enabled)
 			{
 				collected["start_minimized"] = chkMinimized.Checked;
+			}
+			if (chkVertical.Enabled)
+			{
+				collected["vertical_chinese"] = chkVertical.Checked;
 			}
 			if (chkTray.Enabled)
 			{
