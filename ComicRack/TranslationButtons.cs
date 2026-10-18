@@ -5,6 +5,7 @@ using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.IO;
 using System.Linq;
+using System.Text;
 using System.Management;
 using System.Net;
 using System.Text.RegularExpressions;
@@ -588,6 +589,11 @@ namespace cYo.Projects.ComicRack.Viewer
 
 			public ToolStripMenuItem BatchCancel;
 
+			//The books of the batch, listed under its state line
+			public readonly List<ToolStripMenuItem> BatchBooks = new List<ToolStripMenuItem>();
+
+			public Font BatchCurrentFont;
+
 			public int AheadLed = -1;
 
 			public TranslationLed TranslatorLed = (TranslationLed)(-1);
@@ -847,7 +853,7 @@ namespace cYo.Projects.ComicRack.Viewer
 				string done = pages > 0 ? Math.Min(current.Translated, pages) + "/" + pages : PercentText(current);
 				int others = waiting.Count((TranslationBatch.Item i) => i != current);
 				text = (TranslationBatch.Yielding ? "Batch waiting: " : "Batch: ") + ShortTitle(current.Title) + "  " + done + (others > 0 ? "  (+" + others + (others == 1 ? " book" : " books") + ")" : "");
-				tip = (TranslationBatch.Yielding ? "Batch translation waiting while the reader translates pages. " : "Batch translation in the background: ") + "\"" + current.Title + "\", " + done + " pages" + (others > 0 ? "; " + others + " more " + (others == 1 ? "book" : "books") + " after it" : "") + ". Click for the batch menu.";
+				tip = (TranslationBatch.Yielding ? "Batch translation waiting while the reader translates pages." : "Batch translation in the background.") + "\n" + BookListText(waiting, current) + "\nClick for the batch menu.";
 			}
 			else if (running)
 			{
@@ -857,7 +863,7 @@ namespace cYo.Projects.ComicRack.Viewer
 			else if (waiting.Count > 0)
 			{
 				text = (problem != null ? "Batch stopped: " : "Batch paused: ") + waiting.Count + (waiting.Count == 1 ? " book" : " books") + " waiting";
-				tip = text + "." + (problem != null ? " " + problem : "") + " Click to continue or forget the queue.";
+				tip = text + "." + (problem != null ? " " + problem : "") + "\n" + BookListText(waiting, null) + "\nClick to continue or forget the queue.";
 			}
 			int size = Math.Max(16, label.Owner.ImageScalingSize.Height);
 			if ((int)led != batchStatusLed || label.Image == null)
@@ -871,6 +877,44 @@ namespace cYo.Projects.ComicRack.Viewer
 			}
 			label.ToolTipText = tip;
 			label.Visible = show;
+		}
+
+		//At most this many books are listed by name in the batch menu and the tooltips; the rest are counted.
+		private const int ListedBooks = 15;
+
+		/// <summary>The books of the batch, one per line: the one being translated first, then those waiting.</summary>
+		private static string BookListText(List<TranslationBatch.Item> waiting, TranslationBatch.Item current)
+		{
+			StringBuilder sb = new StringBuilder();
+			if (current != null)
+			{
+				sb.Append("Now translating: ").Append(Shorten(current.Title)).Append(" (").Append(ProgressText(current)).Append(")");
+			}
+			List<TranslationBatch.Item> next = waiting.Where((TranslationBatch.Item i) => i != current).ToList();
+			if (next.Count > 0)
+			{
+				if (sb.Length > 0)
+				{
+					sb.Append("\n");
+				}
+				sb.Append(current != null ? "Next:" : "Waiting:");
+				foreach (TranslationBatch.Item item in next.Take(ListedBooks))
+				{
+					sb.Append("\n    ").Append(Shorten(item.Title)).Append(" (").Append(PercentText(item)).Append(")");
+				}
+				if (next.Count > ListedBooks)
+				{
+					sb.Append("\n    ... and ").Append(next.Count - ListedBooks).Append(" more");
+				}
+			}
+			return sb.ToString();
+		}
+
+		/// <summary>"12/40 pages" when the book's page count is known, else the percent.</summary>
+		private static string ProgressText(TranslationBatch.Item item)
+		{
+			int pages = item.Pages;
+			return pages > 0 ? Math.Min(item.Translated, pages) + "/" + pages + " pages" : PercentText(item);
 		}
 
 		private static string ShortTitle(string text)
@@ -1041,7 +1085,11 @@ namespace cYo.Projects.ComicRack.Viewer
 			p.BatchState.Visible = running || waiting.Count > 0 || problem != null;
 			if (running && current != null)
 			{
-				p.BatchState.Text = "Batch: " + (TranslationBatch.Yielding ? "waiting while the reader translates, then " : "") + "translating \"" + Shorten(current.Title) + "\" (" + PercentText(current) + "), " + waiting.Count + (waiting.Count == 1 ? " book" : " books") + " left";
+				p.BatchState.Text = "Batch: " + (TranslationBatch.Yielding ? "waiting while the reader translates pages, " : "translating, ") + waiting.Count + (waiting.Count == 1 ? " book" : " books") + " left";
+			}
+			else if (running)
+			{
+				p.BatchState.Text = "Batch: starting, " + waiting.Count + (waiting.Count == 1 ? " book" : " books") + " left";
 			}
 			else if (waiting.Count > 0)
 			{
@@ -1054,26 +1102,85 @@ namespace cYo.Projects.ComicRack.Viewer
 			p.BatchPause.Visible = running;
 			p.BatchCancel.Visible = running || waiting.Count > 0;
 			p.BatchContinue.Visible = !running && waiting.Count > 0;
-			//The books in the queue with how much of each is translated.
-			p.BatchContinue.DropDownItems.Clear();
-			if (!running && waiting.Count > 0)
-			{
-				ToolStripMenuItem now = new ToolStripMenuItem("Continue now (" + waiting.Count + (waiting.Count == 1 ? " book" : " books") + ")");
-				now.Click += delegate { TranslationBatch.Resume(); };
-				p.BatchContinue.DropDownItems.Add(now);
-				p.BatchContinue.DropDownItems.Add(new ToolStripSeparator());
-				foreach (TranslationBatch.Item item in waiting)
-				{
-					p.BatchContinue.DropDownItems.Add(new ToolStripMenuItem(PercentText(item).PadLeft(5) + "   " + Shorten(item.Title)) { Enabled = false });
-				}
-			}
+			p.BatchContinue.Text = "Continue translating previously selected books (" + waiting.Count + (waiting.Count == 1 ? " book" : " books") + " left)";
+			UpdateBatchBooks(p, waiting, running ? current : null);
 			if (running)
 			{
-				p.Ahead.ToolTipText = (TranslationBatch.Yielding ? "Batch waiting while the reader translates pages (" : "Batch translating books in the background (") + waiting.Count + (waiting.Count == 1 ? " book" : " books") + " left). Click for the queue.";
+				p.Ahead.ToolTipText = (TranslationBatch.Yielding ? "Batch waiting while the reader translates pages." : "Batch translating books in the background.") + "\n" + BookListText(waiting, current) + "\nClick for the batch menu.";
 			}
 			else if (waiting.Count > 0)
 			{
-				p.Ahead.ToolTipText = "Batch paused: " + waiting.Count + (waiting.Count == 1 ? " book" : " books") + " waiting." + (problem != null ? " " + problem : " Click to continue.");
+				p.Ahead.ToolTipText = "Batch paused: " + waiting.Count + (waiting.Count == 1 ? " book" : " books") + " waiting." + (problem != null ? " " + problem : "") + "\n" + BookListText(waiting, null) + "\nClick to continue.";
+			}
+		}
+
+		/// <summary>Lists the batch's books under its state line: the one being translated in bold with the batch's picture and its
+		/// pages, then those waiting with how much of each is done. The entries are kept and their text changed, so the open menu
+		/// does not flicker while the pages are counted.</summary>
+		private static void UpdateBatchBooks(Pair p, List<TranslationBatch.Item> waiting, TranslationBatch.Item current)
+		{
+			List<TranslationBatch.Item> order = new List<TranslationBatch.Item>();
+			if (current != null)
+			{
+				order.Add(current);
+			}
+			order.AddRange(waiting.Where((TranslationBatch.Item i) => i != current));
+			int listed = Math.Min(order.Count, ListedBooks);
+			int lines = listed + (order.Count > listed ? 1 : 0);
+			ToolStripItemCollection menu = p.Ahead.DropDownItems;
+			while (p.BatchBooks.Count > lines)
+			{
+				ToolStripMenuItem gone = p.BatchBooks[p.BatchBooks.Count - 1];
+				p.BatchBooks.RemoveAt(p.BatchBooks.Count - 1);
+				menu.Remove(gone);
+				gone.Dispose();
+			}
+			while (p.BatchBooks.Count < lines)
+			{
+				ToolStripMenuItem line = new ToolStripMenuItem { Enabled = false };
+				menu.Insert(menu.IndexOf(p.BatchState) + 1 + p.BatchBooks.Count, line);
+				p.BatchBooks.Add(line);
+			}
+			int size = Math.Max(16, p.Strip.ImageScalingSize.Height);
+			for (int i = 0; i < lines; i++)
+			{
+				ToolStripMenuItem line = p.BatchBooks[i];
+				bool now = i == 0 && current != null;
+				string text;
+				if (i >= listed)
+				{
+					text = "... and " + (order.Count - listed) + " more";
+				}
+				else if (now)
+				{
+					text = Shorten(order[i].Title) + "   (" + ProgressText(order[i]) + ")";
+				}
+				else
+				{
+					text = PercentText(order[i]).PadLeft(6) + "   " + Shorten(order[i].Title);
+				}
+				if (line.Text != text)
+				{
+					line.Text = text;
+				}
+				//The book being translated is not greyed out like the queue, so it stands out; clicking it does nothing.
+				line.Enabled = now;
+				if (now)
+				{
+					if (p.BatchCurrentFont == null)
+					{
+						p.BatchCurrentFont = new Font(p.Ahead.DropDown.Font, FontStyle.Bold);
+					}
+					line.Font = p.BatchCurrentFont;
+					line.Image = GetBatchIcon(TranslationBatch.Yielding ? TranslationLed.On : TranslationLed.Busy, size);
+					line.ToolTipText = TranslationBatch.Yielding ? "Waiting while the reader translates pages" : "Being translated now";
+				}
+				else
+				{
+					line.Font = null;
+					line.Image = null;
+					line.ToolTipText = null;
+				}
 			}
 		}
 
