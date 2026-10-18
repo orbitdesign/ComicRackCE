@@ -663,7 +663,7 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 		/// Reads and translates the text inside a rectangle of the page (in page pixels). The result
 		/// arrives on a background thread, with an error text when it failed.
 		/// </summary>
-		public void ReadRegion(PageImage original, int[] rect, Action<TranslationRegion, string> done)
+		public void ReadRegion(PageImage original, int[] rect, Action<TranslationRegion, string> done, bool sign = false)
 		{
 			byte[] data = original == null ? null : GetUploadBytes(original);
 			string url = ServerUrl;
@@ -675,7 +675,7 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 					{
 						throw new TranslationApiException("The page could not be read.", serverDown: false);
 					}
-					done(new TranslationApi(url).ReadRegion(data, rect), null);
+					done(new TranslationApi(url).ReadRegion(data, rect, sign), null);
 				}
 				catch (Exception ex)
 				{
