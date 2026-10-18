@@ -45,7 +45,9 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			["ollama_timeout"] = "Wait up to",
 			["jpeg_quality"] = "Image quality",
 			["cache_mb"] = "Maximum cache size",
-			["cache_dir"] = "Cache folder"
+			["cache_dir"] = "Cache folder",
+			["start_minimized"] = "Start minimized",
+			["minimize_to_tray"] = "Minimize to the tray"
 		};
 
 		private readonly System.Windows.Forms.Timer startPoll = new System.Windows.Forms.Timer { Interval = 1500 };
@@ -107,6 +109,8 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 		private CheckBox chkUpper;
 
 		private CheckBox chkMatch;
+		private CheckBox chkMinimized;
+		private CheckBox chkTray;
 
 		private NumericUpDown nudBatch;
 
@@ -212,7 +216,7 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			MaximizeBox = false;
 			MinimizeBox = false;
 			ShowInTaskbar = false;
-			ClientSize = new Size(600, 588);
+			ClientSize = new Size(600, 662);
 
 			BuildControls(string.IsNullOrWhiteSpace(serverUrl) ? "http://127.0.0.1:8790" : serverUrl.Trim());
 			SetConnected(false);
@@ -238,7 +242,7 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 
 		private void BuildControls(string url)
 		{
-			tabs = new TabControl { Location = new Point(10, 10), Size = new Size(580, 462) };
+			tabs = new TabControl { Location = new Point(10, 10), Size = new Size(580, 536) };
 			TabPage models = new TabPage("Models");
 			TabPage languages = new TabPage("Language and lettering");
 			TabPage storage = new TabPage("Speed and storage");
@@ -308,6 +312,13 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			ollama.Controls.AddRange(new Control[] { txtOllamaUrl, btRefreshModels, lblOllamaStatus });
 			txtOllamaUrl.TextChanged += delegate { Edited(); };
 			btRefreshModels.Click += delegate { RefreshModels(); };
+
+			GroupBox window = Group(models, "Helper window", 8, 432, 556, 72);
+			chkMinimized = new CheckBox { Text = "Start minimized (takes effect the next time the helper starts)", Location = new Point(14, 20), AutoSize = true, Name = "chkMinimized" };
+			chkTray = new CheckBox { Text = "Minimize to the system tray (next to the clock) instead of the taskbar", Location = new Point(14, 44), AutoSize = true, Name = "chkTray" };
+			window.Controls.AddRange(new Control[] { chkMinimized, chkTray });
+			chkMinimized.CheckedChanged += delegate { Edited(); };
+			chkTray.CheckedChanged += delegate { Edited(); };
 
 			// --- Language and lettering ---
 			GroupBox lang = Group(languages, "Languages", 8, 8, 556, 124);
@@ -385,12 +396,12 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			};
 
 			// --- bottom area ---
-			lblStatus = new Label { Location = new Point(12, 478), Size = new Size(576, 18), Name = "lblStatus", AutoEllipsis = true };
-			lblProblems = new Label { Location = new Point(12, 498), Size = new Size(576, 46), Name = "lblProblems" };
-			btBrowser = new Button { Text = "Open in browser", Location = new Point(10, 553), Size = new Size(110, 25), Name = "btBrowser" };
-			btOk = new Button { Text = "OK", Location = new Point(344, 553), Size = new Size(75, 25), Name = "btOk" };
-			btCancel = new Button { Text = "Cancel", Location = new Point(425, 553), Size = new Size(75, 25), DialogResult = DialogResult.Cancel, Name = "btCancel" };
-			btApply = new Button { Text = "Apply", Location = new Point(506, 553), Size = new Size(75, 25), Name = "btApply" };
+			lblStatus = new Label { Location = new Point(12, 552), Size = new Size(576, 18), Name = "lblStatus", AutoEllipsis = true };
+			lblProblems = new Label { Location = new Point(12, 572), Size = new Size(576, 46), Name = "lblProblems" };
+			btBrowser = new Button { Text = "Open in browser", Location = new Point(10, 627), Size = new Size(110, 25), Name = "btBrowser" };
+			btOk = new Button { Text = "OK", Location = new Point(344, 627), Size = new Size(75, 25), Name = "btOk" };
+			btCancel = new Button { Text = "Cancel", Location = new Point(425, 627), Size = new Size(75, 25), DialogResult = DialogResult.Cancel, Name = "btCancel" };
+			btApply = new Button { Text = "Apply", Location = new Point(506, 627), Size = new Size(75, 25), Name = "btApply" };
 			btBrowser.Click += delegate { OpenInBrowser(); };
 			btOk.Click += delegate { Apply(delegate { DialogResult = DialogResult.OK; }); };
 			btApply.Click += delegate { Apply(null); };
@@ -540,6 +551,10 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 
 			chkUpper.Checked = s.GetBool("uppercase");
 			chkMatch.Checked = !s.Config.ContainsKey("match_style") || s.GetBool("match_style");
+			chkMinimized.Enabled = s.Config.ContainsKey("start_minimized");      //an older helper does not know the setting
+			chkMinimized.Checked = !s.Config.ContainsKey("start_minimized") || s.GetBool("start_minimized");
+			chkTray.Enabled = s.Config.ContainsKey("minimize_to_tray");          //helpers before 1.58 have no tray icon
+			chkTray.Checked = !s.Config.ContainsKey("minimize_to_tray") || s.GetBool("minimize_to_tray");
 			SetNumber(nudBatch, s.GetInt("batch_size", 8));
 			SetNumber(nudTimeout, s.GetInt("ollama_timeout", 180));
 			SetNumber(nudQuality, s.GetInt("jpeg_quality", 92));
@@ -677,6 +692,14 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			{
 				collected["cache_dir"] = CacheDirSetting();      //an older helper does not know the setting and would turn all of them down
 			}
+			if (chkMinimized.Enabled)
+			{
+				collected["start_minimized"] = chkMinimized.Checked;
+			}
+			if (chkTray.Enabled)
+			{
+				collected["minimize_to_tray"] = chkTray.Checked;
+			}
 			return collected;
 		}
 
@@ -780,7 +803,7 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			}
 			try
 			{
-				Process.Start(new ProcessStartInfo(Path.Combine(folder, "run.bat")) { WorkingDirectory = folder, UseShellExecute = true });
+				Process.Start(new ProcessStartInfo(Path.Combine(folder, "run.bat")) { WorkingDirectory = folder, UseShellExecute = true, WindowStyle = ProcessWindowStyle.Minimized });
 			}
 			catch (Exception ex)
 			{
