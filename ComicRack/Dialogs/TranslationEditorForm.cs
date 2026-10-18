@@ -2013,6 +2013,10 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 
 		private CheckBox chkSkip;
 
+		private CheckBox chkSign;
+
+		private CheckBox chkCover;
+
 		private Button btReset;
 
 		private Button btAgain;
@@ -2211,6 +2215,13 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			y += 30;
 			chkSkip = new CheckBox { Text = "Leave the original text (do not translate)", Location = new Point(10, y), Size = new Size(318, 22), Name = "chkSkip" };
 			side.Controls.Add(chkSkip);
+			y += 26;
+			//The helper's own rules for signs and for cover titles, for a box it did not take for one.
+			chkSign = new CheckBox { Text = "Letter as a sign", Location = new Point(10, y), Size = new Size(150, 22), Name = "chkSign" };
+			chkCover = new CheckBox { Text = "Letter as a cover title", Location = new Point(166, y), Size = new Size(162, 22), Name = "chkCover" };
+			side.Controls.AddRange(new Control[] { chkSign, chkCover });
+			new ToolTip().SetToolTip(chkSign, "Lettered by the sign rule: the translation goes line by line over the original lines, each group of lines at its own size and every line as wide as the sign. Read && translate again then reads a sign of several lines line by line.");
+			new ToolTip().SetToolTip(chkCover, "Lettered by the cover rule, on any page: a title as large as fits the place of the original, line by line at the sizes of the original's lines.");
 			y += 30;
 			btReset = new Button { Text = "Reset layout", Location = new Point(10, y), Size = new Size(150, 28), Name = "btReset" };
 			btAgain = new Button { Text = "Read && translate again", Location = new Point(166, y), Size = new Size(162, 28), Name = "btAgain" };
@@ -2505,6 +2516,30 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 					return;
 				}
 				box.Rotation = (double)nudRotation.Value;
+				canvas.Invalidate();
+				Touch();
+			};
+			chkSign.CheckedChanged += delegate
+			{
+				TranslationBox box = canvas.Selected;
+				if (loading || box == null)
+				{
+					return;
+				}
+				box.AsSign = chkSign.Checked;
+				SyncList();
+				canvas.Invalidate();
+				Touch();
+			};
+			chkCover.CheckedChanged += delegate
+			{
+				TranslationBox box = canvas.Selected;
+				if (loading || box == null)
+				{
+					return;
+				}
+				box.AsCover = chkCover.Checked;
+				SyncList();
 				canvas.Invalidate();
 				Touch();
 			};
@@ -2851,7 +2886,7 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			{
 				TranslationBox b = listed[i];
 				string text = (b.Translation ?? "").Replace("\r", " ").Replace("\n", " ");
-				lstBoxes.Items.Add((i + 1) + ".  " + (b.Skip ? "[original] " : "") + (b.Shape != null ? "[merged] " : b.Manual ? "[added] " : "") + (text.Length > 60 ? text.Substring(0, 60) + "..." : text));
+				lstBoxes.Items.Add((i + 1) + ".  " + (b.Skip ? "[original] " : "") + (b.AsSign && !b.Skip ? "[sign] " : "") + (b.AsCover && !b.Skip ? "[cover] " : "") + (b.Shape != null ? "[merged] " : b.Manual ? "[added] " : "") + (text.Length > 60 ? text.Substring(0, 60) + "..." : text));
 			}
 			lstBoxes.ClearSelected();
 			foreach (TranslationBox sel in canvas.AllSelected)
@@ -2907,6 +2942,9 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 				btBoxFontAuto.Enabled = !string.IsNullOrEmpty(box.FontChoice);
 				nudRotation.Value = Math.Max(nudRotation.Minimum, Math.Min(nudRotation.Maximum, (decimal)Math.Round(box.Rotation * 2.0) / 2m));
 				chkSkip.Checked = box.Skip;
+				chkSign.Checked = box.AsSign;
+				chkCover.Checked = box.AsCover;
+				chkSign.Enabled = chkCover.Enabled = !box.Skip;
 			}
 			else
 			{
@@ -2918,6 +2956,8 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 				cboAlign.SelectedIndex = 1;
 				nudRotation.Value = 0;
 				chkSkip.Checked = false;
+				chkSign.Checked = chkCover.Checked = false;
+				chkSign.Enabled = chkCover.Enabled = false;
 			}
 			SyncShapeControls(box);
 			loading = was;
@@ -3823,7 +3863,35 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 					ReadAgain(b, resetLayout: false);
 				}
 			};
+			ToolStripMenuItem asSign = new ToolStripMenuItem("Letter as a sign" + many) { Checked = boxes.All((TranslationBox b) => b.AsSign), Enabled = boxes.Any((TranslationBox b) => !b.Skip) };
+			asSign.Click += delegate
+			{
+				bool on = !boxes.All((TranslationBox b) => b.AsSign);
+				foreach (TranslationBox b in boxes)
+				{
+					b.AsSign = on;
+				}
+				SyncList();
+				SyncControls();
+				canvas.Invalidate();
+				CommitNow();
+			};
+			ToolStripMenuItem asCover = new ToolStripMenuItem("Letter as a cover title" + many) { Checked = boxes.All((TranslationBox b) => b.AsCover), Enabled = boxes.Any((TranslationBox b) => !b.Skip) };
+			asCover.Click += delegate
+			{
+				bool on = !boxes.All((TranslationBox b) => b.AsCover);
+				foreach (TranslationBox b in boxes)
+				{
+					b.AsCover = on;
+				}
+				SyncList();
+				SyncControls();
+				canvas.Invalidate();
+				CommitNow();
+			};
 			menu.Items.Add(leave);
+			menu.Items.Add(asSign);
+			menu.Items.Add(asCover);
 			menu.Items.Add(again);
 			if (boxes.Count >= 2 && boxes.All((TranslationBox b) => b.Shape == null))
 			{
@@ -4019,7 +4087,7 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 						canvas.Invalidate();
 						CommitNow();
 					});
-				});
+				}, sign: box.AsSign);
 			}
 		}
 

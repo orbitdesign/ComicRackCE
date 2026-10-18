@@ -193,7 +193,8 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 			}
 		}
 
-		public TranslationRegion ReadRegion(byte[] page, int[] rect)
+		/// <param name="sign">The box is marked as a sign: a sign in two or more lines is read and translated line by line.</param>
+		public TranslationRegion ReadRegion(byte[] page, int[] rect, bool sign = false)
 		{
 			using (MemoryStream ms = new MemoryStream())
 			{
@@ -202,6 +203,10 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 					w.WriteStartObject();
 					w.WriteString("image", Convert.ToBase64String(page));
 					TranslationBox.WriteInts(w, "rect", rect);
+					if (sign)
+					{
+						w.WriteBoolean("sign", true);
+					}
 					w.WriteEndObject();
 				}
 				using (JsonDocument doc = JsonDocument.Parse(Send("/api/read-region", ms.ToArray(), "application/json", 600000)))

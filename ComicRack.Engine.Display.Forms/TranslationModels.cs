@@ -81,6 +81,12 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 		/// <summary>Leave the original text as the artist drew it.</summary>
 		public bool Skip { get; set; }
 
+		/// <summary>Lettered by the helper's sign rule: line by line over the original lines, each group of lines at its own size.</summary>
+		public bool AsSign { get; set; }
+
+		/// <summary>Lettered by the helper's cover rule on any page: a title as large as fits the place of the original.</summary>
+		public bool AsCover { get; set; }
+
 		/// <summary>The area the lettering uses on the last render (null until rendered).</summary>
 		public int[] Bounds { get; set; }
 
@@ -101,7 +107,7 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 		/// <summary>The helper could not find the chosen font file on the last render and used its usual font.</summary>
 		public bool FontChoiceMissing { get; set; }
 
-		public bool HasManualSettings => Rect != null || HasShape || Size > 0 || Rotation != 0 || Skip || TextEdited || !string.Equals(Align, "center", StringComparison.OrdinalIgnoreCase) || !string.IsNullOrEmpty(FontChoice);
+		public bool HasManualSettings => Rect != null || HasShape || Size > 0 || Rotation != 0 || Skip || AsSign || AsCover || TextEdited || !string.Equals(Align, "center", StringComparison.OrdinalIgnoreCase) || !string.IsNullOrEmpty(FontChoice);
 
 		/// <summary>True when this box differs from what the helper found, so it is kept with the book.</summary>
 		public bool IsEdited => Manual || HasManualSettings || Shape != null || !string.IsNullOrEmpty(MergedInto);
@@ -170,6 +176,8 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 			Align = "center";
 			Rotation = 0;
 			Skip = false;
+			AsSign = false;
+			AsCover = false;
 			FontChoice = "";
 		}
 
@@ -236,6 +244,14 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 			w.WriteString("align", Align ?? "center");
 			w.WriteNumber("rotation", Rotation);
 			w.WriteBoolean("skip", Skip);
+			if (AsSign)
+			{
+				w.WriteBoolean("as_sign", true);
+			}
+			if (AsCover)
+			{
+				w.WriteBoolean("as_cover", true);
+			}
 			w.WriteEndObject();
 		}
 
@@ -255,6 +271,8 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 				Size = GetDouble(e, "size"),
 				Rotation = GetDouble(e, "rotation"),
 				Skip = GetBool(e, "skip"),
+				AsSign = GetBool(e, "as_sign"),
+				AsCover = GetBool(e, "as_cover"),
 				Bounds = GetInts(e, "bounds"),
 				AutoSize = GetDouble(e, "auto_size"),
 				FontChoice = GetString(e, "font_choice"),
