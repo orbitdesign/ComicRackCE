@@ -11,6 +11,7 @@ using System.Text.RegularExpressions;
 using System.Threading;
 using System.Windows.Forms;
 using cYo.Common.Windows.Forms.Theme;
+using cYo.Projects.ComicRack.Viewer.Dialogs;
 using cYo.Projects.ComicRack.Engine;
 using cYo.Projects.ComicRack.Engine.Display.Forms;
 
@@ -551,6 +552,10 @@ namespace cYo.Projects.ComicRack.Viewer
 
 			public ToolStripMenuItem StatusPanel;
 
+			public ToolStripMenuItem English;
+
+			public ToolStripMenuItem Chinese;
+
 			public ToolStripMenuItem HelperItem;
 
 			public ToolStripMenuItem OllamaItem;
@@ -615,6 +620,12 @@ namespace cYo.Projects.ComicRack.Viewer
 					Program.Settings.TranslatorShowStatus = reader.TranslationStatusVisible;
 				}
 			};
+			//The language the pages are translated into, one click away: the helper's own setting, changed here without the settings window.
+			pair.English = new ToolStripMenuItem("English", GetMenuIcon(MenuIcon.Language, "EN", iconSize), delegate { Main?.SetTranslationLanguage("en"); });
+			pair.Chinese = new ToolStripMenuItem("Chinese", GetMenuIcon(MenuIcon.Language, "中", iconSize), delegate { Main?.SetTranslationLanguage(targetCode.StartsWith("zh") ? targetCode : "zh-CN"); });
+			pair.Translator.DropDownItems.Add(pair.English);
+			pair.Translator.DropDownItems.Add(pair.Chinese);
+			pair.Translator.DropDownItems.Add(new ToolStripSeparator());
 			pair.Translator.DropDownItems.Add(pair.StatusPanel);
 			pair.Translator.DropDownItems.Add(new ToolStripSeparator());
 			pair.Translator.DropDownItems.Add(new ToolStripMenuItem("Edit Translated Text...", ActionIcon(TranslationAction.Edit, iconSize), delegate { Main?.OpenTranslationEditor(); }));
@@ -625,6 +636,8 @@ namespace cYo.Projects.ComicRack.Viewer
 			pair.Translator.DropDownOpening += delegate
 			{
 				pair.StatusPanel.Checked = Main?.TranslationReader?.TranslationStatusVisible ?? true;
+				ShowTarget(pair);
+				RefreshTarget(pair);
 			};
 
 			pair.Services = new ToolStripSplitButton
@@ -1371,7 +1384,68 @@ namespace cYo.Projects.ComicRack.Viewer
 			Pages,
 			Rest,
 			Book,
-			Stop
+			Stop,
+			Language
+		}
+
+		//The language the helper translates into (its target_code), as last seen; the menu shows a tick on it.
+		private static string targetCode = "";
+
+		private static void ShowTarget(Pair pair)
+		{
+			pair.English.Checked = targetCode == "en";
+			pair.Chinese.Checked = targetCode.StartsWith("zh");
+		}
+
+		/// <summary>Asks the helper which language it translates into (off the interface thread) and ticks it in the menu.</summary>
+		private static void RefreshTarget(Pair pair)
+		{
+			string url = Main?.TranslationHelperUrl;
+			if (string.IsNullOrEmpty(url))
+			{
+				return;
+			}
+			ThreadPool.QueueUserWorkItem(delegate
+			{
+				string code = null;
+				try
+				{
+					code = new TranslatorHelperClient(url).GetState().GetString("target_code");
+				}
+				catch (Exception)
+				{
+				}
+				if (string.IsNullOrEmpty(code))
+				{
+					return;
+				}
+				targetCode = code;
+				try
+				{
+					pair.Strip.BeginInvoke(new Action(delegate { ShowTarget(pair); }));
+				}
+				catch (Exception)
+				{
+				}
+			});
+		}
+
+		/// <summary>The language was changed here: the ticks follow at once.</summary>
+		public static void TargetChanged(string code)
+		{
+			targetCode = code ?? string.Empty;
+			Pair[] copy;
+			lock (pairs)
+			{
+				copy = pairs.ToArray();
+			}
+			foreach (Pair pair in copy)
+			{
+				if (!pair.Strip.IsDisposed)
+				{
+					ShowTarget(pair);
+				}
+			}
 		}
 
 		//Small pictures for the translate-ahead menu: readable on a light or a dark menu.
@@ -1443,6 +1517,31 @@ namespace cYo.Projects.ComicRack.Viewer
 									g.DrawLine(line, 2.5f * u, 9 * u, 6 * u, 9.8f * u);
 									g.DrawLine(line, 13.5f * u, 6.5f * u, 10 * u, 7.3f * u);
 									g.DrawLine(line, 13.5f * u, 9 * u, 10 * u, 9.8f * u);
+								}
+								break;
+							}
+						case MenuIcon.Language:
+							{
+								//A rounded badge with the language's letters: EN, or a Chinese character.
+								RectangleF badge = new RectangleF(0.8f * u, 2.5f * u, 14.4f * u, 11f * u);
+								using (GraphicsPath path = new GraphicsPath())
+								using (SolidBrush fill = new SolidBrush(Color.FromArgb(60, 120, 200)))
+								{
+									float r = 3f * u;
+									path.AddArc(badge.X, badge.Y, r * 2, r * 2, 180, 90);
+									path.AddArc(badge.Right - r * 2, badge.Y, r * 2, r * 2, 270, 90);
+									path.AddArc(badge.Right - r * 2, badge.Bottom - r * 2, r * 2, r * 2, 0, 90);
+									path.AddArc(badge.X, badge.Bottom - r * 2, r * 2, r * 2, 90, 90);
+									path.CloseFigure();
+									g.FillPath(fill, path);
+									g.DrawPath(rimPen, path);
+								}
+								bool wide = number.Length > 0 && number[0] > 0x2E7F;
+								using (Font font = new Font(wide ? "Microsoft YaHei UI" : "Segoe UI", Math.Max(6f, (wide ? 9.5f : 7.6f) * u), FontStyle.Bold, GraphicsUnit.Pixel))
+								using (StringFormat sf = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center })
+								using (SolidBrush ink = new SolidBrush(Color.White))
+								{
+									g.DrawString(number, font, ink, new RectangleF(badge.X, badge.Y + 0.3f * u, badge.Width, badge.Height), sf);
 								}
 								break;
 							}

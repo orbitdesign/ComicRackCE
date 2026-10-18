@@ -3208,6 +3208,44 @@ namespace cYo.Projects.ComicRack.Viewer
 			}
 		}
 
+		/// <summary>Where the translator helper is (the reader's address when a reader exists).</summary>
+		internal string TranslationHelperUrl => (readerControl != null) ? readerControl.TranslationServerUrl : Program.Settings.TranslatorServerUrl;
+
+		/// <summary>Changes the language the helper translates into (its target language) without the settings window, then has the
+		/// pages shown redone in it. Pages already translated into that language come straight from the helper's cache.</summary>
+		internal void SetTranslationLanguage(string code)
+		{
+			string url = TranslationHelperUrl;
+			System.Threading.ThreadPool.QueueUserWorkItem(delegate
+			{
+				string problem = null;
+				try
+				{
+					new TranslatorHelperClient(url).Save(new Dictionary<string, object> { ["target_code"] = code });
+				}
+				catch (Exception ex)
+				{
+					problem = ex.Message;
+				}
+				try
+				{
+					BeginInvoke(new Action(delegate
+					{
+						if (problem != null)
+						{
+							MessageBox.Show(this, "The translation language could not be changed: " + problem, "Translation", MessageBoxButtons.OK, MessageBoxIcon.Information);
+							return;
+						}
+						TranslationButtons.TargetChanged(code);
+						readerControl?.RefreshTranslations();
+					}));
+				}
+				catch (Exception)
+				{
+				}
+			});
+		}
+
 		internal void OpenTranslationSettings()
 		{
 			string url = (readerControl != null) ? readerControl.TranslationServerUrl : Program.Settings.TranslatorServerUrl;
