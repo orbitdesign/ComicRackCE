@@ -47,7 +47,8 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			["cache_mb"] = "Maximum cache size",
 			["cache_dir"] = "Cache folder",
 			["start_minimized"] = "Start minimized",
-			["minimize_to_tray"] = "Minimize to the tray"
+			["minimize_to_tray"] = "Minimize to the tray",
+			["inpainter"] = "Text over artwork"
 		};
 
 		private readonly System.Windows.Forms.Timer startPoll = new System.Windows.Forms.Timer { Interval = 1500 };
@@ -101,6 +102,8 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 		private ComboBox cboTarget;
 
 		private ComboBox cboDirection;
+		private ComboBox cboInpaint;
+		private Label lblInpaintHint;
 
 		private ComboBox cboFont;
 
@@ -154,6 +157,8 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 		private bool copyPollBusy;
 
 		private readonly System.Windows.Forms.Timer copyPoll = new System.Windows.Forms.Timer { Interval = 600 };
+		private readonly System.Windows.Forms.Timer inpaintPoll = new System.Windows.Forms.Timer { Interval = 1500 };
+		private bool inpaintPollBusy;
 
 		private readonly System.Windows.Forms.Timer freeCheck = new System.Windows.Forms.Timer { Interval = 600 };
 
@@ -222,6 +227,7 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			SetConnected(false);
 			startPoll.Tick += startPoll_Tick;
 			copyPoll.Tick += copyPoll_Tick;
+			inpaintPoll.Tick += inpaintPoll_Tick;
 			freeCheck.Tick += freeCheck_Tick;
 			Shown += delegate
 			{
@@ -233,6 +239,8 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 				startPoll.Dispose();
 				copyPoll.Stop();
 				copyPoll.Dispose();
+				inpaintPoll.Stop();
+				inpaintPoll.Dispose();
 				freeCheck.Stop();
 				freeCheck.Dispose();
 			};
@@ -345,6 +353,13 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			chkUpper.CheckedChanged += delegate { Edited(); };
 			chkMatch.CheckedChanged += delegate { Edited(); };
 			btBrowseFont.Click += delegate { BrowseFont(); };
+
+			GroupBox removing = Group(languages, "Removing the original text", 8, 304, 556, 104);
+			Place(removing, "Text over artwork:", 14, 27);
+			cboInpaint = DropDown(removing, 130, 24, 410, "cboInpaint");
+			lblInpaintHint = Hint(removing, 130, 52, 410, 44);
+			lblInpaintHint.Name = "lblInpaintHint";
+			cboInpaint.SelectedIndexChanged += delegate { Edited(); UpdateInpaintHint(); };
 
 			// --- Speed and storage ---
 			GroupBox speed = Group(storage, "Speed", 8, 8, 556, 130);
@@ -526,6 +541,8 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			Fill(cboOcr, s.Choices.ContainsKey("ocr_engine") ? s.Choices["ocr_engine"] : none, s.GetString("ocr_engine"));
 			Fill(cboTranslator, s.Choices.ContainsKey("translator") ? s.Choices["translator"] : none, s.GetString("translator"));
 			Fill(cboDirection, s.Choices.ContainsKey("right_to_left") ? s.Choices["right_to_left"] : none, s.GetString("right_to_left"));
+			Fill(cboInpaint, s.Choices.ContainsKey("inpainter") ? s.Choices["inpainter"] : none, s.GetString("inpainter"));
+			cboInpaint.Enabled = s.Choices.ContainsKey("inpainter");          //an older helper has only the classic fill
 			List<HelperChoice> languages = s.Choices.ContainsKey("languages") ? s.Choices["languages"] : none;
 			Fill(cboTarget, languages, s.GetString("target_code"));
 
@@ -585,6 +602,11 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			dirty = false;
 
 			UpdateHints();
+			UpdateInpaintHint();
+			if (s.InpaintDownloading)
+			{
+				inpaintPoll.Start();
+			}
 			ShowProblems(s);
 			lblStatus.ForeColor = goodText;
 			lblStatus.Text = "Connected to ComicTranslator " + s.Version + " (text detector: " + s.Detector + ")";
@@ -634,6 +656,71 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			lblCacheInfo.ForeColor = grayText;
 			lblCacheInfo.Text = pages + " translated page" + (pages == 1 ? "" : "s") + " stored, using " + megabytes.ToString("0.#") + " MB";
 			btClearCache.Enabled = pages > 0 || megabytes > 0;
+		}
+
+		/// <summary>What the Text over artwork choice means, and how the AI model is getting on (not downloaded yet, downloading, ready, or why it cannot be used).</summary>
+		private void UpdateInpaintHint()
+		{
+			HelperChoice choice = cboInpaint.SelectedItem as HelperChoice;
+			if (!cboInpaint.Enabled || choice == null)
+			{
+				lblInpaintHint.ForeColor = grayText;
+				lblInpaintHint.Text = state != null && !cboInpaint.Enabled ? "This helper is older than 1.59 and only has the classic fill. Update the helper to get the AI model." : string.Empty;
+				return;
+			}
+			string text = choice.Hint;
+			lblInpaintHint.ForeColor = grayText;
+			if (choice.Value == "lama" && state != null && state.InpaintKnown)
+			{
+				if (!string.IsNullOrEmpty(state.InpaintError))
+				{
+					lblInpaintHint.ForeColor = badText;
+					text = "The model cannot be used: " + state.InpaintError + " The classic fill is used.";
+				}
+				else if (state.InpaintDownloading)
+				{
+					lblInpaintHint.ForeColor = warnText;
+					text = "Downloading the model: " + state.InpaintPercent + "%. The classic fill is used until it is ready.";
+				}
+				else if (!state.InpaintReady)
+				{
+					text += " It is downloaded when you press Apply or OK.";
+				}
+				else
+				{
+					text = "The model is ready" + (string.IsNullOrEmpty(state.InpaintProvider) ? "." : " (running on " + state.InpaintProvider + ").") + " Where the paper around the text is plain, the exact flat fill is still used.";
+				}
+			}
+			lblInpaintHint.Text = text;
+		}
+
+		private void inpaintPoll_Tick(object sender, EventArgs e)
+		{
+			if (inpaintPollBusy || connectedUrl == null)
+			{
+				return;
+			}
+			inpaintPollBusy = true;
+			HelperState latest = null;
+			RunInBackground(delegate { latest = new TranslatorHelperClient(connectedUrl).GetState(); }, delegate (Exception error)
+			{
+				inpaintPollBusy = false;
+				if (latest == null || state == null)
+				{
+					return;
+				}
+				state.InpaintKnown = latest.InpaintKnown;
+				state.InpaintReady = latest.InpaintReady;
+				state.InpaintDownloading = latest.InpaintDownloading;
+				state.InpaintPercent = latest.InpaintPercent;
+				state.InpaintError = latest.InpaintError;
+				state.InpaintProvider = latest.InpaintProvider;
+				UpdateInpaintHint();
+				if (!latest.InpaintDownloading)
+				{
+					inpaintPoll.Stop();
+				}
+			});
 		}
 
 		private void UpdateHints()
@@ -699,6 +786,10 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			if (chkTray.Enabled)
 			{
 				collected["minimize_to_tray"] = chkTray.Checked;
+			}
+			if (cboInpaint.Enabled && ChoiceValue(cboInpaint).Length > 0)
+			{
+				collected["inpainter"] = ChoiceValue(cboInpaint);
 			}
 			return collected;
 		}

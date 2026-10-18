@@ -58,6 +58,19 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 
 		public string CacheDefaultFolder { get; set; }
 
+		/// <summary>The AI model for removing text over artwork (helper 1.59 and later): downloaded, being downloaded (percent), or why it cannot be used.</summary>
+		public bool InpaintKnown { get; set; }
+
+		public bool InpaintReady { get; set; }
+
+		public bool InpaintDownloading { get; set; }
+
+		public int InpaintPercent { get; set; }
+
+		public string InpaintError { get; set; }
+
+		public string InpaintProvider { get; set; }
+
 		public string GetString(string key)
 		{
 			object value;
@@ -410,6 +423,16 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 				state.CacheMegabytes = cache.GetProperty("megabytes").GetDouble();
 				state.CacheFolder = Str(cache, "folder");
 				state.CacheDefaultFolder = Str(cache, "default");
+				JsonElement inpainter;
+				if (root.TryGetProperty("inpainter", out inpainter) && inpainter.ValueKind == JsonValueKind.Object)
+				{
+					state.InpaintKnown = true;
+					state.InpaintReady = inpainter.GetProperty("present").GetBoolean();
+					state.InpaintDownloading = inpainter.GetProperty("downloading").GetBoolean();
+					state.InpaintPercent = inpainter.GetProperty("percent").GetInt32();
+					state.InpaintError = Str(inpainter, "error");
+					state.InpaintProvider = Str(inpainter, "provider");
+				}
 			}
 			return state;
 		}
