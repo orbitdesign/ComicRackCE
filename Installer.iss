@@ -10,6 +10,15 @@
 #define MyAppURL "https://github.com/maforget/ComicRackCE"
 #define MyAppExeName "ComicRack.exe"
 
+; The folder holding VC_redist.x64.exe (the Microsoft Visual C++ 2022 runtime, from https://aka.ms/vs/17/release/vc_redist.x64.exe).
+#ifndef RedistDir
+#define RedistDir "ComicRack\bin\Release\net48\_CommonRedist"
+#endif
+
+; The translator helper's files (the .py files, run.bat, setup.bat ...): give their folder with /DHelperSrc=... to have the
+; "Translator helper" component in the setup. Without it the setup is the application only.
+; Example: /DHelperSrc="S:\FROG\Claude AI\Comicrack\ComicTranslator-src\ComicTranslator"
+
 [Setup]
 ; NOTE: The value of AppId uniquely identifies this application. Do not use the same AppId value in installers for other applications.
 ; (To generate a new GUID, click Tools | Generate GUID inside the IDE.)
@@ -30,6 +39,9 @@ DefaultGroupName={#MyAppName}
 AllowNoIcons=yes
 LicenseFile=ComicRack\bin\Release\net48\License.txt
 PrivilegesRequired=admin
+; /CURRENTUSER on the command line makes a per-user install (used to try the setup out without touching the machine)
+PrivilegesRequiredOverridesAllowed=commandline
+UsedUserAreasWarning=no
 OutputDir=.
 OutputBaseFilename={#MyAppSetupFile}
 Compression=lzma
@@ -67,6 +79,9 @@ Name: "desktop";   Description: "Desktop Shortcut";                         Type
 Name: "associate"; Description: "Associate eComic extensions";              Types: full typical
 Name: "languages"; Description: "Language Packs";                           Types: full
 Name: "additional";Description: "Additional images, icons and backgrounds"; Types: full
+#ifdef HelperSrc
+Name: "translator";Description: "Translator helper (reads and translates page text; setting it up needs Python 3.10+ and Ollama)"; Types: full
+#endif
 
 [Files]
 ; NOTE: Don't use "Flags: ignoreversion" on any shared system files
@@ -87,7 +102,17 @@ Source: "ComicRack\bin\Release\net48\Resources\x64\*"; DestDir: "{app}\Resources
 Source: "ComicRack\bin\Release\net48\Resources\Icons\*"; DestDir: "{app}\Resources\Icons"; Flags: ignoreversion; Components: additional
 Source: "ComicRack\bin\Release\net48\Resources\Textures\*"; DestDir: "{app}\Resources\Textures"; Flags: ignoreversion recursesubdirs; Components: additional
 Source: "ComicRack\bin\Release\net48\Scripts\*"; DestDir: "{app}\Scripts"; Flags: ignoreversion; Components: app
-Source: "ComicRack\bin\Release\net48\_CommonRedist\VC_redist.x64.exe"; DestDir: {tmp}; Flags: dontcopy
+Source: "{#RedistDir}\VC_redist.x64.exe"; DestDir: {tmp}; Flags: dontcopy
+#ifdef HelperSrc
+; The helper lives where the user may write: it keeps its settings, fonts, models and Python environment beside its files.
+Source: "{#HelperSrc}\*.py"; DestDir: "{localappdata}\ComicTranslator"; Flags: ignoreversion; Components: translator
+Source: "{#HelperSrc}\run.bat"; DestDir: "{localappdata}\ComicTranslator"; Flags: ignoreversion; Components: translator
+Source: "{#HelperSrc}\setup.bat"; DestDir: "{localappdata}\ComicTranslator"; Flags: ignoreversion; Components: translator
+Source: "{#HelperSrc}\requirements.txt"; DestDir: "{localappdata}\ComicTranslator"; Flags: ignoreversion; Components: translator
+Source: "{#HelperSrc}\README.md"; DestDir: "{localappdata}\ComicTranslator"; Flags: ignoreversion; Components: translator
+Source: "{#HelperSrc}\comictranslator.ico"; DestDir: "{localappdata}\ComicTranslator"; Flags: ignoreversion; Components: translator
+Source: "{#HelperSrc}\logo.png"; DestDir: "{localappdata}\ComicTranslator"; Flags: ignoreversion; Components: translator
+#endif
 
 [Registry]
 ; Comics
@@ -144,6 +169,9 @@ Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}";                
 Name: "{group}\{cm:ProgramOnTheWeb,{#MyAppName}}"; Filename: "{#MyAppURL}";     Components: start_menu
 Name: "{group}\{cm:UninstallProgram,{#MyAppName}}"; Filename: "{uninstallexe}"; Components: start_menu
 Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}";          Components: desktop
+#ifdef HelperSrc
+Name: "{group}\Translator helper"; Filename: "{localappdata}\ComicTranslator\run.bat"; WorkingDir: "{localappdata}\ComicTranslator"; IconFilename: "{localappdata}\ComicTranslator\comictranslator.ico"; Components: translator and start_menu
+#endif
 
 [InstallDelete]
 // Remove old dll's from old version before their location was changed
@@ -170,6 +198,9 @@ Filename: "{tmp}\VC_redist.x64.exe"; Parameters: "/install /passive /norestart";
     Check: Is64BitInstallMode and VC2022RedistNeedsInstall; \
     Flags: waituntilterminated; \
     StatusMsg: "Installing VC++ 2022 redistributables..."
+#ifdef HelperSrc
+Filename: "{cmd}"; Parameters: "/c ""{localappdata}\ComicTranslator\setup.bat"""; WorkingDir: "{localappdata}\ComicTranslator"; Description: "Set up the translator helper now (needs Python 3.10+ and internet; takes several minutes)"; Flags: postinstall unchecked skipifsilent; Components: translator
+#endif
 Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent
 
 [Code]
@@ -196,6 +227,38 @@ begin
   if Progress = ProgressMax then
     Log(Format('Successfully downloaded file to {tmp}: %s', [FileName]));
   Result := True;
+end;
+
+// The standard ComicRack Community Edition (the entry of its own installer): this build replaces it, so the setup offers to remove it first.
+// Only its program files go: the library, settings and translation data live in the user's profile and are kept.
+const
+  StockUninstallKey = 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{0FA63C63-846C-49B7-9A4B-553EF8EBEF0B}_is1';
+
+function StockUninstallCommand(var Command: String): Boolean;
+begin
+  Result := RegQueryStringValue(HKLM64, StockUninstallKey, 'UninstallString', Command)
+         or RegQueryStringValue(HKLM32, StockUninstallKey, 'UninstallString', Command);
+end;
+
+function InitializeSetup(): Boolean;
+var
+  Command: String;
+  Code: Integer;
+begin
+  Result := True;
+  if StockUninstallCommand(Command) then
+  begin
+    if SuppressibleMsgBox('The standard ComicRack Community Edition is installed on this PC.' + #13#10#13#10 +
+         'This build replaces it. Remove the standard one now?' + #13#10 +
+         '(Your library, settings and reading progress are kept.)', mbConfirmation, MB_YESNO, IDNO) = IDYES then
+    begin
+      Command := RemoveQuotes(Command);
+      if Exec(Command, '/SILENT /NORESTART', '', SW_SHOW, ewWaitUntilTerminated, Code) then
+        Log(Format('The standard ComicRack was removed (exit code %d).', [Code]))
+      else
+        Log(Format('The standard ComicRack could not be removed (error %d).', [Code]));
+    end;
+  end;
 end;
 
 // When the wizard form loads

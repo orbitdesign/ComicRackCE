@@ -1,4 +1,4 @@
-﻿orbitdesign Build 1.145 (based on Community Edition 0.9.184):
+﻿orbitdesign Build 1.146 (based on Community Edition 0.9.184):
 
 * 1.1 FIX: Hardware acceleration stability. Fixed OpenGL extension detection, replaced the deprecated automatic mip map generation that crashed some drivers, checked texture uploads for errors, and added a startup guard that switches hardware acceleration off for one session if ComicRack failed to start last time.
 * 1.2 NEW: Direct2D renderer for the reader. Used by default when hardware acceleration is on, with OpenGL and then software rendering as fallbacks. Handles graphics device resets, uses high quality cubic sampling for "Enable Hardware Filters", and supports paper textures. Start with -hwgl to use the old OpenGL renderer.
@@ -3719,3 +3719,4 @@ Build 0.9.0:
 * 1.144 CHANGE: The two language entries of the translate button's drop-down are labelled "Translate to English" and "Translate to Chinese".
 * 1.144 CHANGE: The language in use is shown on its icon in that list too: its badge is bright blue with a green tick, the other is grey (as well as the check frame).
 * 1.145 NEW: Chinese is set the standard way, vertically: characters top to bottom, the lines as columns from the right to the left (helper 1.62). Translation Settings (Language and lettering tab) has "Chinese: set the text vertically" to turn that off; wide flat strips of text stay in lines either way.
+* 1.146 NEW: A setup program (Installer.iss): installs this build as "ComicRack CE (orbitdesign build)", offers to remove the standard ComicRack Community Edition first (library and settings are kept), and has an optional Translator helper component installed under %LOCALAPPDATA%\ComicTranslator, which Start helper finds by itself.

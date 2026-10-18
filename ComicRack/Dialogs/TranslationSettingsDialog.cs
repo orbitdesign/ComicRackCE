@@ -884,6 +884,10 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 		private void StartHelper()
 		{
 			string folder = HelperFolder;
+			if ((string.IsNullOrEmpty(folder) || !File.Exists(Path.Combine(folder, "run.bat"))) && File.Exists(Path.Combine(TranslationServices.InstalledHelperFolder, "run.bat")))
+			{
+				folder = HelperFolder = TranslationServices.InstalledHelperFolder;      //installed by the setup program
+			}
 			if (string.IsNullOrEmpty(folder) || !File.Exists(Path.Combine(folder, "run.bat")))
 			{
 				using (FolderBrowserDialog dlg = new FolderBrowserDialog())
