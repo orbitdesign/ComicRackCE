@@ -844,6 +844,9 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 
 		private MouseButtons pendingClick;
 
+		//The press that started the current click landed on an overlay (the page bar, a button ...)
+		private bool pressOnOverlay;
+
 		private bool inPaint;
 
 		private bool blockPaint;
@@ -1460,6 +1463,8 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 		public virtual bool IsDoubleImage => false;
 
 		protected virtual bool MouseHandled => false;
+
+		protected virtual bool OverlayHasMouse => false;
 
 		protected Point GestureLocation
 		{
@@ -2217,11 +2222,25 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 		{
 			StopTimer();
 			pendingClick = MouseButtons.None;
+			if (pressOnOverlay)
+			{
+				return;
+			}
 			HandleClick(lastMouseButton, doubleClick: true, this.IsTouchMessage());
 		}
 
 		protected override void OnClick(EventArgs e)
 		{
+			//A click on an overlay is the overlay's. The single click is only handled when the timer
+			//runs out, and by then the overlay may have hidden or moved (the page bar after a jump),
+			//so MouseHandled alone let the click through to the page - and a left click on the page
+			//is "Show Browser", which threw the reader back to the library.
+			if (pressOnOverlay)
+			{
+				StopTimer();
+				pendingClick = MouseButtons.None;
+				return;
+			}
 			pendingClick = lastMouseButton;
 			StartTimer();
 		}
@@ -2348,6 +2367,7 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 		{
 			base.OnMouseDown(e);
 			lastMouseButton = e.Button;
+			pressOnOverlay = OverlayHasMouse;
 			Focus();
 			if (e.Button != MouseButtons.Right)
 			{

@@ -1149,6 +1149,8 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 			private set;
 		}
 
+		protected override bool OverlayHasMouse => overlayManager.MouseHandled;
+
 		protected override bool MouseHandled
 		{
 			get
