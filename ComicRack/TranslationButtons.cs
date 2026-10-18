@@ -621,8 +621,8 @@ namespace cYo.Projects.ComicRack.Viewer
 				}
 			};
 			//The language the pages are translated into, one click away: the helper's own setting, changed here without the settings window.
-			pair.English = new ToolStripMenuItem("English", GetMenuIcon(MenuIcon.Language, "EN", iconSize), delegate { Main?.SetTranslationLanguage("en"); });
-			pair.Chinese = new ToolStripMenuItem("Chinese", GetMenuIcon(MenuIcon.Language, "中", iconSize), delegate { Main?.SetTranslationLanguage(targetCode.StartsWith("zh") ? targetCode : "zh-CN"); });
+			pair.English = new ToolStripMenuItem("Translate to English", GetMenuIcon(MenuIcon.Language, "EN", iconSize), delegate { Main?.SetTranslationLanguage("en"); });
+			pair.Chinese = new ToolStripMenuItem("Translate to Chinese", GetMenuIcon(MenuIcon.Language, "中", iconSize), delegate { Main?.SetTranslationLanguage(targetCode.StartsWith("zh") ? targetCode : "zh-CN"); });
 			pair.Translator.DropDownItems.Add(pair.English);
 			pair.Translator.DropDownItems.Add(pair.Chinese);
 			pair.Translator.DropDownItems.Add(new ToolStripSeparator());
@@ -1385,7 +1385,8 @@ namespace cYo.Projects.ComicRack.Viewer
 			Rest,
 			Book,
 			Stop,
-			Language
+			Language,
+			LanguageOn
 		}
 
 		//The language the helper translates into (its target_code), as last seen; the menu shows a tick on it.
@@ -1393,8 +1394,13 @@ namespace cYo.Projects.ComicRack.Viewer
 
 		private static void ShowTarget(Pair pair)
 		{
-			pair.English.Checked = targetCode == "en";
-			pair.Chinese.Checked = targetCode.StartsWith("zh");
+			bool english = targetCode == "en", chinese = targetCode.StartsWith("zh");
+			int size = Math.Max(16, pair.Strip.ImageScalingSize.Height);
+			pair.English.Checked = english;
+			pair.Chinese.Checked = chinese;
+			//the chosen language shows on its icon too: a bright badge with a tick, the other one is grey
+			pair.English.Image = GetMenuIcon(english ? MenuIcon.LanguageOn : MenuIcon.Language, "EN", size);
+			pair.Chinese.Image = GetMenuIcon(chinese ? MenuIcon.LanguageOn : MenuIcon.Language, "中", size);
 		}
 
 		/// <summary>Asks the helper which language it translates into (off the interface thread) and ticks it in the menu.</summary>
@@ -1521,11 +1527,12 @@ namespace cYo.Projects.ComicRack.Viewer
 								break;
 							}
 						case MenuIcon.Language:
+						case MenuIcon.LanguageOn:
 							{
 								//A rounded badge with the language's letters: EN, or a Chinese character.
 								RectangleF badge = new RectangleF(0.8f * u, 2.5f * u, 14.4f * u, 11f * u);
 								using (GraphicsPath path = new GraphicsPath())
-								using (SolidBrush fill = new SolidBrush(Color.FromArgb(60, 120, 200)))
+								using (SolidBrush fill = new SolidBrush(kind == MenuIcon.LanguageOn ? Color.FromArgb(40, 120, 235) : Color.FromArgb(120, 126, 138)))
 								{
 									float r = 3f * u;
 									path.AddArc(badge.X, badge.Y, r * 2, r * 2, 180, 90);
@@ -1542,6 +1549,19 @@ namespace cYo.Projects.ComicRack.Viewer
 								using (SolidBrush ink = new SolidBrush(Color.White))
 								{
 									g.DrawString(number, font, ink, new RectangleF(badge.X, badge.Y + 0.3f * u, badge.Width, badge.Height), sf);
+								}
+								if (kind == MenuIcon.LanguageOn)
+								{
+									//a green disc with a tick at the corner: this is the language in use
+									RectangleF disc = new RectangleF(9f * u, 8.6f * u, 7f * u, 7f * u);
+									using (SolidBrush green = new SolidBrush(Color.FromArgb(40, 175, 80)))
+									using (Pen ring = new Pen(Color.White, Math.Max(1f, 0.9f * u)))
+									using (Pen tick = new Pen(Color.White, Math.Max(1.2f, 1.3f * u)) { StartCap = LineCap.Round, EndCap = LineCap.Round, LineJoin = LineJoin.Round })
+									{
+										g.FillEllipse(green, disc);
+										g.DrawEllipse(ring, disc);
+										g.DrawLines(tick, new[] { new PointF(10.6f * u, 12.2f * u), new PointF(12f * u, 13.6f * u), new PointF(14.4f * u, 10.4f * u) });
+									}
 								}
 								break;
 							}
