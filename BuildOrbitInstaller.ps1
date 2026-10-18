@@ -1,4 +1,4 @@
-# Builds the setup program of this build ("ComicRack CE (orbitdesign build)") with Inno Setup 6.
+# Builds the setup program of this build ("ComicRack CEO") with Inno Setup 6.
 #   1. Build ComicRack in Release first (MSBuild.exe ComicRack\ComicRack.csproj -restore -t:build -property:Configuration=Release).
 #   2. Run this script from the repository root.
 # The setup program has an optional "Translator helper" component when -HelperSrc names the folder with the helper's files.

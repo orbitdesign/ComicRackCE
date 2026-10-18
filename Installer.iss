@@ -1,5 +1,5 @@
 ﻿; Define version and setup filename with iscc.exe /DMyAppVersion=v1.0 /DMyAppSetupFile=ComicRackSetup_v1.0 Installer.iss
-#define MyAppName "ComicRack CE (orbitdesign build)"
+#define MyAppName "ComicRack CEO"
 ; The folder it installs to (under Program Files); the name shown in Windows Apps and the shortcuts is MyAppName.
 #define MyAppDir "ComicRack CEO"
 #ifndef MyAppVersion
