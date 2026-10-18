@@ -1,4 +1,4 @@
-﻿orbitdesign Build 1.137 (based on Community Edition 0.9.184):
+﻿orbitdesign Build 1.138 (based on Community Edition 0.9.184):
 
 * 1.1 FIX: Hardware acceleration stability. Fixed OpenGL extension detection, replaced the deprecated automatic mip map generation that crashed some drivers, checked texture uploads for errors, and added a startup guard that switches hardware acceleration off for one session if ComicRack failed to start last time.
 * 1.2 NEW: Direct2D renderer for the reader. Used by default when hardware acceleration is on, with OpenGL and then software rendering as fallbacks. Handles graphics device resets, uses high quality cubic sampling for "Enable Hardware Filters", and supports paper textures. Start with -hwgl to use the old OpenGL renderer.
@@ -3710,3 +3710,4 @@ Build 0.9.0:
 * 1.136 CHANGE: Translation editor: with the polygon tool the space bar finishes the shape and starts the translating, like Enter and a double click.
 * 1.137 NEW: Translation editor: a click on a line of the selected box adds a point there, for every shape (plain rectangle, rounded, pill, oval, octagon, diamond, triangles, also turned): the box becomes a free polygon with the points of its outline and the new one, looking the same, and its points can then be dragged, added to by clicking its lines, and erased with a right click. The pointer is a cross on such a line; a drag from a line still moves the box, and the handles and corner dots work as before.
 * 1.137 CHANGE: Translation editor: the polygon tool is remembered like the shapes are: when it was the last shape chosen, "Add text box" starts it (also after ComicRack was restarted) and it is the checked entry in the shape menu; choosing another shape remembers that one instead.
+* 1.138 NEW: The reader's right-click menu has Show in Browser (shows the open book in the library browser, like the tab menu and the Read menu), above Reveal in Explorer.

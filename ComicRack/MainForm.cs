@@ -1306,7 +1306,7 @@ namespace cYo.Projects.ComicRack.Viewer
 			commands.Add(delegate
 			{
 				SyncBrowser();
-			}, () => ComicDisplay.Book != null, miSyncBrowser, cmSyncBrowser);
+			}, () => ComicDisplay.Book != null, miSyncBrowser, cmSyncBrowser, cmPageSyncBrowser);
 			commands.Add(AddFolderToLibrary, miAddFolderToLibrary);
 			commands.Add(StartFullScan, miScan, tbScan);
 			//Quick Scan Folders: in the File menu and in the toolbar's menu, after Scan Book Folders

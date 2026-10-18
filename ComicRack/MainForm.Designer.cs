@@ -406,6 +406,7 @@ namespace cYo.Projects.ComicRack.Viewer
 			this.sepBeforeRevealInBrowser = new System.Windows.Forms.ToolStripSeparator();
 			this.cmRevealInExplorer = new System.Windows.Forms.ToolStripMenuItem();
 			this.cmPageRevealInExplorer = new System.Windows.Forms.ToolStripMenuItem();
+			this.cmPageSyncBrowser = new System.Windows.Forms.ToolStripMenuItem();
 			this.toolStripSeparator12 = new System.Windows.Forms.ToolStripSeparator();
 			this.cmCopyPath = new System.Windows.Forms.ToolStripMenuItem();
 			this.trimTimer = new System.Windows.Forms.Timer(this.components);
@@ -2001,6 +2002,7 @@ namespace cYo.Projects.ComicRack.Viewer
             this.cmCopyPage,
             this.cmExportPage,
             this.toolStripSeparator12,
+            this.cmPageSyncBrowser,
             this.cmPageRevealInExplorer,
             this.toolStripMenuItem11,
             this.cmRefreshPage,
@@ -3445,6 +3447,14 @@ namespace cYo.Projects.ComicRack.Viewer
 			this.toolStripSeparator12.Name = "toolStripSeparator12";
 			this.toolStripSeparator12.Size = new System.Drawing.Size(217, 6);
 			// 
+			// cmPageSyncBrowser
+			// 
+			this.cmPageSyncBrowser.Image = global::cYo.Projects.ComicRack.Viewer.Properties.Resources.SyncBrowser;
+			this.cmPageSyncBrowser.Name = "cmPageSyncBrowser";
+			this.cmPageSyncBrowser.ShortcutKeys = ((System.Windows.Forms.Keys)((System.Windows.Forms.Keys.Control | System.Windows.Forms.Keys.F3)));
+			this.cmPageSyncBrowser.Size = new System.Drawing.Size(220, 22);
+			this.cmPageSyncBrowser.Text = "Show in Br&owser";
+			// 
 			// cmPageRevealInExplorer
 			// 
 			this.cmPageRevealInExplorer.Name = "cmPageRevealInExplorer";
@@ -3710,6 +3720,8 @@ namespace cYo.Projects.ComicRack.Viewer
 		private ToolStripMenuItem cmRevealInExplorer;
 
 		private ToolStripMenuItem cmPageRevealInExplorer;
+
+		private ToolStripMenuItem cmPageSyncBrowser;
 
 		private ToolStripSeparator toolStripSeparator12;
 		private ToolStripMenuItem cmSyncBrowser;
