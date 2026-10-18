@@ -1,5 +1,7 @@
 ﻿; Define version and setup filename with iscc.exe /DMyAppVersion=v1.0 /DMyAppSetupFile=ComicRackSetup_v1.0 Installer.iss
 #define MyAppName "ComicRack CE (orbitdesign build)"
+; The folder it installs to (under Program Files); the name shown in Windows Apps and the shortcuts is MyAppName.
+#define MyAppDir "ComicRack CEO"
 #ifndef MyAppVersion
 #define MyAppVersion "v0.9.184"
 #endif
@@ -33,7 +35,7 @@ AppPublisher={#MyAppPublisher}
 AppPublisherURL={#MyAppURL}
 AppSupportURL={#MyAppURL}
 AppUpdatesURL={#MyAppURL}
-DefaultDirName={autopf}\{#MyAppName}
+DefaultDirName={autopf}\{#MyAppDir}
 ChangesAssociations=yes
 DefaultGroupName={#MyAppName}
 AllowNoIcons=yes
@@ -117,24 +119,24 @@ Source: "{#HelperSrc}\logo.png"; DestDir: "{localappdata}\ComicTranslator"; Flag
 [Registry]
 ; Comics
 Root: HKA; Subkey: "Software\Classes\cYo.ComicRack";                       ValueType: string; Flags: uninsdeletevalue; Components: associate; ValueData: "eComic"
-Root: HKA; Subkey: "Software\Classes\cYo.ComicRack\DefaultIcon";           ValueType: string; Flags: uninsdeletevalue; Components: associate; ValueData: """{autopf}\{#MyAppName}\{#MyAppExeName}"",1"
+Root: HKA; Subkey: "Software\Classes\cYo.ComicRack\DefaultIcon";           ValueType: string; Flags: uninsdeletevalue; Components: associate; ValueData: """{autopf}\{#MyAppDir}\{#MyAppExeName}"",1"
 Root: HKA; Subkey: "Software\Classes\cYo.ComicRack\shell";                 ValueType: string; Flags: uninsdeletevalue; Components: associate; ValueData: "open"
 Root: HKA; Subkey: "Software\Classes\cYo.ComicRack\shell\open";            ValueType: string; Flags: uninsdeletevalue; Components: associate; ValueData: "Open eComic with ComicRack CE"
-Root: HKA; Subkey: "Software\Classes\cYo.ComicRack\shell\open\command";    ValueType: string; Flags: uninsdeletevalue; Components: associate; ValueData: """{autopf}\{#MyAppName}\{#MyAppExeName}""  ""%1"""
+Root: HKA; Subkey: "Software\Classes\cYo.ComicRack\shell\open\command";    ValueType: string; Flags: uninsdeletevalue; Components: associate; ValueData: """{autopf}\{#MyAppDir}\{#MyAppExeName}""  ""%1"""
 
 ; Comic Lists
 Root: HKA; Subkey: "Software\Classes\cYo.ComicList";                    ValueType: string; Flags: uninsdeletevalue; Components: associate; ValueData: "eComic List"
-Root: HKA; Subkey: "Software\Classes\cYo.ComicList\DefaultIcon";        ValueType: string; Flags: uninsdeletevalue; Components: associate; ValueData: """{autopf}\{#MyAppName}\{#MyAppExeName}"",2"
+Root: HKA; Subkey: "Software\Classes\cYo.ComicList\DefaultIcon";        ValueType: string; Flags: uninsdeletevalue; Components: associate; ValueData: """{autopf}\{#MyAppDir}\{#MyAppExeName}"",2"
 Root: HKA; Subkey: "Software\Classes\cYo.ComicList\shell";              ValueType: string; Flags: uninsdeletevalue; Components: associate; ValueData: "open"
 Root: HKA; Subkey: "Software\Classes\cYo.ComicList\shell\open";         ValueType: string; Flags: uninsdeletevalue; Components: associate; ValueData: "Import eComic List into ComicRack CE"
-Root: HKA; Subkey: "Software\Classes\cYo.ComicList\shell\open\command"; ValueType: string; Flags: uninsdeletevalue; Components: associate; ValueData: """{autopf}\{#MyAppName}\{#MyAppExeName}"" -il ""%1"""
+Root: HKA; Subkey: "Software\Classes\cYo.ComicList\shell\open\command"; ValueType: string; Flags: uninsdeletevalue; Components: associate; ValueData: """{autopf}\{#MyAppDir}\{#MyAppExeName}"" -il ""%1"""
 
 ; ComicRack Plugins
 Root: HKA; Subkey: "Software\Classes\cYo.ComicRackPlugin";                       ValueType: string; Flags: uninsdeletevalue; Components: associate; ValueData: "ComicRack Plugin"
-Root: HKA; Subkey: "Software\Classes\cYo.ComicRackPlugin\DefaultIcon";           ValueType: string; Flags: uninsdeletevalue; Components: associate; ValueData: """{autopf}\{#MyAppName}\{#MyAppExeName}"",3"
+Root: HKA; Subkey: "Software\Classes\cYo.ComicRackPlugin\DefaultIcon";           ValueType: string; Flags: uninsdeletevalue; Components: associate; ValueData: """{autopf}\{#MyAppDir}\{#MyAppExeName}"",3"
 Root: HKA; Subkey: "Software\Classes\cYo.ComicRackPlugin\shell";                 ValueType: string; Flags: uninsdeletevalue; Components: associate; ValueData: "open"
 Root: HKA; Subkey: "Software\Classes\cYo.ComicRackPlugin\shell\open";            ValueType: string; Flags: uninsdeletevalue; Components: associate; ValueData: "Install Plugin into ComicRack CE"
-Root: HKA; Subkey: "Software\Classes\cYo.ComicRackPlugin\shell\open\command";    ValueType: string; Flags: uninsdeletevalue; Components: associate; ValueData: """{autopf}\{#MyAppName}\{#MyAppExeName}"" -ip ""%1"""
+Root: HKA; Subkey: "Software\Classes\cYo.ComicRackPlugin\shell\open\command";    ValueType: string; Flags: uninsdeletevalue; Components: associate; ValueData: """{autopf}\{#MyAppDir}\{#MyAppExeName}"" -ip ""%1"""
 
 ; Extensions
 Root: HKA; Subkey: "Software\Classes\.cbz";                                   ValueType: string; Flags: uninsdeletevalue; Components: associate; ValueData: "cYo.ComicRack"
@@ -153,11 +155,11 @@ Root: HKA; Subkey: "Software\Classes\.crplugin";                              Va
 Root: HKA; Subkey: "Software\Classes\.crplugin\OpenWithProgIDs";              ValueType: string; Flags: uninsdeletevalue; Components: associate; ValueName: "cYo.ComicRackPlugin"
 
 ; Application specific
-Root: HKA; Subkey: "Software\Microsoft\Windows\CurrentVersion\App Paths\{#MyAppExeName}"; ValueType: string; Flags: uninsdeletevalue; ValueData: "{autopf}\{#MyAppName}\{#MyAppExeName}"
+Root: HKA; Subkey: "Software\Microsoft\Windows\CurrentVersion\App Paths\{#MyAppExeName}"; ValueType: string; Flags: uninsdeletevalue; ValueData: "{autopf}\{#MyAppDir}\{#MyAppExeName}"
 Root: HKA; Subkey: "Software\Classes\Applications\{#MyAppExeName}";                       ValueType: string; Flags: uninsdeletevalue; ValueData: "{#MyAppName}"; ValueName: "FriendlyAppName"
-Root: HKA; Subkey: "Software\Classes\Applications\{#MyAppExeName}\DefaultIcon";           ValueType: string; Flags: uninsdeletevalue; ValueData: """{autopf}\{#MyAppName}\{#MyAppExeName}"",1"
+Root: HKA; Subkey: "Software\Classes\Applications\{#MyAppExeName}\DefaultIcon";           ValueType: string; Flags: uninsdeletevalue; ValueData: """{autopf}\{#MyAppDir}\{#MyAppExeName}"",1"
 Root: HKA; Subkey: "Software\Classes\Applications\{#MyAppExeName}\shell\open";            ValueType: string; Flags: uninsdeletevalue; ValueData: "{#MyAppName}"; ValueName: "FriendlyAppName"
-Root: HKA; Subkey: "Software\Classes\Applications\{#MyAppExeName}\shell\open\command";    ValueType: string; Flags: uninsdeletevalue; ValueData: """{autopf}\{#MyAppName}\{#MyAppExeName}"" ""%1"""
+Root: HKA; Subkey: "Software\Classes\Applications\{#MyAppExeName}\shell\open\command";    ValueType: string; Flags: uninsdeletevalue; ValueData: """{autopf}\{#MyAppDir}\{#MyAppExeName}"" ""%1"""
 Root: HKA; Subkey: "Software\Classes\Applications\{#MyAppExeName}\SupportedTypes";        ValueType: string; Flags: uninsdeletevalue; ValueName: ".cb7"; ValueData: ""
 Root: HKA; Subkey: "Software\Classes\Applications\{#MyAppExeName}\SupportedTypes";        ValueType: string; Flags: uninsdeletevalue; ValueName: ".cbz"; ValueData: ""
 Root: HKA; Subkey: "Software\Classes\Applications\{#MyAppExeName}\SupportedTypes";        ValueType: string; Flags: uninsdeletevalue; ValueName: ".cbr"; ValueData: ""
