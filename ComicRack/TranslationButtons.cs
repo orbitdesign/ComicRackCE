@@ -340,12 +340,20 @@ namespace cYo.Projects.ComicRack.Viewer
 
 		// ---- the helper ----
 
+		/// <summary>Where the setup program puts the translator helper (its files are there when the component was installed).</summary>
+		public static string InstalledHelperFolder => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ComicTranslator");
+
 		private static string FindHelperFolder(IWin32Window owner)
 		{
 			string folder = Program.Settings.TranslatorHelperFolder;
 			if (!string.IsNullOrEmpty(folder) && File.Exists(Path.Combine(folder, "run.bat")))
 			{
 				return folder;
+			}
+			if (File.Exists(Path.Combine(InstalledHelperFolder, "run.bat")))
+			{
+				Program.Settings.TranslatorHelperFolder = InstalledHelperFolder;
+				return InstalledHelperFolder;
 			}
 			using (FolderBrowserDialog dialog = new FolderBrowserDialog())
 			{

@@ -22,6 +22,60 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 			BaseUrl = (string.IsNullOrWhiteSpace(baseUrl) ? "http://127.0.0.1:8790" : baseUrl.Trim()).TrimEnd('/');
 		}
 
+		/// <summary>How many pages the helper has stored for the language and settings it uses now (helper 1.63 and later).</summary>
+		public class BookCacheStatus
+		{
+			/// <summary>The helper's language, e.g. "Chinese (Simplified)", and its code, e.g. "zh-CN".</summary>
+			public string Language = "";
+
+			public string Code = "";
+
+			/// <summary>Pages asked about, read and translated, and with their finished picture stored too.</summary>
+			public int Asked;
+
+			public int Read;
+
+			public int Ready;
+		}
+
+		/// <summary>Asks the helper how many of these pages (fingerprint and fonts) it has stored for its language now.</summary>
+		public BookCacheStatus CacheStatus(IList<KeyValuePair<string, StyleFonts>> pages)
+		{
+			using (MemoryStream ms = new MemoryStream())
+			{
+				using (Utf8JsonWriter w = new Utf8JsonWriter(ms))
+				{
+					w.WriteStartObject();
+					w.WriteStartArray("pages");
+					foreach (KeyValuePair<string, StyleFonts> page in pages)
+					{
+						w.WriteStartObject();
+						w.WriteString("sha", page.Key);
+						if (page.Value != null && !page.Value.IsEmpty)
+						{
+							w.WriteString("font_caps", page.Value.Caps ?? "");
+							w.WriteString("font_mixed", page.Value.Mixed ?? "");
+						}
+						w.WriteEndObject();
+					}
+					w.WriteEndArray();
+					w.WriteEndObject();
+				}
+				using (JsonDocument doc = JsonDocument.Parse(Send("/api/cache-status", ms.ToArray(), "application/json", 20000)))
+				{
+					JsonElement root = doc.RootElement;
+					return new BookCacheStatus
+					{
+						Language = root.TryGetProperty("language", out JsonElement l) && l.ValueKind == JsonValueKind.String ? l.GetString() : "",
+						Code = root.TryGetProperty("code", out JsonElement c) && c.ValueKind == JsonValueKind.String ? c.GetString() : "",
+						Asked = root.TryGetProperty("asked", out JsonElement a) && a.TryGetInt32(out int asked) ? asked : 0,
+						Read = root.TryGetProperty("read", out JsonElement r) && r.TryGetInt32(out int read) ? read : 0,
+						Ready = root.TryGetProperty("ready", out JsonElement d) && d.TryGetInt32(out int ready) ? ready : 0
+					};
+				}
+			}
+		}
+
 		public PageAnalysis Analyze(byte[] page, StyleFonts fonts = null, bool cover = false)
 		{
 			string path = "/api/analyze";

@@ -748,7 +748,8 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 					{
 						pageTranslator = new PageTranslationService
 						{
-							ServerUrl = translationServerUrl
+							ServerUrl = translationServerUrl,
+							OriginalBytes = delegate (PageKey k) { return IsValid && ReferenceEquals(k.Source, this) ? Book.GetByteImage(k.Index) : null; }
 						};
 						pageTranslator.PageFinished += pageTranslator_PageFinished;
 						pageTranslator.StateChanged += pageTranslator_StateChanged;

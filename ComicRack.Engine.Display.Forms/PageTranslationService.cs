@@ -127,6 +127,34 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 
 		public string ServerUrl { get; set; } = "http://127.0.0.1:8790";
 
+		/// <summary>
+		/// The book's own bytes of a page (set by the reader). The page on screen can carry the reader's colour adjustment (sharpen...),
+		/// which makes another picture of the same page than the book holds: the helper keys everything it stores on the picture it is
+		/// given, so reading, translating ahead, the batch and the export would each translate the page again. The translator is
+		/// therefore always given the book's own bytes.
+		/// </summary>
+		public Func<PageKey, byte[]> OriginalBytes { get; set; }
+
+		private byte[] UploadBytesFor(PageKey key, PageImage image)
+		{
+			Func<PageKey, byte[]> original = OriginalBytes;
+			if (original != null && key != null && !key.Adjustment.IsEmpty && (int)key.Rotation == 0)
+			{
+				try
+				{
+					byte[] raw = original(key);
+					if (IsReadableFormat(raw))
+					{
+						return raw;
+					}
+				}
+				catch (Exception)
+				{
+				}
+			}
+			return GetUploadBytes(image);
+		}
+
 		/// <summary>Where the user's changes and the list of translated pages are kept.</summary>
 		public TranslationStore Store { get; }
 
@@ -419,7 +447,7 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 			}
 			//Outside the lock: may encode the page when its original format is not one the
 			//helper can read.
-			byte[] data = GetUploadBytes(image);
+			byte[] data = UploadBytesFor(key, image);
 			if (data == null)
 			{
 				return;
@@ -461,7 +489,7 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 			{
 				return false;
 			}
-			byte[] data = GetUploadBytes(original);
+			byte[] data = UploadBytesFor(key, original);
 			if (data == null)
 			{
 				return false;
@@ -740,7 +768,7 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 		/// </summary>
 		public void PreviewWithFonts(PageKey key, PageImage original, StyleFonts fonts, Action<byte[], string> done)
 		{
-			byte[] data = original == null ? null : GetUploadBytes(original);
+			byte[] data = original == null ? null : UploadBytesFor(key, original);
 			string url = ServerUrl;
 			List<TranslationBox> boxes;
 			string bookKey;

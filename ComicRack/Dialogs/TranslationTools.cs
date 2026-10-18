@@ -420,6 +420,13 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 
 		private Label lblNote;
 
+		private Label lblLanguage;
+
+		//The file name offered until the user types another one, and what the helper said about the book's pages (null: not known).
+		private string defaultName;
+
+		private TranslationApi.BookCacheStatus cacheStatus;
+
 		private ProgressBar progress;
 
 		private Label lblProgress;
@@ -447,33 +454,36 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			MaximizeBox = false;
 			MinimizeBox = false;
 			ShowInTaskbar = false;
-			ClientSize = new Size(560, 372);
+			ClientSize = new Size(560, 400);
 			Color gray = ThemeManager.IsDarkModeEnabled ? Color.FromArgb(150, 150, 150) : Color.FromArgb(110, 110, 110);
 
 			Controls.Add(new Label { Text = "Book:", Location = new Point(14, 16), Size = new Size(70, 18) });
 			Controls.Add(new Label { Text = book?.Caption ?? "", Location = new Point(90, 16), Size = new Size(456, 18), AutoEllipsis = true });
-			Controls.Add(new Label { Text = "Save as:", Location = new Point(14, 48), Size = new Size(70, 18) });
-			cboFormat = new ComboBoxEx { Location = new Point(90, 44), Size = new Size(456, 21), DropDownStyle = ComboBoxStyle.DropDownList, Name = "cboFormat" };
+			Controls.Add(new Label { Text = "Language:", Location = new Point(14, 44), Size = new Size(70, 18) });
+			lblLanguage = new Label { Text = "asking the translator...", Location = new Point(90, 44), Size = new Size(456, 18), AutoEllipsis = true, Name = "lblLanguage" };
+			Controls.Add(lblLanguage);
+			Controls.Add(new Label { Text = "Save as:", Location = new Point(14, 76), Size = new Size(70, 18) });
+			cboFormat = new ComboBoxEx { Location = new Point(90, 72), Size = new Size(456, 21), DropDownStyle = ComboBoxStyle.DropDownList, Name = "cboFormat" };
 			Controls.Add(cboFormat);
-			Controls.Add(new Label { Text = "Folder:", Location = new Point(14, 80), Size = new Size(70, 18) });
-			txtFolder = new TextBox { Location = new Point(90, 77), Size = new Size(368, 20), Name = "txtFolder" };
-			Button browse = new Button { Text = "Browse...", Location = new Point(464, 75), Size = new Size(82, 24), Name = "btBrowse" };
+			Controls.Add(new Label { Text = "Folder:", Location = new Point(14, 108), Size = new Size(70, 18) });
+			txtFolder = new TextBox { Location = new Point(90, 105), Size = new Size(368, 20), Name = "txtFolder" };
+			Button browse = new Button { Text = "Browse...", Location = new Point(464, 103), Size = new Size(82, 24), Name = "btBrowse" };
 			Controls.AddRange(new Control[] { txtFolder, browse });
-			Controls.Add(new Label { Text = "File name:", Location = new Point(14, 112), Size = new Size(70, 18) });
-			txtName = new TextBox { Location = new Point(90, 109), Size = new Size(456, 20), Name = "txtName" };
+			Controls.Add(new Label { Text = "File name:", Location = new Point(14, 140), Size = new Size(70, 18) });
+			txtName = new TextBox { Location = new Point(90, 137), Size = new Size(456, 20), Name = "txtName" };
 			Controls.Add(txtName);
-			lblTarget = new Label { Location = new Point(90, 134), Size = new Size(456, 32), ForeColor = gray, AutoEllipsis = true, Name = "lblTarget" };
+			lblTarget = new Label { Location = new Point(90, 162), Size = new Size(456, 32), ForeColor = gray, AutoEllipsis = true, Name = "lblTarget" };
 			Controls.Add(lblTarget);
-			chkOverwrite = new CheckBox { Text = "Replace the file if it already exists", Location = new Point(90, 170), Size = new Size(456, 22), Name = "chkOverwrite" };
-			chkAdd = new CheckBox { Text = "Add the new book to my library", Location = new Point(90, 194), Size = new Size(456, 22), Name = "chkAdd" };
+			chkOverwrite = new CheckBox { Text = "Replace the file if it already exists", Location = new Point(90, 198), Size = new Size(456, 22), Name = "chkOverwrite" };
+			chkAdd = new CheckBox { Text = "Add the new book to my library", Location = new Point(90, 222), Size = new Size(456, 22), Name = "chkAdd" };
 			Controls.AddRange(new Control[] { chkOverwrite, chkAdd });
-			lblNote = new Label { Location = new Point(14, 226), Size = new Size(532, 58), ForeColor = gray, Name = "lblNote" };
+			lblNote = new Label { Location = new Point(14, 254), Size = new Size(532, 58), ForeColor = gray, Name = "lblNote" };
 			Controls.Add(lblNote);
-			progress = new ProgressBar { Location = new Point(14, 294), Size = new Size(532, 18), Name = "progress" };
-			lblProgress = new Label { Location = new Point(14, 316), Size = new Size(532, 18), Name = "lblProgress", AutoEllipsis = true };
+			progress = new ProgressBar { Location = new Point(14, 322), Size = new Size(532, 18), Name = "progress" };
+			lblProgress = new Label { Location = new Point(14, 344), Size = new Size(532, 18), Name = "lblProgress", AutoEllipsis = true };
 			Controls.AddRange(new Control[] { progress, lblProgress });
-			btStart = new Button { Text = "Export", Location = new Point(378, 336), Size = new Size(84, 28), Name = "btStart" };
-			btClose = new Button { Text = "Close", Location = new Point(468, 336), Size = new Size(78, 28), Name = "btClose" };
+			btStart = new Button { Text = "Export", Location = new Point(378, 364), Size = new Size(84, 28), Name = "btStart" };
+			btClose = new Button { Text = "Close", Location = new Point(468, 364), Size = new Size(78, 28), Name = "btClose" };
 			Controls.AddRange(new Control[] { btStart, btClose });
 			AcceptButton = btStart;
 
@@ -490,7 +500,8 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			bool wasRar = current.IndexOf("CBR", StringComparison.OrdinalIgnoreCase) >= 0 || current.IndexOf("RAR", StringComparison.OrdinalIgnoreCase) >= 0;
 			cboFormat.SelectedIndex = (wasRar && rarPath != null) ? cboFormat.Items.Count - 1 : 0;
 			txtFolder.Text = string.IsNullOrEmpty(book?.FilePath) ? "" : Path.GetDirectoryName(book.FilePath);
-			txtName.Text = (book == null ? "Book" : book.FileName) + " - AI Translated";
+			defaultName = (book == null ? "Book" : book.FileName) + " - AI Translated";
+			txtName.Text = defaultName;
 
 			cboFormat.SelectedIndexChanged += delegate { UpdateTarget(); };
 			txtFolder.TextChanged += delegate { UpdateTarget(); };
@@ -529,9 +540,76 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 				}
 			};
 			UpdateTarget();
+			LoadCacheStatus();
 		}
 
 		private FormatChoice Choice => (FormatChoice)cboFormat.SelectedItem;
+
+		/// <summary>Asks the helper (off the interface thread) which language it translates into and how many of the book's pages it has stored in it.</summary>
+		private void LoadCacheStatus()
+		{
+			string url = reader.TranslationServerUrl;
+			TranslationStore store = reader.TranslationService?.Store;
+			string key = reader.TranslationBookKey;
+			int total = reader.Book?.ProviderPageCount ?? 0;
+			List<KeyValuePair<string, StyleFonts>> pages = new List<KeyValuePair<string, StyleFonts>>();
+			for (int i = 0; i < total && store != null && key != null; i++)
+			{
+				string sha = store.GetSha(key, i);
+				if (sha != null)
+				{
+					pages.Add(new KeyValuePair<string, StyleFonts>(sha, store.GetFonts(key, i)));
+				}
+			}
+			ThreadPool.QueueUserWorkItem(delegate
+			{
+				TranslationApi.BookCacheStatus status = null;
+				try
+				{
+					status = new TranslationApi(url).CacheStatus(pages);
+				}
+				catch (Exception)
+				{
+				}
+				try
+				{
+					BeginInvoke(new Action(delegate { ShowCacheStatus(status); }));
+				}
+				catch (Exception)
+				{
+				}
+			});
+		}
+
+		/// <summary>The language the helper translates into, short ("Chinese", "English") for the file name.</summary>
+		private static string ShortLanguage(TranslationApi.BookCacheStatus status)
+		{
+			string name = (status.Language ?? "").Split('(')[0].Trim();
+			return name.Length > 0 ? name : status.Code;
+		}
+
+		private void ShowCacheStatus(TranslationApi.BookCacheStatus status)
+		{
+			if (IsDisposed || running != null)
+			{
+				return;
+			}
+			cacheStatus = status != null && !string.IsNullOrEmpty(status.Language) ? status : null;
+			if (cacheStatus == null)
+			{
+				lblLanguage.Text = "not known (the translator did not answer)";
+				UpdateTarget();
+				return;
+			}
+			lblLanguage.Text = cacheStatus.Language + (string.IsNullOrEmpty(cacheStatus.Code) ? "" : " (" + cacheStatus.Code + ")");
+			//the file name says the language, unless the user already typed another name
+			if (txtName.Text == defaultName)
+			{
+				defaultName = (book == null ? "Book" : book.FileName) + " - AI Translated (" + ShortLanguage(cacheStatus) + ")";
+				txtName.Text = defaultName;
+			}
+			UpdateTarget();
+		}
 
 		private ExportSetting BuildSetting()
 		{
@@ -573,6 +651,20 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			int stored = reader.TranslationService?.Store.TranslatedPageCount(reader.TranslationBookKey) ?? 0;
 			int total = reader.Book?.ProviderPageCount ?? 0;
 			string note = stored + " of " + total + " pages are translated already; the others are translated now, which can take a while. Your saved changes (moved, resized and added boxes) are included. The original book is not touched.";
+			if (cacheStatus != null)
+			{
+				//what the helper really has for this language (pages translated into another language do not count)
+				int ready = Math.Min(cacheStatus.Ready, total);
+				int redraw = Math.Max(0, Math.Min(cacheStatus.Read, total) - ready);
+				int fresh = Math.Max(0, total - ready - redraw);
+				note = ready + " of " + total + " pages are already stored in " + cacheStatus.Language + ". ";
+				if (redraw > 0)
+				{
+					note += redraw + " of them only need drawing again. ";
+				}
+				note += fresh > 0 ? fresh + " are read and translated now, which can take a while. " : "Nothing needs translating, so this is quick. ";
+				note += "Your saved changes (moved, resized and added boxes) are included. The original book is not touched.";
+			}
 			if (Choice != null && Choice.FormatId == 0 && !Choice.Rar && (book?.FileFormat ?? "").IndexOf("CBR", StringComparison.OrdinalIgnoreCase) >= 0)
 			{
 				note += " ComicRack cannot write RAR files itself, so install WinRAR to export as CBR; otherwise the book is saved as CBZ.";
