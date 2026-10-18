@@ -145,6 +145,10 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 
 			private string activeBoxId;
 
+			/// <summary>The pointer went down on the outline of the selected preset shape (a plain rectangle, a triangle, an octagon...):
+			/// when it comes up without having moved, a point is added there and the box becomes a free polygon.</summary>
+			private bool edgePress;
+
 			/// <summary>Enter or a double click while drawing a polygon: the points placed so far (x, y, x, y...).</summary>
 			public event Action<int[]> PolygonFinished;
 
@@ -741,6 +745,88 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 				Invalidate();
 			}
 
+			/// <summary>A box with one of the preset shapes (plain rectangle, rounded, oval, triangle, octagon, diamond...), not yet a polygon of
+			/// its own: its outline can be clicked to add a point.</summary>
+			private bool IsPreset(TranslationBox b)
+			{
+				return b != null && !b.Skip && b.Shape == null && !HasVertices(b) && b.Form != TranslationShapes.FreePolygon && Extra.Count == 0;
+			}
+
+			/// <summary>True when the pointer is on a line of the outline of the selected preset shape.</summary>
+			private bool NearPresetEdge(Point p)
+			{
+				if (Selected == null || PolyMode || AddMode || Brush != BrushKind.Off || !IsPreset(Selected))
+				{
+					return false;
+				}
+				return NearEdge(ScreenPolygon(PartOf(Selected)), true, p, out int unused);
+			}
+
+			/// <summary>Turns the selected preset shape into a free polygon with the points of its outline and a new one on the line at
+			/// the pointer. The shape looks the same; its points can then be dragged, added to and erased.</summary>
+			private void AddPointToPreset(Point at)
+			{
+				TranslationBox b = Selected;
+				if (!IsPreset(b))
+				{
+					return;
+				}
+				int[] rect = (int[])AreaOf(b).Clone();
+				int[] flat = TranslationShapes.OutlinePoints(rect, b.Form, b.Corners ?? new int[4], b.Circular);
+				if (flat == null || flat.Length < 6)
+				{
+					return;
+				}
+				PointF centre = CentreOf(rect);
+				List<PointF> pts = new List<PointF>();
+				for (int i = 0; i + 1 < flat.Length; i += 2)
+				{
+					pts.Add(Turn(new PointF(flat[i], flat[i + 1]), centre, b.ShapeAngle));
+				}
+				PointF q = ToImage(at);
+				int best = 0;
+				double bestT = 0.5, bestDist = double.MaxValue;
+				for (int i = 0; i < pts.Count; i++)
+				{
+					PointF a = pts[i], c = pts[(i + 1) % pts.Count];
+					double dx = c.X - a.X, dy = c.Y - a.Y;
+					double len2 = dx * dx + dy * dy;
+					if (len2 < 1)
+					{
+						continue;
+					}
+					double t = Math.Max(0, Math.Min(1, ((q.X - a.X) * dx + (q.Y - a.Y) * dy) / len2));
+					double px = a.X + t * dx, py = a.Y + t * dy;
+					double d = (q.X - px) * (q.X - px) + (q.Y - py) * (q.Y - py);
+					if (d < bestDist)
+					{
+						bestDist = d;
+						best = i;
+						bestT = t;
+					}
+				}
+				double along = Math.Max(0.1, Math.Min(0.9, bestT));
+				PointF from = pts[best], to = pts[(best + 1) % pts.Count];
+				pts.Insert(best + 1, new PointF((float)(from.X + along * (to.X - from.X)), (float)(from.Y + along * (to.Y - from.Y))));
+				int[] result = pts.SelectMany((PointF p) => new[] { (int)Math.Round(p.X), (int)Math.Round(p.Y) }).ToArray();
+				//the angle is in the points now; lettering that turned with the shape no longer has an angle of its own
+				if (Math.Abs(b.Rotation - b.ShapeAngle) < 0.05)
+				{
+					b.Rotation = 0;
+				}
+				b.ShapeAngle = 0;
+				b.Form = TranslationShapes.FreePolygon;
+				b.Corners = new int[4];
+				b.Circular = false;
+				b.Points = result;
+				b.Rect = TranslationShapes.PointsBounds(result);
+				activeBoxId = b.Id;
+				activeVertex = best + 1;
+				BoxChanging?.Invoke(this, EventArgs.Empty);
+				BoxChanged?.Invoke(this, EventArgs.Empty);
+				Invalidate();
+			}
+
 			private static int[] RemapPoints(int[] points, int[] from, int[] to)
 			{
 				double sx = (double)(to[2] - to[0]) / Math.Max(1, from[2] - from[0]);
@@ -1300,6 +1386,14 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 						return;
 					}
 				}
+				edgePress = false;
+				if (NearPresetEdge(e.Location))
+				{
+					//a press on a line of the selected shape: it moves the box when dragged, and adds a point there when it is only a click
+					edgePress = true;
+					BeginEdit(Drag.Move, e.Location);
+					return;
+				}
 				TranslationBox hit = HitBox(e.Location);
 				if (hit != Selected || Extra.Count > 0)
 				{
@@ -1451,6 +1545,10 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 					case 8:
 						return Cursors.SizeWE;
 					}
+				}
+				if (NearPresetEdge(p))
+				{
+					return Cursors.Cross;       //a click here adds a point
 				}
 				TranslationBox hit = HitBox(p);
 				return hit != null && !hit.Skip ? Cursors.SizeAll : Cursors.Default;
@@ -1690,6 +1788,11 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 					{
 						//only a click: the box is selected, nothing about it changed
 						UndoPress();
+						if (kind == Drag.Move && edgePress)
+						{
+							edgePress = false;
+							AddPointToPreset(pressedAt);
+						}
 						Invalidate();
 						break;
 					}
@@ -1860,6 +1963,9 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 		private Button btAddShape;
 
 		private int newPreset;
+
+		//The polygon tool was the last shape chosen: "Add text box" then starts it (kept in the settings, as the other shapes are).
+		private bool newPolygonTool;
 
 		//The shape new boxes are drawn with: the last one used (a preset, or -1 for corners set by hand). Kept in the settings.
 		private int newKind;
@@ -2230,6 +2336,10 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 				if (canvas.PolyMode)
 				{
 					SetPolygonMode(false);
+				}
+				else if (newPolygonTool)
+				{
+					SetPolygonMode(true);       //the polygon tool was the last shape chosen
 				}
 				else
 				{
@@ -2953,6 +3063,7 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 		/// <summary>Remembers a shape as the one new boxes are drawn with, and keeps it for the next time ComicRack runs.</summary>
 		private void RememberShape(int preset, int kind, int[] corners, bool circular)
 		{
+			newPolygonTool = false;
 			newPreset = preset;
 			newKind = kind;
 			newCorners = (int[])(corners ?? new int[4]).Clone();
@@ -2970,9 +3081,32 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			}
 		}
 
+		/// <summary>Remembers the polygon tool as the way new boxes are drawn, and keeps it for the next time ComicRack runs.</summary>
+		private void RememberPolygonTool()
+		{
+			newPolygonTool = true;
+			try
+			{
+				Program.Settings.TranslatorLastShape = PolygonToolSetting;
+			}
+			catch (Exception)
+			{
+			}
+		}
+
+		private const string PolygonToolSetting = "polygon";
+
 		/// <summary>Takes the shape used last time from the settings (a plain rectangle when there is none).</summary>
 		private void LoadRememberedShape()
 		{
+			bool polygonTool = false;
+			try
+			{
+				polygonTool = (Program.Settings.TranslatorLastShape ?? "") == PolygonToolSetting;
+			}
+			catch (Exception)
+			{
+			}
 			int preset = 0, kind = TranslationShapes.Round;
 			int[] corners = new int[4];
 			bool circular = false;
@@ -2997,6 +3131,10 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			{
 			}
 			RememberShape(preset, kind, corners, circular);
+			if (polygonTool)
+			{
+				RememberPolygonTool();
+			}
 		}
 
 		/// <summary>Gives a box just drawn the remembered shape.</summary>
@@ -3044,7 +3182,7 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			for (int i = 0; i < names.Length; i++)
 			{
 				int index = i;
-				ToolStripMenuItem item = new ToolStripMenuItem(names[i]) { Checked = i == newPreset };
+				ToolStripMenuItem item = new ToolStripMenuItem(names[i]) { Checked = i == newPreset && !newPolygonTool };
 				item.Click += delegate
 				{
 					TranslationShapes.Preset(index, out int kind, out int[] corners, out bool circular);
@@ -3055,8 +3193,12 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 				menu.Items.Add(item);
 			}
 			menu.Items.Add(new ToolStripSeparator());
-			ToolStripMenuItem polygon = new ToolStripMenuItem("Polygon (click the points)") { Checked = canvas.PolyMode };
-			polygon.Click += delegate { SetPolygonMode(true); };
+			ToolStripMenuItem polygon = new ToolStripMenuItem("Polygon (click the points)") { Checked = newPolygonTool };
+			polygon.Click += delegate
+			{
+				RememberPolygonTool();
+				SetPolygonMode(true);
+			};
 			menu.Items.Add(polygon);
 			return menu;
 		}
