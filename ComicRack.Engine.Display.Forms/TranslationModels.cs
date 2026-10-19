@@ -107,6 +107,10 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 		/// <summary>The helper could not find the chosen font file on the last render and used its usual font.</summary>
 		public bool FontChoiceMissing { get; set; }
 
+		/// <summary>Why the helper could not letter this box on the last drawing (helper 1.67): the box was left as the artist drew it
+		/// and the rest of the page was lettered. "" when it was lettered. Never sent back.</summary>
+		public string Failed { get; set; } = "";
+
 		public bool HasManualSettings => Rect != null || HasShape || Size > 0 || Rotation != 0 || Skip || AsSign || AsCover || TextEdited || !string.Equals(Align, "center", StringComparison.OrdinalIgnoreCase) || !string.IsNullOrEmpty(FontChoice);
 
 		/// <summary>True when this box differs from what the helper found, so it is kept with the book.</summary>
@@ -279,7 +283,8 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 				UsedFont = GetString(e, "font"),
 				UsedFamily = GetString(e, "font_family"),
 				UsedStyle = GetString(e, "font_style"),
-				FontChoiceMissing = GetBool(e, "font_choice_missing")
+				FontChoiceMissing = GetBool(e, "font_choice_missing"),
+				Failed = GetString(e, "failed")
 			};
 			b.Form = (int)GetDouble(e, "kind");
 			b.ShapeAngle = GetDouble(e, "shape_angle");

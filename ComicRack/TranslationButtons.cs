@@ -861,8 +861,9 @@ namespace cYo.Projects.ComicRack.Viewer
 			bool running = TranslationBatch.IsRunning;
 			TranslationBatch.Item current = TranslationBatch.Current;
 			string problem = TranslationBatch.Problem;
-			bool show = running || waiting.Count > 0;
-			TranslationLed led = running ? TranslationLed.Busy : (problem != null ? TranslationLed.Problem : TranslationLed.On);
+			string notice = TranslationBatch.Notice;
+			bool show = running || waiting.Count > 0 || notice != null;
+			TranslationLed led = running ? TranslationLed.Busy : (problem != null || notice != null ? TranslationLed.Problem : TranslationLed.On);
 			string text = "";
 			string tip = "";
 			if (running && current != null)
@@ -882,7 +883,13 @@ namespace cYo.Projects.ComicRack.Viewer
 			{
 				int skipped = waiting.Sum((TranslationBatch.Item i) => i.Skipped.Count);
 				text = "Batch done: " + skipped + (skipped == 1 ? " page" : " pages") + " skipped";
-				tip = problem + "\n" + BookListText(waiting, null) + "\nClick to try the skipped pages again or forget the queue.";
+				tip = problem + (notice != null ? "\n" + notice : "") + "\n" + BookListText(waiting, null) + "\nClick to try the skipped pages again or forget the queue.";
+			}
+			else if (waiting.Count == 0 && notice != null)
+			{
+				int pages = TranslationBatch.Noted.Sum((TranslationBatch.Item i) => i.LeftAsDrawn.Count);
+				text = "Batch done: " + pages + (pages == 1 ? " page needs" : " pages need") + " a look";
+				tip = notice + "\nClick for the batch menu.";
 			}
 			else if (waiting.Count > 0)
 			{
@@ -924,7 +931,7 @@ namespace cYo.Projects.ComicRack.Viewer
 				sb.Append(current != null ? "Next:" : "Waiting:");
 				foreach (TranslationBatch.Item item in next.Take(ListedBooks))
 				{
-					sb.Append("\n    ").Append(Shorten(item.Title)).Append(" (").Append(PercentText(item)).Append(item.Skipped.Count > 0 ? ", " + TranslationBatch.SkippedText(item) + " skipped" : "").Append(")");
+					sb.Append("\n    ").Append(Shorten(item.Title)).Append(" (").Append(PercentText(item)).Append(item.Skipped.Count > 0 ? ", " + TranslationBatch.SkippedText(item) + " skipped" : "").Append(item.LeftAsDrawn.Count > 0 ? ", a box left as drawn on " + TranslationBatch.PagesText(item.LeftAsDrawn) : "").Append(")");
 				}
 				if (next.Count > ListedBooks)
 				{
@@ -1108,7 +1115,8 @@ namespace cYo.Projects.ComicRack.Viewer
 			bool running = TranslationBatch.IsRunning;
 			TranslationBatch.Item current = TranslationBatch.Current;
 			string problem = TranslationBatch.Problem;
-			p.BatchState.Visible = running || waiting.Count > 0 || problem != null;
+			string notice = TranslationBatch.Notice;
+			p.BatchState.Visible = running || waiting.Count > 0 || problem != null || notice != null;
 			if (running && current != null)
 			{
 				p.BatchState.Text = "Batch: " + (TranslationBatch.Yielding ? "waiting while the reader translates pages, " : "translating, ") + waiting.Count + (waiting.Count == 1 ? " book" : " books") + " left";
@@ -1126,17 +1134,24 @@ namespace cYo.Projects.ComicRack.Viewer
 			{
 				p.BatchState.Text = "Batch paused: " + waiting.Count + (waiting.Count == 1 ? " book" : " books") + " left" + (problem != null ? ". " + problem : "");
 			}
+			else if (notice != null)
+			{
+				int pages = TranslationBatch.Noted.Sum((TranslationBatch.Item i) => i.LeftAsDrawn.Count);
+				p.BatchState.Text = "Batch done: on " + pages + (pages == 1 ? " page" : " pages") + " a box could not be lettered (translator error) and was left as drawn";
+			}
 			else
 			{
 				p.BatchState.Text = problem ?? "";
 			}
 			p.BatchPause.Visible = running;
-			p.BatchCancel.Visible = running || waiting.Count > 0;
+			p.BatchCancel.Visible = running || waiting.Count > 0 || notice != null;
+			p.BatchCancel.Text = running || waiting.Count > 0 ? "Forget the queue" : "Clear this message";
 			p.BatchContinue.Visible = !running && waiting.Count > 0;
 			p.BatchContinue.Text = TranslationBatch.DoneWithSkips && waiting.All((TranslationBatch.Item i) => i.Skipped.Count > 0)
 				? "Try the skipped pages again (" + waiting.Count + (waiting.Count == 1 ? " book" : " books") + ")"
 				: "Continue translating previously selected books (" + waiting.Count + (waiting.Count == 1 ? " book" : " books") + " left)";
-			UpdateBatchBooks(p, waiting, running ? current : null);
+			//After a batch, the books with a box left as drawn are listed with their pages.
+			UpdateBatchBooks(p, running || waiting.Count > 0 || notice == null ? waiting : TranslationBatch.Noted, running ? current : null);
 			if (running)
 			{
 				p.Ahead.ToolTipText = (TranslationBatch.Yielding ? "Batch waiting while the reader translates pages." : "Batch translating books in the background.") + "\n" + BookListText(waiting, current) + "\nClick for the batch menu.";
@@ -1148,6 +1163,10 @@ namespace cYo.Projects.ComicRack.Viewer
 			else if (waiting.Count > 0)
 			{
 				p.Ahead.ToolTipText = "Batch paused: " + waiting.Count + (waiting.Count == 1 ? " book" : " books") + " waiting." + (problem != null ? " " + problem : "") + "\n" + BookListText(waiting, null) + "\nClick to continue; the arrow opens the menu.";
+			}
+			else if (notice != null)
+			{
+				p.Ahead.ToolTipText = notice;
 			}
 		}
 
@@ -1194,7 +1213,8 @@ namespace cYo.Projects.ComicRack.Viewer
 				}
 				else
 				{
-					text = PercentText(order[i]).PadLeft(6) + "   " + Shorten(order[i].Title) + (order[i].Skipped.Count > 0 ? "   (" + TranslationBatch.SkippedText(order[i]) + " skipped)" : "");
+					text = PercentText(order[i]).PadLeft(6) + "   " + Shorten(order[i].Title) + (order[i].Skipped.Count > 0 ? "   (" + TranslationBatch.SkippedText(order[i]) + " skipped)" : "")
+						+ (order[i].LeftAsDrawn.Count > 0 ? "   (a box left as drawn on " + TranslationBatch.PagesText(order[i].LeftAsDrawn) + ")" : "");
 				}
 				if (line.Text != text)
 				{

@@ -38,6 +38,10 @@ namespace cYo.Projects.ComicRack.Viewer
 			/// stays in the queue, and continuing tries only these again.</summary>
 			public List<int> Skipped = new List<int>();
 
+			/// <summary>Pages (0 based) on which the helper could not letter a box and left it as drawn (helper 1.67): the page was
+			/// translated, but the box needs a look in the editor.</summary>
+			public List<int> LeftAsDrawn = new List<int>();
+
 			public string Problem;
 
 			public int Translated => TranslationStore.Shared.TranslatedPageCount(BookKey);
@@ -83,10 +87,33 @@ namespace cYo.Projects.ComicRack.Viewer
 		/// <summary>The batch went through every book, but some pages could not be translated and were skipped (see Item.Skipped).</summary>
 		public static bool DoneWithSkips { get; private set; }
 
+		/// <summary>After a batch: the pages on which a box was left as drawn because of a translator error, or null.</summary>
+		public static string Notice { get; private set; }
+
+		/// <summary>The books of the queue (finished ones too) with pages on which a box was left as drawn.</summary>
+		public static List<Item> Noted
+		{
+			get
+			{
+				lock (sync)
+				{
+					return items.Where((Item i) => i.LeftAsDrawn.Count > 0).ToList();
+				}
+			}
+		}
+
+		//The pages asked for by this batch, to tell which book and page a finished page is.
+		private static readonly Dictionary<PageKey, KeyValuePair<Item, int>> asked = new Dictionary<PageKey, KeyValuePair<Item, int>>();
+
 		/// <summary>"page 38" or "pages 12, 38": the skipped pages of a book, numbered from 1.</summary>
 		public static string SkippedText(Item item)
 		{
-			List<int> pages = item?.Skipped;
+			return PagesText(item?.Skipped);
+		}
+
+		/// <summary>"page 38" or "pages 12, 38" (numbered from 1); "" for none.</summary>
+		public static string PagesText(List<int> pages)
+		{
 			if (pages == null || pages.Count == 0)
 			{
 				return "";
@@ -164,9 +191,11 @@ namespace cYo.Projects.ComicRack.Viewer
 				}
 				Problem = null;
 				DoneWithSkips = false;
+				Notice = null;
 				if (service == null)
 				{
 					service = new PageTranslationService(TranslationStore.Shared);
+					service.PageFinished += OnPageFinished;
 				}
 				service.ServerUrl = string.IsNullOrWhiteSpace(Program.Settings.TranslatorServerUrl) ? "http://127.0.0.1:8790" : Program.Settings.TranslatorServerUrl.Trim();
 				CancellationTokenSource mine = new CancellationTokenSource();
@@ -209,6 +238,7 @@ namespace cYo.Projects.ComicRack.Viewer
 				Current = null;
 				Problem = null;
 				DoneWithSkips = false;
+				Notice = null;
 			}
 			RaiseChanged(true);
 		}
@@ -249,6 +279,20 @@ namespace cYo.Projects.ComicRack.Viewer
 						break;
 					}
 				}
+				if (!mine.IsCancellationRequested)
+				{
+					List<Item> noted;
+					lock (sync)
+					{
+						noted = items.Where((Item i) => i.LeftAsDrawn.Count > 0).ToList();
+					}
+					if (noted.Count > 0)
+					{
+						int pages = noted.Sum((Item i) => i.LeftAsDrawn.Count);
+						Notice = "On " + pages + (pages == 1 ? " page" : " pages") + " a box could not be lettered because of a translator error and was left as drawn (it is red in the editor): "
+							+ string.Join("; ", noted.Select((Item i) => "\"" + i.Title + "\" " + PagesText(i.LeftAsDrawn))) + ". A report for each is in the translator's errors folder.";
+					}
+				}
 				if (!stopped && !mine.IsCancellationRequested)
 				{
 					List<Item> skipped;
@@ -280,7 +324,36 @@ namespace cYo.Projects.ComicRack.Viewer
 				}
 				Current = null;
 				Yielding = false;
+				lock (sync)
+				{
+					asked.Clear();
+				}
 				RaiseChanged(true);
+			}
+		}
+
+		/// <summary>A page of the batch is done: when the helper left a box of it as drawn (it could not letter it), the page is noted.</summary>
+		private static void OnPageFinished(object sender, PageTranslationService.PageKeyEventArgs e)
+		{
+			KeyValuePair<Item, int> at;
+			lock (sync)
+			{
+				if (e?.Key == null || !asked.TryGetValue(e.Key, out at))
+				{
+					return;
+				}
+			}
+			TranslationPageState state = (sender as PageTranslationService)?.GetState(e.Key);
+			if (state != null && state.Boxes.Any((TranslationBox b) => !b.Skip && !string.IsNullOrEmpty(b.Failed)))
+			{
+				lock (sync)
+				{
+					if (!at.Key.LeftAsDrawn.Contains(at.Value))
+					{
+						at.Key.LeftAsDrawn.Add(at.Value);
+						at.Key.LeftAsDrawn.Sort();
+					}
+				}
 			}
 		}
 
@@ -379,6 +452,10 @@ namespace cYo.Projects.ComicRack.Viewer
 						PageImage image = PageImage.CreateFrom(data);
 						try
 						{
+							lock (sync)
+							{
+								asked[key] = new KeyValuePair<Item, int>(item, index);
+							}
 							svc.Request(key, image, 9, item.Comic, keep: true);
 						}
 						finally
