@@ -573,7 +573,9 @@ namespace cYo.Projects.ComicRack.Viewer
 
 			public ToolStripMenuItem ExitItem;
 
-			public ToolStripDropDownButton Ahead;
+			//A split button: its arrow opens the menu; the button opens it too, except while a batch waits to be continued (paused or
+			//stopped, with the small play mark on its icon), when the button continues the batch.
+			public ToolStripSplitButton Ahead;
 
 			public ToolStripMenuItem AheadState;
 
@@ -681,7 +683,7 @@ namespace cYo.Projects.ComicRack.Viewer
 				Update(pair);
 			};
 
-			pair.Ahead = new ToolStripDropDownButton
+			pair.Ahead = new ToolStripSplitButton
 			{
 				Name = "tbTranslateAhead",
 				DisplayStyle = ToolStripItemDisplayStyle.Image,
@@ -720,6 +722,22 @@ namespace cYo.Projects.ComicRack.Viewer
 			pair.BatchCancel = new ToolStripMenuItem("Forget the queue", GetMenuIcon(MenuIcon.Stop, null, menuSize), delegate { TranslationBatch.Cancel(); });
 			pair.Ahead.DropDownItems.AddRange(new ToolStripItem[] { pair.BatchStart, pair.BatchState, pair.BatchPause, pair.BatchContinue, pair.BatchCancel });
 			pair.Ahead.DropDownOpening += delegate { Update(pair); };
+			pair.Ahead.ButtonClick += delegate
+			{
+				if (CanContinueBatch)
+				{
+					TranslationBatch.Resume();
+					//It did not start (the helper is not running): the menu says why.
+					if (!TranslationBatch.IsRunning)
+					{
+						pair.Ahead.ShowDropDown();
+					}
+				}
+				else
+				{
+					pair.Ahead.ShowDropDown();
+				}
+			};
 
 			//After a button or one of its menu entries was used, the keyboard goes back to the reader (the toolbar kept it,
 			//and then shortcut keys such as E no longer reached the reader).
@@ -1051,11 +1069,13 @@ namespace cYo.Projects.ComicRack.Viewer
 			//A batch (running or with books waiting) shows the book of "Translate the selected books"; translating ahead in the
 			//book being read shows the pages with the arrow.
 			bool batch = TranslationBatch.IsRunning || TranslationBatch.HasWaiting;
-			int aheadState = (int)aheadLed + (batch ? 100 : 0);
+			//A batch waiting to be continued (blue: paused, red: stopped) gets the small play mark: a click on the icon continues it.
+			bool play = batch && CanContinueBatch;
+			int aheadState = (int)aheadLed + (batch ? 100 : 0) + (play ? 1000 : 0);
 			if (aheadState != p.AheadLed || size != p.Size)
 			{
 				p.AheadLed = aheadState;
-				p.Ahead.Image = batch ? GetBatchIcon(aheadLed, size) : GetAheadIcon(aheadLed, size);
+				p.Ahead.Image = batch ? GetBatchIcon(aheadLed, size, play) : GetAheadIcon(aheadLed, size);
 			}
 			if (reader != null)
 			{
@@ -1123,11 +1143,11 @@ namespace cYo.Projects.ComicRack.Viewer
 			}
 			else if (waiting.Count > 0 && TranslationBatch.DoneWithSkips)
 			{
-				p.Ahead.ToolTipText = problem + "\n" + BookListText(waiting, null) + "\nClick to try the skipped pages again.";
+				p.Ahead.ToolTipText = problem + "\n" + BookListText(waiting, null) + "\nClick to try the skipped pages again; the arrow opens the menu.";
 			}
 			else if (waiting.Count > 0)
 			{
-				p.Ahead.ToolTipText = "Batch paused: " + waiting.Count + (waiting.Count == 1 ? " book" : " books") + " waiting." + (problem != null ? " " + problem : "") + "\n" + BookListText(waiting, null) + "\nClick to continue.";
+				p.Ahead.ToolTipText = "Batch paused: " + waiting.Count + (waiting.Count == 1 ? " book" : " books") + " waiting." + (problem != null ? " " + problem : "") + "\n" + BookListText(waiting, null) + "\nClick to continue; the arrow opens the menu.";
 			}
 		}
 
@@ -1715,9 +1735,18 @@ namespace cYo.Projects.ComicRack.Viewer
 		}
 
 		/// <summary>The batch's picture: an open book in the colour of the state (amber translating, blue paused, red stopped).</summary>
+		/// <summary>True while a batch has books waiting and is not running (paused, or stopped by a problem): it can be continued.</summary>
+		private static bool CanContinueBatch => !TranslationBatch.IsRunning && TranslationBatch.HasWaiting;
+
 		public static Bitmap GetBatchIcon(TranslationLed led, int size)
 		{
-			string key = "batch" + (int)led + "-" + size;
+			return GetBatchIcon(led, size, false);
+		}
+
+		/// <summary>The batch's picture; `play` adds a small green play mark at the bottom right (the batch can be continued with a click).</summary>
+		public static Bitmap GetBatchIcon(TranslationLed led, int size, bool play)
+		{
+			string key = "batch" + (int)led + "-" + size + (play ? "-play" : "");
 			lock (icons)
 			{
 				if (icons.TryGetValue(key, out Bitmap cached))
@@ -1744,6 +1773,17 @@ namespace cYo.Projects.ComicRack.Viewer
 						g.DrawLine(line, 2.5f * u, 9 * u, 6 * u, 9.8f * u);
 						g.DrawLine(line, 13.5f * u, 6.5f * u, 10 * u, 7.3f * u);
 						g.DrawLine(line, 13.5f * u, 9 * u, 10 * u, 9.8f * u);
+					}
+					if (play)
+					{
+						//over the bottom right corner of the book, with a dark rim so it shows on the blue and the red book alike
+						PointF[] mark = { new PointF(9.4f * u, 8.6f * u), new PointF(9.4f * u, 15.6f * u), new PointF(15.6f * u, 12.1f * u) };
+						using (SolidBrush green = new SolidBrush(Color.FromArgb(60, 205, 90)))
+						using (Pen rim = new Pen(Color.FromArgb(25, 60, 30), Math.Max(1f, 0.9f * u)) { LineJoin = LineJoin.Round })
+						{
+							g.FillPolygon(green, mark);
+							g.DrawPolygon(rim, mark);
+						}
 					}
 				}
 				icons[key] = bmp;
