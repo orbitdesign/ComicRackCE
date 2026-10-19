@@ -1004,14 +1004,15 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 					number++;
 					bool selected = box == Selected || Extra.Contains(box);
 					RectangleF r = ToScreen(box.Skip ? box.Src : AreaOf(box));
-					Color color = box.Skip ? Color.Gray : (box.Manual ? Color.FromArgb(70, 150, 255) : Color.FromArgb(60, 200, 90));
+					bool failed = !box.Skip && !string.IsNullOrEmpty(box.Failed);
+					Color color = box.Skip ? Color.Gray : (failed ? Color.FromArgb(235, 60, 50) : (box.Manual ? Color.FromArgb(70, 150, 255) : Color.FromArgb(60, 200, 90)));
 					if (selected)
 					{
 						color = Color.FromArgb(255, 150, 20);
 					}
 					using (Pen pen = new Pen(color, selected ? 2.5f : 1.5f))
 					{
-						if (box.Skip)
+						if (box.Skip || failed)
 						{
 							pen.DashStyle = DashStyle.Dash;
 						}
@@ -2821,7 +2822,9 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			}
 			UpdateHistoryButtons();
 			canvas.Message = state == null ? "Waiting for this page to be translated..." : (state.Waiting ? "Drawing the page..." : null);
-			SetStatus(state == null ? "Waiting for the translation of this page..." : (state.Waiting ? "Drawing the page..." : (state.Boxes.Count == 0 ? "No text found on this page. Use Add text box to translate text yourself." : "Changes are saved with the book.")));
+			int failedBoxes = state == null ? 0 : state.Boxes.Count((TranslationBox b) => !b.Skip && !b.IsHidden && !string.IsNullOrEmpty(b.Failed));
+			SetStatus(state == null ? "Waiting for the translation of this page..." : (state.Waiting ? "Drawing the page..." : (state.Boxes.Count == 0 ? "No text found on this page. Use Add text box to translate text yourself."
+				: (failedBoxes > 0 ? failedBoxes + (failedBoxes == 1 ? " box" : " boxes") + " (red) could not be lettered because of a translator error and " + (failedBoxes == 1 ? "was" : "were") + " left as drawn; a report is in the translator's errors folder. Changes are saved with the book." : "Changes are saved with the book."))));
 			canvas.Invalidate();
 		}
 
@@ -2886,7 +2889,7 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			{
 				TranslationBox b = listed[i];
 				string text = (b.Translation ?? "").Replace("\r", " ").Replace("\n", " ");
-				lstBoxes.Items.Add((i + 1) + ".  " + (b.Skip ? "[original] " : "") + (b.AsSign && !b.Skip ? "[sign] " : "") + (b.AsCover && !b.Skip ? "[cover] " : "") + (b.Shape != null ? "[merged] " : b.Manual ? "[added] " : "") + (text.Length > 60 ? text.Substring(0, 60) + "..." : text));
+				lstBoxes.Items.Add((i + 1) + ".  " + (b.Skip ? "[original] " : "") + (!b.Skip && !string.IsNullOrEmpty(b.Failed) ? "[error] " : "") + (b.AsSign && !b.Skip ? "[sign] " : "") + (b.AsCover && !b.Skip ? "[cover] " : "") + (b.Shape != null ? "[merged] " : b.Manual ? "[added] " : "") + (text.Length > 60 ? text.Substring(0, 60) + "..." : text));
 			}
 			lstBoxes.ClearSelected();
 			foreach (TranslationBox sel in canvas.AllSelected)
