@@ -67,6 +67,11 @@ namespace cYo.Projects.ComicRack.Viewer.Views
 
 		private readonly List<ComicBrowserForm> openBrowsers = new List<ComicBrowserForm>();
 
+		//Where the last library window was (kept with the workspace): the next one opens there, at the same size.
+		private Rectangle listWindowBounds = Rectangle.Empty;
+
+		private FormWindowState listWindowState = FormWindowState.Normal;
+
 		private TabBar.TabBarItem lastBrowser;
 
 		private Control comicViewer;
@@ -705,6 +710,12 @@ namespace cYo.Projects.ComicRack.Viewer.Views
 			{
 				workspace.DatabaseView.ItemViewConfig = null;
 				dbView.ViewSettings = workspace.DatabaseView;
+				if (!workspace.ListWindowBounds.IsEmpty)
+				{
+					//(a workspace saved before library windows were remembered leaves the last one as it is)
+					listWindowBounds = workspace.ListWindowBounds;
+					listWindowState = workspace.ListWindowState;
+				}
 				if (fileView != null)
 				{
 					fileView.ViewSettings = workspace.FileView;
@@ -718,6 +729,17 @@ namespace cYo.Projects.ComicRack.Viewer.Views
 
 		public void StoreWorkspace(DisplayWorkspace ws)
 		{
+			if (ws != null)
+			{
+				//a library window still open counts as the last one
+				ComicBrowserForm open = openBrowsers.LastOrDefault((ComicBrowserForm f) => !f.IsDisposed && f.Visible);
+				if (open != null)
+				{
+					RememberListWindow(open);
+				}
+				ws.ListWindowBounds = listWindowBounds;
+				ws.ListWindowState = listWindowState;
+			}
 			if (ws != null && ws.DatabaseView != null && dbView != null)
 			{
 				ws.DatabaseView = dbView.ViewSettings;
@@ -741,12 +763,62 @@ namespace cYo.Projects.ComicRack.Viewer.Views
 				//Own taskbar button, so the window can be found, switched to and minimized on its own.
 				ShowInTaskbar = true
 			};
+			//The size and place of the last library window; a little further down and right when another one is there already.
+			Rectangle bounds = OnScreen(listWindowBounds);
+			if (!bounds.IsEmpty)
+			{
+				while (openBrowsers.Any((ComicBrowserForm f) => !f.IsDisposed && f.WindowState == FormWindowState.Normal && f.Location == bounds.Location))
+				{
+					bounds.Offset(SystemInformation.CaptionHeight, SystemInformation.CaptionHeight);
+				}
+				comicBrowserForm.StartPosition = FormStartPosition.Manual;
+				comicBrowserForm.Bounds = OnScreen(bounds);
+				if (listWindowState == FormWindowState.Maximized)
+				{
+					comicBrowserForm.WindowState = FormWindowState.Maximized;
+				}
+			}
+			comicBrowserForm.FormClosing += delegate
+			{
+				RememberListWindow(comicBrowserForm);
+			};
+			comicBrowserForm.ResizeEnd += delegate
+			{
+				RememberListWindow(comicBrowserForm);
+			};
 			comicBrowserForm.Disposed += ComicBrowserForm_Disposed;
 			comicBrowserForm.Resize += ComicBrowserForm_Resize;
 			comicBrowserForm.Show();
 			comicBrowserForm.Main = base.Main;
 			comicBrowserForm.BookList = bookList;
 			openBrowsers.Add(comicBrowserForm);
+		}
+
+		private void RememberListWindow(Form form)
+		{
+			if (form.IsDisposed || form.WindowState == FormWindowState.Minimized)
+			{
+				return;
+			}
+			listWindowBounds = form.GetSafeBounds();
+			listWindowState = form.WindowState;
+		}
+
+		/// <summary>The bounds, moved onto a screen when no screen shows them any more (a monitor that was unplugged); empty stays empty.</summary>
+		private static Rectangle OnScreen(Rectangle bounds)
+		{
+			if (bounds.IsEmpty || bounds.Width < 100 || bounds.Height < 100)
+			{
+				return Rectangle.Empty;
+			}
+			if (Screen.AllScreens.Any((Screen s) => s.WorkingArea.IntersectsWith(new Rectangle(bounds.X, bounds.Y, bounds.Width, SystemInformation.CaptionHeight))))
+			{
+				return bounds;
+			}
+			Rectangle area = Screen.PrimaryScreen.WorkingArea;
+			bounds.Width = Math.Min(bounds.Width, area.Width);
+			bounds.Height = Math.Min(bounds.Height, area.Height);
+			return new Rectangle(area.X + (area.Width - bounds.Width) / 2, area.Y + (area.Height - bounds.Height) / 2, bounds.Width, bounds.Height);
 		}
 
 		public void AddListTab(Image tabImage, IComicBookListProvider bookList)

@@ -167,6 +167,22 @@ namespace cYo.Projects.ComicRack.Viewer.Config
             set;
         }
 
+		/// <summary>Where the last library window ("Open in New Window") was, so the next one opens there.</summary>
+		[Browsable(false)]
+		public Rectangle ListWindowBounds
+		{
+			get;
+			set;
+		}
+
+		[Browsable(false)]
+		[DefaultValue(FormWindowState.Normal)]
+		public FormWindowState ListWindowState
+		{
+			get;
+			set;
+		}
+
 		[Browsable(false)]
 		public Size PreferencesOutputSize
 		{
