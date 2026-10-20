@@ -99,6 +99,8 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 
 			/// <summary>The book's front cover: the helper letters its title as large as the original's place allows.</summary>
 			public bool Cover;
+
+			public bool BackCover;
 		}
 
 		//How many translated pages to keep in memory (about 1 MB each).
@@ -287,7 +289,7 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 				try
 				{
 					StyleFonts fonts = Store.GetFonts(entry.BookKey, entry.ImageIndex);
-					cached = new TranslationApi(url) { Book = entry.BookKey }.IsCached(Fingerprint(data), fonts, entry.Cover, out picture);
+					cached = new TranslationApi(url) { Book = entry.BookKey, BackCover = entry.BackCover }.IsCached(Fingerprint(data), fonts, entry.Cover, out picture);
 					//the user's edits and protect strokes are drawn by the helper each time the page is shown
 					edited = cached && (Store.GetEdits(entry.BookKey, entry.ImageIndex).Count > 0 || Store.GetProtect(entry.BookKey, entry.ImageIndex).Count > 0);
 				}
@@ -407,6 +409,23 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 		/// Asks for a page to be translated. Lower priority numbers go first; asking again
 		/// for a waiting page with a lower number moves it forward.
 		/// </summary>
+		/// <summary>True when the image is the book's back cover: its last page (when that is not its front cover too).</summary>
+		public static bool IsBackCover(ComicBook book, int imageIndex)
+		{
+			if (book == null || book.PageCount < 2)
+			{
+				return false;
+			}
+			try
+			{
+				return book.TranslatePageToImageIndex(book.PageCount - 1) == imageIndex && !IsFrontCover(book, imageIndex);
+			}
+			catch (Exception)
+			{
+				return false;
+			}
+		}
+
 		/// <summary>True when the image is the book's front cover (the page marked as such, else the first one).</summary>
 		public static bool IsFrontCover(ComicBook book, int imageIndex)
 		{
@@ -469,7 +488,8 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 					BookKey = bookKey,
 					ImageIndex = key.Index,
 					Keep = keep,
-					Cover = IsFrontCover(book, key.Index)
+					Cover = IsFrontCover(book, key.Index),
+					BackCover = IsBackCover(book, key.Index)
 				};
 				entries[key] = fresh;
 				CheckCache(fresh, data);
@@ -774,6 +794,7 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 			string bookKey;
 			int index;
 			bool cover;
+			bool backCover;
 			lock (sync)
 			{
 				if (key == null || !entries.TryGetValue(key, out Entry entry) || entry.Boxes == null)
@@ -785,6 +806,7 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 				bookKey = entry.BookKey;
 				index = entry.ImageIndex;
 				cover = entry.Cover;
+				backCover = entry.BackCover;
 			}
 			List<ProtectStroke> protect = Store.GetProtect(bookKey, index);
 			ThreadPool.QueueUserWorkItem(delegate
@@ -795,7 +817,7 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 					{
 						throw new TranslationApiException("The page could not be read.", serverDown: false);
 					}
-					done(new TranslationApi(url) { Book = bookKey }.Render(data, boxes, protect, fonts, cover).Image, null);
+					done(new TranslationApi(url) { Book = bookKey, BackCover = backCover }.Render(data, boxes, protect, fonts, cover).Image, null);
 				}
 				catch (Exception ex)
 				{
@@ -1108,7 +1130,7 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 			}
 			try
 			{
-				TranslationApi api = new TranslationApi(ServerUrl) { Book = entry.BookKey };
+				TranslationApi api = new TranslationApi(ServerUrl) { Book = entry.BookKey, BackCover = entry.BackCover };
 				List<ProtectStroke> protect = Store.GetProtect(entry.BookKey, entry.ImageIndex);
 				StyleFonts fonts = Store.GetFonts(entry.BookKey, entry.ImageIndex);
 				if (renderOnly)

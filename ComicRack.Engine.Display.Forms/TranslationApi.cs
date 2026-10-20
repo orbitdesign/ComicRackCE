@@ -21,6 +21,9 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 		/// letters the bubbles of a book's pages in one font: the font most of its pages point to.</summary>
 		public string Book { get; set; }
 
+		/// <summary>The page asked about is the book's back cover (its last page): like the front cover, it keeps its own fonts (helper 1.70).</summary>
+		public bool BackCover { get; set; }
+
 		public TranslationApi(string baseUrl)
 		{
 			BaseUrl = (string.IsNullOrWhiteSpace(baseUrl) ? "http://127.0.0.1:8790" : baseUrl.Trim()).TrimEnd('/');
@@ -98,6 +101,10 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 			{
 				path += (path.Contains("?") ? "&" : "?") + "book=" + Uri.EscapeDataString(Book);
 			}
+			if (BackCover)
+			{
+				path += (path.Contains("?") ? "&" : "?") + "back_cover=1";
+			}
 			return ReadPage(Send(path, page, "application/octet-stream", 900000));
 		}
 
@@ -120,6 +127,10 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 			if (!string.IsNullOrEmpty(Book))
 			{
 				w.WriteString("book", Book);
+			}
+			if (BackCover)
+			{
+				w.WriteBoolean("back_cover", true);
 			}
 		}
 
