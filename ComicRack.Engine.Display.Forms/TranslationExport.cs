@@ -166,6 +166,7 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 			this.store = store;
 			api = new TranslationApi(serverUrl);
 			bookKey = TranslationStore.BookKeyOf(book);
+			api.Book = bookKey;
 		}
 
 		/// <summary>Raised after each page with (pages done, pages in the book); on a background thread.</summary>

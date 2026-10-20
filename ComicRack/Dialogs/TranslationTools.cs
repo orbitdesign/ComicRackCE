@@ -566,7 +566,7 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 				TranslationApi.BookCacheStatus status = null;
 				try
 				{
-					status = new TranslationApi(url).CacheStatus(pages);
+					status = new TranslationApi(url) { Book = key }.CacheStatus(pages);
 				}
 				catch (Exception)
 				{
