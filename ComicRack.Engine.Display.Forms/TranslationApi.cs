@@ -17,6 +17,10 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 	{
 		public string BaseUrl { get; }
 
+		/// <summary>The book the pages asked about belong to (TranslationStore's key for it), or null. The helper (1.68 and later)
+		/// letters the bubbles of a book's pages in one font: the font most of its pages point to.</summary>
+		public string Book { get; set; }
+
 		public TranslationApi(string baseUrl)
 		{
 			BaseUrl = (string.IsNullOrWhiteSpace(baseUrl) ? "http://127.0.0.1:8790" : baseUrl.Trim()).TrimEnd('/');
@@ -59,6 +63,7 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 						w.WriteEndObject();
 					}
 					w.WriteEndArray();
+					WriteBook(w);
 					w.WriteEndObject();
 				}
 				using (JsonDocument doc = JsonDocument.Parse(Send("/api/cache-status", ms.ToArray(), "application/json", 20000)))
@@ -89,6 +94,10 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 				//the book's front cover: its title is lettered as large as the original's place allows (helper 1.41)
 				path += (path.Contains("?") ? "&" : "?") + "cover=1";
 			}
+			if (!string.IsNullOrEmpty(Book))
+			{
+				path += (path.Contains("?") ? "&" : "?") + "book=" + Uri.EscapeDataString(Book);
+			}
 			return ReadPage(Send(path, page, "application/octet-stream", 900000));
 		}
 
@@ -106,6 +115,14 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 		/// for these fonts and cover setting: read but without a picture, the page is drawn again, which takes a while. An older helper
 		/// does not say, and the picture is taken as stored.
 		/// </summary>
+		private void WriteBook(Utf8JsonWriter w)
+		{
+			if (!string.IsNullOrEmpty(Book))
+			{
+				w.WriteString("book", Book);
+			}
+		}
+
 		public bool IsCached(string sha, StyleFonts fonts, bool cover, out bool picture)
 		{
 			picture = false;
@@ -126,6 +143,7 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 						{
 							w.WriteBoolean("cover", true);
 						}
+						WriteBook(w);
 						w.WriteEndObject();
 					}
 					using (JsonDocument doc = JsonDocument.Parse(Send("/api/cached", ms.ToArray(), "application/json", 4000)))
@@ -166,6 +184,7 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 					{
 						w.WriteBoolean("cover", true);
 					}
+					WriteBook(w);
 					List<ProtectStroke> strokes = protect?.Where((ProtectStroke p) => p != null && p.Points.Length >= 2).ToList();
 					if (strokes != null && strokes.Count > 0)
 					{

@@ -287,7 +287,7 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 				try
 				{
 					StyleFonts fonts = Store.GetFonts(entry.BookKey, entry.ImageIndex);
-					cached = new TranslationApi(url).IsCached(Fingerprint(data), fonts, entry.Cover, out picture);
+					cached = new TranslationApi(url) { Book = entry.BookKey }.IsCached(Fingerprint(data), fonts, entry.Cover, out picture);
 					//the user's edits and protect strokes are drawn by the helper each time the page is shown
 					edited = cached && (Store.GetEdits(entry.BookKey, entry.ImageIndex).Count > 0 || Store.GetProtect(entry.BookKey, entry.ImageIndex).Count > 0);
 				}
@@ -795,7 +795,7 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 					{
 						throw new TranslationApiException("The page could not be read.", serverDown: false);
 					}
-					done(new TranslationApi(url).Render(data, boxes, protect, fonts, cover).Image, null);
+					done(new TranslationApi(url) { Book = bookKey }.Render(data, boxes, protect, fonts, cover).Image, null);
 				}
 				catch (Exception ex)
 				{
@@ -1108,7 +1108,7 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 			}
 			try
 			{
-				TranslationApi api = new TranslationApi(ServerUrl);
+				TranslationApi api = new TranslationApi(ServerUrl) { Book = entry.BookKey };
 				List<ProtectStroke> protect = Store.GetProtect(entry.BookKey, entry.ImageIndex);
 				StyleFonts fonts = Store.GetFonts(entry.BookKey, entry.ImageIndex);
 				if (renderOnly)
