@@ -321,12 +321,15 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 				try
 				{
 					StyleFonts fonts = store.GetFonts(bookKey, index);
-					page = api.Analyze(data, fonts);
+					//the covers are lettered as in the reader: the front cover's titles as large as their place, both covers in their own fonts
+					bool cover = PageTranslationService.IsFrontCover(book, index);
+					api.BackCover = PageTranslationService.IsBackCover(book, index);
+					page = api.Analyze(data, fonts, cover);
 					List<TranslationBox> edits = store.GetEdits(bookKey, index);
 					List<ProtectStroke> protect = store.GetProtect(bookKey, index);
 					if ((edits.Count > 0 && TranslationStore.Merge(page.Boxes, edits)) || protect.Count > 0)
 					{
-						page = api.Render(data, page.Boxes, protect, fonts);
+						page = api.Render(data, page.Boxes, protect, fonts, cover);
 					}
 					break;
 				}
