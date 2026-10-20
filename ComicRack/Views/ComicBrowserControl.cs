@@ -856,6 +856,13 @@ namespace cYo.Projects.ComicRack.Viewer.Views
             ThumbnailConfig.CaptionIds.Add(30);
             tsQuickSearch.TextBox.SearchButtonImage = Resources.Search.ScaleDpi();
             tsQuickSearch.TextBox.ClearButtonImage = Resources.SmallCloseGray.ScaleDpi();
+            //The searches typed before are suggested in every book list: the main window's and the library windows' ("Open in
+            //New Window"), which used to start with an empty list. A search typed in one is suggested in all of them.
+            AutoCompleteStringCollection searches = SharedQuickSearchList;
+            if (searches != null)
+            {
+                tsQuickSearch.TextBox.AutoCompleteList = searches;
+            }
             itemView.Font = SystemFonts.IconTitleFont;
             itemView.ItemContextMenuStrip = contextMenuItems;
             itemView.ItemRowHeight = itemView.Font.Height + FormUtility.ScaleDpiY(6);
@@ -3462,9 +3469,33 @@ namespace cYo.Projects.ComicRack.Viewer.Views
             tsQuickSearch.TextBox.Focus();
         }
 
+        //One list of earlier searches for every book list, filled from the settings once.
+        private static AutoCompleteStringCollection sharedQuickSearchList;
+
+        private static AutoCompleteStringCollection SharedQuickSearchList
+        {
+            get
+            {
+                if (sharedQuickSearchList == null && Program.Settings != null)
+                {
+                    sharedQuickSearchList = new AutoCompleteStringCollection();
+                    sharedQuickSearchList.AddRange(Program.Settings.QuickSearchList.Distinct().ToArray());
+                }
+                return sharedQuickSearchList;
+            }
+        }
+
         public void SetWorkspace(DisplayWorkspace ws)
         {
-            tsQuickSearch.TextBox.AutoCompleteList.AddRange(Program.Settings.QuickSearchList.ToArray());
+            AutoCompleteStringCollection list = tsQuickSearch.TextBox.AutoCompleteList;
+            //(the shared list has the settings' searches already; only those it does not have yet are added)
+            foreach (string search in Program.Settings.QuickSearchList)
+            {
+                if (!list.Contains(search))
+                {
+                    list.Add(search);
+                }
+            }
         }
 
         public void StoreWorkspace(DisplayWorkspace ws)
