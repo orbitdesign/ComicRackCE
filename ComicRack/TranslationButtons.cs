@@ -248,16 +248,24 @@ namespace cYo.Projects.ComicRack.Viewer
 			}
 			bool needOllama = !OllamaUp;
 			bool needHelper = !HelperUp;
+			//Both at once: the helper does not need Ollama to start (Ollama is only asked when a page is translated), so neither
+			//waits for the other.
 			Work(delegate
 			{
 				if (needOllama)
 				{
 					LaunchOllama();
-					WaitFor(delegate { return OllamaPolled(); }, 60);
 				}
 				if (needHelper)
 				{
 					LaunchHelper(folder);
+				}
+				if (needOllama)
+				{
+					WaitFor(delegate { return OllamaPolled(); }, 60);
+				}
+				if (needHelper)
+				{
 					WaitFor(delegate { return HelperPolled(); }, 180);
 				}
 			});
@@ -335,7 +343,7 @@ namespace cYo.Projects.ComicRack.Viewer
 				{
 					return;
 				}
-				Thread.Sleep(700);
+				Thread.Sleep(250);
 			}
 		}
 
