@@ -129,6 +129,7 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			btResetMessages.Enabled = Program.Settings.HiddenMessageBoxes != HiddenMessageBoxes.None;
 			FillExtensionsList();
 			FillBackupOptions();
+			InitializeThemeOptions();
 			chkOverwriteAssociations.Checked = Program.Settings.OverwriteAssociations;
 			if (!FileFormat.CanRegisterShell)
 			{
@@ -146,6 +147,37 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			UpdateMemoryCacheStatus();
 			RefreshPackageList();
 			IdleProcess.Idle += OnIdle;
+		}
+
+		private record ThemeOption(string Name, Themes Theme);
+
+		private void InitializeThemeOptions()
+		{
+			List<ThemeOption> themeOptions = new List<ThemeOption>();
+			foreach (Themes theme in Enum.GetValues(typeof(Themes)))
+			{
+				string localizedText = LocalizeUtility.LocalizeEnum(typeof(Themes), (int)theme);
+				ThemeOption themeOption = new ThemeOption(localizedText, theme);
+				themeOptions.Add(themeOption);
+				cbTheme.Items.Add(themeOption);
+			}
+			cbTheme.DataSource = themeOptions;
+			cbTheme.DisplayMember = nameof(ThemeOption.Name);
+			cbTheme.ValueMember = nameof(ThemeOption.Theme);
+			cbTheme.SelectedValue = Program.Settings.Theme;
+
+			if (Program.ExtendedSettings.OverrideTheme)
+			{
+				cbTheme.Enabled = false;
+				labelTheme.Enabled = false;
+				lblThemeOverride.Visible = Program.Settings.Theme != Program.ExtendedSettings.Theme;
+			}
+			else
+			{
+				cbTheme.Enabled = true;
+				labelTheme.Enabled = true;
+				lblThemeOverride.Visible = false;
+			}
 		}
 
 		public static Size SafeSize { get; set; }
@@ -196,8 +228,8 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 		{
 			chkUpdateComicBookFiles.Enabled = chkAutoUpdateComicFiles.Enabled = chkUpdateComicFiles.Checked;
 			if (!chkUpdateComicFiles.Checked)
-                chkAutoUpdateComicFiles.Checked = chkUpdateComicBookFiles.Checked = false;
-        }
+				chkAutoUpdateComicFiles.Checked = chkUpdateComicBookFiles.Checked = false;
+		}
 
 		protected override void OnShown(EventArgs e)
 		{
@@ -948,11 +980,6 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			Program.Settings.NavigationOverlayOnTop = cbNavigationOverlayPosition.SelectedIndex == 1;
 			Program.Settings.CurrentPageShowsName = chkShowPageNames.Checked;
 			Program.Settings.HardwareAcceleration = chkEnableHardware.Checked;
-			if (chkDarkMode.Enabled && chkDarkMode.Checked != Program.Settings.DarkMode)
-			{
-				Program.Settings.DarkMode = chkDarkMode.Checked;
-				NeedsRestart = true;
-			}
 			Program.Settings.SmoothScrolling = chkSmoothAutoScrolling.Checked;
 			Program.Settings.DisplayChangeAnimation = chkEnableDisplayChangeAnimation.Checked;
 			Program.Settings.SoftwareFiltering = chkEnableSoftwareFiltering.Checked;
@@ -1023,6 +1050,13 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			}
 			Program.Settings.ExtraWifiDeviceAddresses = txWifiAddresses.Text;
 			Program.Settings.CurrentWorkspace.PreferencesOutputSize = SafeSize;
+
+			if (cbTheme.SelectedItem != null && cbTheme.SelectedItem is ThemeOption themeOption)
+			{
+				NeedsRestart = themeOption.Theme != Program.Settings.Theme;
+				Program.Settings.Theme = themeOption.Theme;
+			}
+
 			SaveBackupManagerOptions();
 			SaveVirtualTags();
 			Program.RefreshAllWindows();
@@ -1066,17 +1100,6 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			cbNavigationOverlayPosition.SelectedIndex = (Program.Settings.NavigationOverlayOnTop ? 1 : 0);
 			chkShowPageNames.Checked = Program.Settings.CurrentPageShowsName;
 			chkEnableHardware.Checked = Program.Settings.HardwareAcceleration;
-			if (Program.ExtendedSettings.Theme == Themes.Dark)
-			{
-				//Forced by UseDarkMode in ComicRack.ini or the -dark / -theme switch, which win anyway.
-				chkDarkMode.Checked = true;
-				chkDarkMode.Enabled = false;
-				labelDarkMode.Text = TR.Messages["DarkModeForced", "Currently set by ComicRack.ini or a command line switch."];
-			}
-			else
-			{
-				chkDarkMode.Checked = Program.Settings.DarkMode;
-			}
 			chkSmoothAutoScrolling.Checked = Program.Settings.SmoothScrolling;
 			chkEnableDisplayChangeAnimation.Checked = Program.Settings.DisplayChangeAnimation;
 			chkEnableSoftwareFiltering.Checked = Program.Settings.SoftwareFiltering;

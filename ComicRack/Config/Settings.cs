@@ -14,6 +14,7 @@ using cYo.Common.Cryptography;
 using cYo.Common.Drawing;
 using cYo.Common.Mathematics;
 using cYo.Common.Threading;
+using cYo.Common.Windows.Forms.Theme;
 using cYo.Common.Xml;
 using cYo.Projects.ComicRack.Engine;
 using cYo.Projects.ComicRack.Engine.Backup;
@@ -592,9 +593,10 @@ namespace cYo.Projects.ComicRack.Viewer.Config
 		}
 
 		/// <summary>
-		/// Dark theme chosen in Preferences. Read once at startup; the UseDarkMode ini value and the
-		/// -dark / -theme switches still take precedence when set.
+		/// The "Use dark theme" tick box of orbitdesign builds before 1.163. Kept only so that its choice moves over to
+		/// Community Edition's Theme the first time (Program.InitializeTheme); Theme is the setting now.
 		/// </summary>
+		[Browsable(false)]
 		[DefaultValue(false)]
 		public bool DarkMode
 		{
@@ -3049,6 +3051,12 @@ namespace cYo.Projects.ComicRack.Viewer.Config
 		public ExportSettingCollection ExportUserPresets => exportUserPresets;
 
 		public SmartList<DeviceSyncSettings> Devices => devices;
+
+		[DefaultValue(Themes.Default)]
+		public Themes Theme { get; set; } = Themes.Default;
+
+		[DefaultValue(false)]
+		public bool HasMigratedThemes { get; set; } = false;
 
 		[DefaultValue(null)]
 		public string UserEmail

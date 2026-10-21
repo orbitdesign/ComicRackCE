@@ -21,11 +21,11 @@ using System.Runtime.Versioning;
 // The Community Edition release this build is based on. Left untouched on purpose: scripts and
 // plugins can read it through ComicRack.App.ProductVersion, and some of them compare it against
 // the versions they need.
-[assembly: AssemblyInformationalVersion("0.9.184")]
+[assembly: AssemblyInformationalVersion("0.9.186")]
 // Our own build number, shown in the About box and crash reports. The second number counts the
 // changes made on top of Community Edition; add one for each new change (see Changes.txt).
 [assembly: AssemblyMetadata("BuildName", "orbitdesign")]
-[assembly: AssemblyMetadata("BuildVersion", "1.162")]
+[assembly: AssemblyMetadata("BuildVersion", "1.163")]
 [assembly: AssemblyDelaySign(false)]
 [assembly: AssemblyKeyName("")]
 [assembly: AssemblyVersion("1.0.*")]

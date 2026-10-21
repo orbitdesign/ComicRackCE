@@ -3,7 +3,7 @@
 ; The folder it installs to (under Program Files); the name shown in Windows Apps and the shortcuts is MyAppName.
 #define MyAppDir "ComicRack CEO"
 #ifndef MyAppVersion
-#define MyAppVersion "v0.9.184"
+#define MyAppVersion "v0.9.186"
 #endif
 #ifndef MyAppSetupFile
 #define MyAppSetupFile "ComicRackSetup"
