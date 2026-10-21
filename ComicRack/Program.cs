@@ -9,6 +9,7 @@ using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
 using System.Globalization;
 using System.IO;
+using cYo.Common.Net.News;
 using System.Linq;
 using System.Net;
 using System.Runtime.InteropServices;
@@ -953,6 +954,20 @@ namespace cYo.Projects.ComicRack.Viewer
 					News.Subscriptions.Remove(oldSub);
 					News.Subscriptions.Add(new NewsStorage.Subscription(DefaultNewsFeed, "ComicRack News"));
 				}
+			}
+			//This build's own changes (Changes.txt) in the News window, among Community Edition's news. The first time, all but the
+			//newest count as read, so the window does not open with 160 unread items.
+			NewsChannel buildNews = BuildNews.Load(Path.Combine(Application.StartupPath, "Changes.txt"));
+			if (buildNews != null)
+			{
+				News.AddBuiltIn(buildNews, BuildNews.Newest(buildNews));
+			}
+			//and the translator helper's changes (its CHANGES.md), when the helper is on this computer
+			string helperFolder = !string.IsNullOrEmpty(Settings.TranslatorHelperFolder) ? Settings.TranslatorHelperFolder : TranslationServices.InstalledHelperFolder;
+			NewsChannel helperNews = BuildNews.LoadHelper(helperFolder);
+			if (helperNews != null)
+			{
+				News.AddBuiltIn(helperNews, BuildNews.Newest(helperNews));
 			}
 			StartupProgress(TR.Messages["CreateMainWindow", "Creating Main Window"], 50);
 			if (ExtendedSettings.DisableScriptOptimization)
