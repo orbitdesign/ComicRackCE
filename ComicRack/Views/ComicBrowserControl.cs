@@ -1157,6 +1157,7 @@ namespace cYo.Projects.ComicRack.Viewer.Views
                 toolStrip.Items.AddRange(list.ToArray());
             }
             TranslationButtons.Install(toolStrip, toolStrip.Items.Count, separatorBefore: true, separatorAfter: false);
+            QuickScanButton.Install(toolStrip, toolStrip.Items.Count);
             ToolStripSeparator toolStripSeparator = sepDuplicateList;
             bool visible = (tbbDuplicateList.Visible = Library != null && Library.EditMode.CanEditList());
             toolStripSeparator.Visible = visible;
