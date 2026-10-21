@@ -937,6 +937,8 @@ namespace cYo.Projects.ComicRack.Viewer
 		{
 			base.OnShown(e);
 			Win7.Initialize();
+			//notes what the window was doing whenever it stops answering for a while (HangReports in the settings folder)
+			HangWatcher.Start(this);
 			if (!string.IsNullOrEmpty(Program.ExtendedSettings.InstallPlugin))
 			{
 				ShowPreferences(Program.ExtendedSettings.InstallPlugin);
