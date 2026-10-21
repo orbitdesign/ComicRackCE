@@ -937,6 +937,8 @@ namespace cYo.Projects.ComicRack.Viewer
 		{
 			base.OnShown(e);
 			Win7.Initialize();
+			//notes what the window was doing whenever it stops answering for a while (HangReports in the settings folder)
+			HangWatcher.Start(this);
 			if (!string.IsNullOrEmpty(Program.ExtendedSettings.InstallPlugin))
 			{
 				ShowPreferences(Program.ExtendedSettings.InstallPlugin);
@@ -4799,7 +4801,7 @@ namespace cYo.Projects.ComicRack.Viewer
 			ComicBook selectedBook = quickOpenView.SelectedBook;
 			if (selectedBook != null)
 			{
-				OpenBooks.Open(selectedBook, inNewSlot: false);
+				NetworkFileWait.WhenReady(this, selectedBook.IsLinked ? selectedBook.FilePath : null, delegate { OpenBooks.Open(selectedBook, inNewSlot: false); });
 			}
 		}
 

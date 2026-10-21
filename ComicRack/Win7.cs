@@ -45,10 +45,32 @@ namespace cYo.Projects.ComicRack.Viewer
 
 		public static void UpdateRecent(string file)
 		{
-			if (TaskbarManager.IsPlatformSupported && File.Exists(file))
+			if (!TaskbarManager.IsPlatformSupported || string.IsNullOrEmpty(file))
 			{
-				JumpList.AddToRecent(file);
+				return;
 			}
+			//Windows looks at the file to add it to the recent files (the taskbar's jump list); for a file on a network folder that
+			//could keep the window waiting for many seconds after a book was opened (hang report: SHAddToRecentDocs). Done in the
+			//background.
+			System.Threading.Thread thread = new System.Threading.Thread((System.Threading.ThreadStart)delegate
+			{
+				try
+				{
+					if (File.Exists(file))
+					{
+						JumpList.AddToRecent(file);
+					}
+				}
+				catch (Exception)
+				{
+				}
+			})
+			{
+				IsBackground = true,
+				Name = "Recent files"
+			};
+			thread.SetApartmentState(System.Threading.ApartmentState.STA);
+			thread.Start();
 		}
 
 		public static void BuildCategory(string title, IEnumerable<string> files)

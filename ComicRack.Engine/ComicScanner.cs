@@ -53,6 +53,9 @@ namespace cYo.Projects.ComicRack.Engine
 
 		public string CurrentLocation => currentLocation;
 
+		/// <summary>The thread scanning now (null when none), for ComicRack's hang reports.</summary>
+		public Thread ScanningThread => scanningThread;
+
 		public event EventHandler<ComicScanNotifyEventArgs> ScanNotify;
 
 		public ComicScanner(ComicBookFactory factory)
