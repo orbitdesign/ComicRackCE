@@ -140,6 +140,32 @@ namespace cYo.Projects.ComicRack.Viewer
 
 		public NewsChannelItemInfoCollection NewsChannelItemInfos => newsChannelItemInfos;
 
+		/// <summary>Channels that are not downloaded: this build's own changes (BuildNews). Not saved; made again at every start.</summary>
+		[XmlIgnore]
+		public NewsChannelCollection BuiltInChannels { get; } = new NewsChannelCollection();
+
+		/// <summary>The built-in channels shown in the News window before, by title: the first time a channel comes, all its items but
+		/// the newest count as read (a history of a hundred changes is not a hundred news items).</summary>
+		public List<string> IntroducedChannels { get; } = new List<string>();
+
+		/// <summary>Adds a built-in channel; the first time it is shown, all its items but the newest count as read.</summary>
+		public void AddBuiltIn(NewsChannel channel, NewsChannelItem newest)
+		{
+			if (channel == null)
+			{
+				return;
+			}
+			BuiltInChannels.Add(channel);
+			if (!IntroducedChannels.Contains(channel.Title))
+			{
+				foreach (NewsChannelItem item in channel.Items)
+				{
+					NewsChannelItemInfos[item].IsRead = item != newest;
+				}
+				IntroducedChannels.Add(channel.Title);
+			}
+		}
+
 		[XmlIgnore]
 		public NewsChannelCollection Channels
 		{
@@ -150,6 +176,7 @@ namespace cYo.Projects.ComicRack.Viewer
 				{
 					channels.AddRange(s.Channels);
 				});
+				channels.AddRange(BuiltInChannels);
 				return channels;
 			}
 		}

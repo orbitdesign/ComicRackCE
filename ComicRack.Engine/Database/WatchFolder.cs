@@ -97,7 +97,15 @@ namespace cYo.Projects.ComicRack.Engine.Database
 		{
 			if (disposing)
 			{
-				UpdateWatcher(watch: false);
+				// Only stop the watcher: UpdateWatcher would also re-assign Path, which makes Windows
+				// check that the folder exists (slow for network shares and disconnected drives).
+				try
+				{
+					fileSystemWatcher.EnableRaisingEvents = false;
+				}
+				catch (Exception)
+				{
+				}
 				fileSystemWatcher.Dispose();
 			}
 			base.Dispose(disposing);

@@ -144,10 +144,7 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
             this.chkAutoUpdateComicFiles = new System.Windows.Forms.CheckBox();
             this.txCoverFilter = new System.Windows.Forms.TextBox();
             this.grpLanguages = new cYo.Common.Windows.Forms.CollapsibleGroupBox();
-            this.grpAppearance = new cYo.Common.Windows.Forms.CollapsibleGroupBox();
             this.chkDragPageTurning = new System.Windows.Forms.CheckBox();
-            this.chkDarkMode = new System.Windows.Forms.CheckBox();
-            this.labelDarkMode = new System.Windows.Forms.Label();
             this.btTranslate = new System.Windows.Forms.Button();
             this.labelLanguage = new System.Windows.Forms.Label();
             this.lbLanguages = new System.Windows.Forms.ListBox();
@@ -227,7 +224,10 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
             this.tabBehavior = new System.Windows.Forms.CheckBox();
             this.tabScripts = new System.Windows.Forms.CheckBox();
             this.tabAdvanced = new System.Windows.Forms.CheckBox();
-            this.chkUpdateComicBookFiles = new System.Windows.Forms.CheckBox();
+			this.chkUpdateComicBookFiles = new System.Windows.Forms.CheckBox();
+			this.lblThemeOverride = new System.Windows.Forms.Label();
+			this.cbTheme = new System.Windows.Forms.ComboBox();
+            this.labelTheme = new System.Windows.Forms.Label();
             ((System.ComponentModel.ISupportInitialize)(this.numBackupsToKeep)).BeginInit();
             this.pageReader.SuspendLayout();
             this.groupHardwareAcceleration.SuspendLayout();
@@ -257,7 +257,6 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
             this.grpDatabaseBackup.SuspendLayout();
             this.groupOtherComics.SuspendLayout();
             this.grpLanguages.SuspendLayout();
-            this.grpAppearance.SuspendLayout();
             this.pageLibrary.SuspendLayout();
             this.grpVirtualTags.SuspendLayout();
             this.grpVtagConfig.SuspendLayout();
@@ -756,6 +755,9 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
             // 
             // grpDisplay
             // 
+            this.grpDisplay.Controls.Add(this.lblThemeOverride);
+            this.grpDisplay.Controls.Add(this.cbTheme);
+            this.grpDisplay.Controls.Add(this.labelTheme);
             this.grpDisplay.Controls.Add(this.tbGamma);
             this.grpDisplay.Controls.Add(this.labelGamma);
             this.grpDisplay.Controls.Add(this.chkAnamorphicScaling);
@@ -954,7 +956,6 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
             this.pageAdvanced.Controls.Add(this.grpDatabaseBackup);
             this.pageAdvanced.Controls.Add(this.groupOtherComics);
             this.pageAdvanced.Controls.Add(this.grpLanguages);
-            this.pageAdvanced.Controls.Add(this.grpAppearance);
             this.pageAdvanced.Location = new System.Drawing.Point(84, 8);
             this.pageAdvanced.Name = "pageAdvanced";
             this.pageAdvanced.Size = new System.Drawing.Size(517, 408);
@@ -1780,36 +1781,6 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
             this.chkDragPageTurning.TabIndex = 3;
             this.chkDragPageTurning.Text = "Turn pages by dragging the page edge";
             this.chkDragPageTurning.UseVisualStyleBackColor = true;
-            // 
-            // grpAppearance
-            // 
-            this.grpAppearance.Controls.Add(this.labelDarkMode);
-            this.grpAppearance.Controls.Add(this.chkDarkMode);
-            this.grpAppearance.Dock = System.Windows.Forms.DockStyle.Top;
-            this.grpAppearance.Location = new System.Drawing.Point(0, 0);
-            this.grpAppearance.Name = "grpAppearance";
-            this.grpAppearance.Size = new System.Drawing.Size(498, 90);
-            this.grpAppearance.TabIndex = 8;
-            this.grpAppearance.Text = "Appearance";
-            // 
-            // chkDarkMode
-            // 
-            this.chkDarkMode.AutoSize = true;
-            this.chkDarkMode.Location = new System.Drawing.Point(12, 38);
-            this.chkDarkMode.Name = "chkDarkMode";
-            this.chkDarkMode.Size = new System.Drawing.Size(107, 17);
-            this.chkDarkMode.TabIndex = 0;
-            this.chkDarkMode.Text = "Use dark theme";
-            this.chkDarkMode.UseVisualStyleBackColor = true;
-            // 
-            // labelDarkMode
-            // 
-            this.labelDarkMode.AutoSize = true;
-            this.labelDarkMode.Location = new System.Drawing.Point(30, 60);
-            this.labelDarkMode.Name = "labelDarkMode";
-            this.labelDarkMode.Size = new System.Drawing.Size(300, 13);
-            this.labelDarkMode.TabIndex = 1;
-            this.labelDarkMode.Text = "Takes effect after ComicRack is restarted.";
             // 
             // grpLanguages
             // 
@@ -2742,16 +2713,48 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
             this.tabAdvanced.TextAlign = System.Drawing.ContentAlignment.BottomCenter;
             this.tabAdvanced.UseVisualStyleBackColor = true;
             this.tabAdvanced.CheckedChanged += new System.EventHandler(this.chkAdvanced_CheckedChanged);
+			// 
+			// chkUpdateComicBookFiles
+			// 
+			this.chkUpdateComicBookFiles.AutoSize = true;
+			this.chkUpdateComicBookFiles.Location = new System.Drawing.Point(9, 65);
+			this.chkUpdateComicBookFiles.Name = "chkUpdateComicBookFiles";
+			this.chkUpdateComicBookFiles.Size = new System.Drawing.Size(191, 17);
+			this.chkUpdateComicBookFiles.TabIndex = 4;
+			this.chkUpdateComicBookFiles.Text = "Allow writing of Library info into files";
+			this.chkUpdateComicBookFiles.UseVisualStyleBackColor = true;
+			// 
+			// lblThemeOverride
+			// 
+			this.lblThemeOverride.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Right)));
+            this.lblThemeOverride.AutoSize = true;
+            this.lblThemeOverride.Location = new System.Drawing.Point(343, 60);
+            this.lblThemeOverride.Name = "lblThemeOverride";
+            this.lblThemeOverride.Size = new System.Drawing.Size(137, 26);
+            this.lblThemeOverride.TabIndex = 15;
+            this.lblThemeOverride.Text = "Theme is being overwritten \r\nvia the command line";
+            this.lblThemeOverride.TextAlign = System.Drawing.ContentAlignment.TopCenter;
+			//
+			// cbTheme
+			// 
+			this.cbTheme.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Right)));
+            this.cbTheme.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList;
+            this.cbTheme.FormattingEnabled = true;
+            this.cbTheme.Location = new System.Drawing.Point(370, 33);
+            this.cbTheme.Name = "cbTheme";
+            this.cbTheme.Size = new System.Drawing.Size(121, 21);
+            this.cbTheme.TabIndex = 14;
             // 
-            // chkUpdateComicBookFiles
+            // labelTheme
             // 
-            this.chkUpdateComicBookFiles.AutoSize = true;
-            this.chkUpdateComicBookFiles.Location = new System.Drawing.Point(9, 65);
-            this.chkUpdateComicBookFiles.Name = "chkUpdateComicBookFiles";
-            this.chkUpdateComicBookFiles.Size = new System.Drawing.Size(191, 17);
-            this.chkUpdateComicBookFiles.TabIndex = 4;
-            this.chkUpdateComicBookFiles.Text = "Allow writing of Library info into files";
-            this.chkUpdateComicBookFiles.UseVisualStyleBackColor = true;
+            this.labelTheme.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Right)));
+            this.labelTheme.AutoSize = true;
+            this.labelTheme.Location = new System.Drawing.Point(321, 37);
+            this.labelTheme.Name = "labelTheme";
+            this.labelTheme.Size = new System.Drawing.Size(43, 13);
+            this.labelTheme.TabIndex = 13;
+            this.labelTheme.Text = "Theme:";
+            this.labelTheme.TextAlign = System.Drawing.ContentAlignment.TopRight;
             // 
             // PreferencesDialog
             // 
@@ -2822,8 +2825,6 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
             this.groupOtherComics.ResumeLayout(false);
             this.groupOtherComics.PerformLayout();
             this.grpLanguages.ResumeLayout(false);
-            this.grpAppearance.ResumeLayout(false);
-            this.grpAppearance.PerformLayout();
             this.pageLibrary.ResumeLayout(false);
             this.grpVirtualTags.ResumeLayout(false);
             this.grpVirtualTags.PerformLayout();
@@ -2943,13 +2944,8 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 		private Panel pageAdvanced;
 		private CollapsibleGroupBox grpLanguages;
 
-		private CollapsibleGroupBox grpAppearance;
-
-		private CheckBox chkDarkMode;
-
 		private CheckBox chkDragPageTurning;
 
-		private Label labelDarkMode;
 		private CollapsibleGroupBox groupMessagesAndSocial;
 		private CollapsibleGroupBox groupOtherComics;
 		private CollapsibleGroupBox grpDatabaseBackup;
@@ -3084,5 +3080,8 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 		private CheckBox chkBackupOnExit;
 		private CheckBox chkBackupOnStartup;
         private CheckBox chkUpdateComicBookFiles;
-    }
+		private ComboBox cbTheme;
+		private Label labelTheme;
+		private Label lblThemeOverride;
+	}
 }

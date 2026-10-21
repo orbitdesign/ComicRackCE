@@ -9,6 +9,7 @@ using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
 using System.Globalization;
 using System.IO;
+using cYo.Common.Net.News;
 using System.Linq;
 using System.Net;
 using System.Runtime.InteropServices;
@@ -749,6 +750,7 @@ namespace cYo.Projects.ComicRack.Viewer
 			{
 			case PowerModes.Resume:
 				NetworkManager.Start();
+				WirelessSyncProvider.RestartListen();
 				break;
 			case PowerModes.Suspend:
 				NetworkManager.Stop();
@@ -784,17 +786,9 @@ namespace cYo.Projects.ComicRack.Viewer
 			CommandLineParser.Parse(EngineConfiguration.Default);
 			Application.EnableVisualStyles();
 			Application.SetCompatibleTextRenderingDefault(defaultValue: false);
-			//The ini file and command line win when they ask for a theme; otherwise use the choice
-			//made in Preferences. Config.xml has just been loaded above, so it is available here.
-			Theme = ExtendedSettings.Theme;
-			if (Theme == Themes.Default && Settings.DarkMode)
-			{
-				Theme = Themes.Dark;
-			}
-            ThemeManager.Initialize(Theme); // if using dark mode, replace SystemColors and initialize native Windows theming
-			ResourceManagerEx.InitResourceManager(Theme);
-			ThemePlugin.Register(Theme); // Register the current theme for the IThemePlugin interface for plugins
-            ShellFile.DeleteAPI = ExtendedSettings.DeleteAPI;
+			Themes themeToUse = InitializeTheme();
+			Theme = themeToUse;
+			ShellFile.DeleteAPI = ExtendedSettings.DeleteAPI;
 			DatabaseManager.FirstDatabaseAccess += delegate
 			{
 				StartupProgress(TR.Messages["OpenDatabase", "Opening Database"], -1);
@@ -802,21 +796,21 @@ namespace cYo.Projects.ComicRack.Viewer
 			DatabaseManager.BackgroundSaveInterval = ExtendedSettings.DatabaseBackgroundSaving;
 			WirelessSyncProvider.StartListen();
 			WirelessSyncProvider.ClientSyncRequest += (object s, WirelessSyncProvider.ClientSyncRequestArgs e) =>
-            {
-                if (MainForm != null)
-                {
-                    IPAddress address = s as IPAddress;
-                    e.IsPaired = QueueManager.Devices.Any((DeviceSyncSettings d) => d.DeviceKey == e.Key);
-                    if (e.IsPaired && address != null)
-                    {
-                        MainForm.BeginInvoke(delegate
-                        {
+			{
+				if (MainForm != null)
+				{
+					IPAddress address = s as IPAddress;
+					e.IsPaired = QueueManager.Devices.Any((DeviceSyncSettings d) => d.DeviceKey == e.Key);
+					if (e.IsPaired && address != null)
+					{
+						MainForm.BeginInvoke(delegate
+						{
 							MainForm.StoreWorkspace(); // save workspace before sync, so sorted lists key are up to date
 							QueueManager.SynchronizeDevice(e.Key, address);
-                        });
-                    }
-                }
-            };
+						});
+					}
+				}
+			};
 			if (!ExtendedSettings.DisableAutoTuneSystem)
 			{
 				AutoTuneSystem();
@@ -885,30 +879,30 @@ namespace cYo.Projects.ComicRack.Viewer
 				ComicBook.FormatIcons.AddRange(ZipFileFolder.CreateFromFiles(defaultLocations, "Formats*.zip"), SplitIconKeys);
 				ComicBook.SpecialIcons.AddRange(ZipFileFolder.CreateFromFiles(defaultLocations, "Special*.zip"), SplitIconKeys);
 				ComicBook.GenericIcons = CreateGenericsIcons(defaultLocations, "*.zip", "_", SplitIconKeys);
-                if (Theme == Themes.Dark)
-                {
-                    ToolStripManager.Renderer = new ThemeToolStripProRenderer();
-                }
-                else
-                {
-                    ToolStripRenderer renderer;
-                    if (ExtendedSettings.SystemToolBars)
-                    {
-                        renderer = new ToolStripSystemRenderer();
-                    }
-                    else
-                    {
-                        // OSVersion 5 is Windows XP, Windows 2000 or Windows 2003
-                        bool isWinXp = Environment.OSVersion.Platform == PlatformID.Win32NT && Environment.OSVersion.Version.Major == 5;
-                        // Should consider moving OptimizedProfessionalColorTable and OptimizedTanColorTable
-                        ProfessionalColorTable professionalColorTable = ((!(ExtendedSettings.ForceTanColorSchema || isWinXp)) ? ((ProfessionalColorTable)new OptimizedProfessionalColorTable()) : ((ProfessionalColorTable)new OptimizedTanColorTable()));
-                        renderer = new ThemeToolStripProRenderer(professionalColorTable)
-                        {
-                            RoundedEdges = false
-                        };
-                    }
-                    ToolStripManager.Renderer = renderer;
-                }
+				if (themeToUse == Themes.Dark)
+				{
+					ToolStripManager.Renderer = new ThemeToolStripProRenderer();
+				}
+				else 
+				{
+					ToolStripRenderer renderer;
+					if (ExtendedSettings.SystemToolBars)
+					{
+						renderer = new ToolStripSystemRenderer();
+					}
+					else
+					{
+						// OSVersion 5 is Windows XP, Windows 2000 or Windows 2003
+						bool isWinXp = Environment.OSVersion.Platform == PlatformID.Win32NT && Environment.OSVersion.Version.Major == 5;
+						// Should consider moving OptimizedProfessionalColorTable and OptimizedTanColorTable
+						ProfessionalColorTable professionalColorTable = ((!(ExtendedSettings.ForceTanColorSchema || isWinXp)) ? ((ProfessionalColorTable)new OptimizedProfessionalColorTable()) : ((ProfessionalColorTable)new OptimizedTanColorTable()));
+						renderer = new ThemeToolStripProRenderer(professionalColorTable)
+						{
+							RoundedEdges = false
+						};
+					}
+					ToolStripManager.Renderer = renderer;
+				}
 				//If the marker from the previous run is still there, that run never finished
 				//starting up. A driver fault while creating the GL context or uploading a
 				//texture kills the process outright and cannot be caught, so the only way out
@@ -952,14 +946,28 @@ namespace cYo.Projects.ComicRack.Viewer
 			}
 			else
 			{
-                //Because the default NewsFeeds.xml in the Data already as the old url inside it
+				//Because the default NewsFeeds.xml in the Data already as the old url inside it
 				var oldSub = News.Subscriptions.FirstOrDefault(x => x.Url != DefaultNewsFeed);
-                if (oldSub != null)
+				if (oldSub != null)
 				{
 					//Since the feeds doesn't match with the default url, we remove it, and add or new one.
 					News.Subscriptions.Remove(oldSub);
-                    News.Subscriptions.Add(new NewsStorage.Subscription(DefaultNewsFeed, "ComicRack News"));
-                }
+					News.Subscriptions.Add(new NewsStorage.Subscription(DefaultNewsFeed, "ComicRack News"));
+				}
+			}
+			//This build's own changes (Changes.txt) in the News window, among Community Edition's news. The first time, all but the
+			//newest count as read, so the window does not open with 160 unread items.
+			NewsChannel buildNews = BuildNews.Load(Path.Combine(Application.StartupPath, "Changes.txt"));
+			if (buildNews != null)
+			{
+				News.AddBuiltIn(buildNews, BuildNews.Newest(buildNews));
+			}
+			//and the translator helper's changes (its CHANGES.md), when the helper is on this computer
+			string helperFolder = !string.IsNullOrEmpty(Settings.TranslatorHelperFolder) ? Settings.TranslatorHelperFolder : TranslationServices.InstalledHelperFolder;
+			NewsChannel helperNews = BuildNews.LoadHelper(helperFolder);
+			if (helperNews != null)
+			{
+				News.AddBuiltIn(helperNews, BuildNews.Newest(helperNews));
 			}
 			StartupProgress(TR.Messages["CreateMainWindow", "Creating Main Window"], 50);
 			if (ExtendedSettings.DisableScriptOptimization)
@@ -978,26 +986,26 @@ namespace cYo.Projects.ComicRack.Viewer
 			MainForm = new MainForm();
 			MainForm.FormClosed += MainFormFormClosed;
 			MainForm.FormClosing += (object s, FormClosingEventArgs e) =>
-            {
-                bool flag2 = e.CloseReason == CloseReason.UserClosing;
-                foreach (Command command in ScriptUtility.GetCommands(PluginEngine.ScriptTypeShutdown))
-                {
-                    try
-                    {
-                        if (!(bool)command.Invoke(new object[1]
-                        {
-                            flag2
-                        }) && flag2)
-                        {
-                            e.Cancel = true;
-                            return;
-                        }
-                    }
-                    catch (Exception)
-                    {
-                    }
-                }
-            };
+			{
+				bool flag2 = e.CloseReason == CloseReason.UserClosing;
+				foreach (Command command in ScriptUtility.GetCommands(PluginEngine.ScriptTypeShutdown))
+				{
+					try
+					{
+						if (!(bool)command.Invoke(new object[1]
+						{
+							flag2
+						}) && flag2)
+						{
+							e.Cancel = true;
+							return;
+						}
+					}
+					catch (Exception)
+					{
+					}
+				}
+			};
 			Application.AddMessageFilter(new MouseWheelDelegater());
 			MainForm.Show();
 			MainForm.Update();
@@ -1027,6 +1035,37 @@ namespace cYo.Projects.ComicRack.Viewer
 				MainForm.ShowNews(always: false);
 			}
 			Application.Run(MainForm);
+		}
+
+		private static Themes InitializeTheme()
+		{
+			Themes themeToUse;
+			if (ExtendedSettings.OverrideTheme)
+			{
+				// if the theme is overridden use the theme from the command line or ini instead.
+				themeToUse = ExtendedSettings.Theme;
+			}
+			else
+			{
+				if (!Settings.HasMigratedThemes)
+				{
+					// Used when migrating from the old ExtendedSettings (ini/command line).
+					if (ExtendedSettings.Theme != Themes.Default)
+						Settings.Theme = ExtendedSettings.Theme; // if theme isn't default migrate to the new setting.
+					else if (Settings.DarkMode)
+						Settings.Theme = Themes.Dark; // orbitdesign builds had a "Use dark theme" tick box (Settings.DarkMode): its choice moves over too.
+
+					Settings.HasMigratedThemes = true; // set the flag to true so that we only migrate once.
+				}
+
+				themeToUse = Settings.Theme;
+			}
+
+			ThemeManager.Initialize(themeToUse); // if using dark mode, replace SystemColors and initialize native Windows theming
+			ResourceManagerEx.InitResourceManager(themeToUse);
+			ThemePlugin.Register(themeToUse); // Register the current theme for the IThemePlugin interface for plugins
+
+			return themeToUse;
 		}
 
 		public static Dictionary<string, ImagePackage> CreateGenericsIcons(IEnumerable<string> folders, string searchPattern, string trigger, Func<string, IEnumerable<string>> mapKeys = null)
