@@ -4801,7 +4801,7 @@ namespace cYo.Projects.ComicRack.Viewer
 			ComicBook selectedBook = quickOpenView.SelectedBook;
 			if (selectedBook != null)
 			{
-				OpenBooks.Open(selectedBook, inNewSlot: false);
+				NetworkFileWait.WhenReady(this, selectedBook.IsLinked ? selectedBook.FilePath : null, delegate { OpenBooks.Open(selectedBook, inNewSlot: false); });
 			}
 		}
 

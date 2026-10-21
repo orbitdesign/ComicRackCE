@@ -2808,7 +2808,11 @@ namespace cYo.Projects.ComicRack.Viewer.Views
             if (coverViewItem != null && base.Main != null)
             {
                 coverViewItem.Comic.LastOpenedFromListId = BookList.Id;
-                base.Main.OpenBooks.Open(coverViewItem.Comic, Program.Settings.OpenInNewTab ^ ((Control.ModifierKeys & Keys.Control) != 0 || (itemView.ActivateButton & MouseButtons.Middle) != 0));
+                ComicBook book = coverViewItem.Comic;
+                IMain main = base.Main;
+                bool newTab = Program.Settings.OpenInNewTab ^ ((Control.ModifierKeys & Keys.Control) != 0 || (itemView.ActivateButton & MouseButtons.Middle) != 0);
+                //a book on a network folder is opened once the share answers, without the window waiting for it
+                NetworkFileWait.WhenReady(FindForm() ?? (Control)this, book.IsLinked ? book.FilePath : null, delegate { main.OpenBooks.Open(book, newTab); });
             }
         }
 
@@ -2818,7 +2822,9 @@ namespace cYo.Projects.ComicRack.Viewer.Views
             if (coverViewItem != null && base.Main != null)
             {
                 coverViewItem.Comic.LastOpenedFromListId = BookList.Id;
-                base.Main.OpenBooks.Open(coverViewItem.Comic, inNewSlot: true);
+                ComicBook book = coverViewItem.Comic;
+                IMain main = base.Main;
+                NetworkFileWait.WhenReady(FindForm() ?? (Control)this, book.IsLinked ? book.FilePath : null, delegate { main.OpenBooks.Open(book, inNewSlot: true); });
             }
         }
 
