@@ -2083,7 +2083,11 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			commitTimer.Tick += delegate
 			{
 				commitTimer.Stop();
-				Commit();
+				//a tick that comes after the window closed (the timer was started again as it closed): the edit was saved then
+				if (!disposed)
+				{
+					Commit();
+				}
 			};
 			Shown += delegate
 			{
@@ -2880,6 +2884,10 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 
 		private void SyncList()
 		{
+			if (lstBoxes.IsDisposed)
+			{
+				return;
+			}
 			bool was = loading;
 			loading = true;
 			lstBoxes.BeginUpdate();
@@ -3249,6 +3257,12 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 		/// <summary>A change was made: draw the page again shortly (many small changes become one redraw).</summary>
 		private void Touch()
 		{
+			//closing the window can still report a change (the text box loses the keyboard): Detach saved the page already, and a
+			//timer started now would redraw the closed window's list (it crashed: "Cannot access a disposed object 'ListBox'")
+			if (disposed)
+			{
+				return;
+			}
 			pendingCommit = true;
 			commitTimer.Stop();
 			commitTimer.Start();
@@ -3664,6 +3678,12 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 				DateTime until = DateTime.UtcNow.AddSeconds(120);
 				poll.Tick += delegate
 				{
+					if (disposed)
+					{
+						poll.Stop();
+						poll.Dispose();
+						return;
+					}
 					TranslationPageState now = service.GetState(wantedKey);
 					if (now != null && !now.Waiting)
 					{

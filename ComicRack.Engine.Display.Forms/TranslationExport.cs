@@ -172,6 +172,31 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 		/// <summary>Raised after each page with (pages done, pages in the book); on a background thread.</summary>
 		public event Action<int, int> Progress;
 
+		/// <summary>Only pages the translator has stored are written: a page it would have to read and translate stops the export
+		/// (the library's batch export, which is for books translated already).</summary>
+		public bool StoredOnly { get; set; }
+
+		private static string Fingerprint(byte[] data)
+		{
+			using (System.Security.Cryptography.SHA1 sha = System.Security.Cryptography.SHA1.Create())
+			{
+				return BitConverter.ToString(sha.ComputeHash(data)).Replace("-", "").ToLowerInvariant();
+			}
+		}
+
+		/// <summary>The language the pages are translated into ("en", "zh-CN"), or null for the translator's own (helper 1.72).</summary>
+		public string Target
+		{
+			get
+			{
+				return api.Target;
+			}
+			set
+			{
+				api.Target = value;
+			}
+		}
+
 		/// <summary>
 		/// When set (the full path of WinRAR's Rar.exe), the book is packed as a .cbr: ComicRack cannot
 		/// write RAR files itself, so the pages are written as a .cbz first and repacked.
@@ -324,6 +349,10 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 					//the covers are lettered as in the reader: the front cover's titles as large as their place, both covers in their own fonts
 					bool cover = PageTranslationService.IsFrontCover(book, index);
 					api.BackCover = PageTranslationService.IsBackCover(book, index);
+					if (StoredOnly && !api.IsCached(Fingerprint(data), fonts, cover, out bool _))
+					{
+						throw new InvalidOperationException("Page " + (index + 1) + " is not stored by the translator" + (string.IsNullOrEmpty(Target) ? "" : " in this language") + ": translate the book first.");
+					}
 					page = api.Analyze(data, fonts, cover);
 					List<TranslationBox> edits = store.GetEdits(bookKey, index);
 					List<ProtectStroke> protect = store.GetProtect(bookKey, index);
