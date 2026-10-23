@@ -22,6 +22,9 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 		{
 			public string Sha = "";
 
+			//The languages the page was translated into ("en", "zh-CN"); empty for pages noted before 1.168 (language not known).
+			public List<string> Languages = new List<string>();
+
 			public List<TranslationBox> Edits = new List<TranslationBox>();
 
 			//Artwork the user painted over with the protect brush.
@@ -117,8 +120,8 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 			}
 		}
 
-		/// <summary>Notes that a page was translated and what its fingerprint is.</summary>
-		public void RecordPage(string bookKey, int page, string sha)
+		/// <summary>Notes that a page was translated, what its fingerprint is and (when known) the language it was translated into.</summary>
+		public void RecordPage(string bookKey, int page, string sha, string language = null)
 		{
 			if (bookKey == null || string.IsNullOrEmpty(sha))
 			{
@@ -133,10 +136,17 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 				}
 				if (stored.Sha != sha)
 				{
+					//another picture of the page: what it was translated into before is about the old one
 					stored.Sha = sha;
+					stored.Languages.Clear();
 					book.Dirty = true;
-					Save(bookKey, book);
 				}
+				if (!string.IsNullOrEmpty(language) && !stored.Languages.Contains(language))
+				{
+					stored.Languages.Add(language);
+					book.Dirty = true;
+				}
+				Save(bookKey, book);
 			}
 		}
 
@@ -310,7 +320,9 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 			}
 		}
 
-		public int TranslatedPageCount(string bookKey)
+		/// <summary>The pages translated (into the language given, when one is: a page noted before languages were, is not counted
+		/// for any).</summary>
+		public int TranslatedPageCount(string bookKey, string language = null)
 		{
 			if (bookKey == null)
 			{
@@ -318,11 +330,11 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 			}
 			lock (sync)
 			{
-				return Load(bookKey).Pages.Values.Count((StoredPage p) => p.Sha.Length > 0);
+				return Load(bookKey).Pages.Values.Count((StoredPage p) => IsDone(p, language));
 			}
 		}
 
-		public bool IsTranslated(string bookKey, int page)
+		public bool IsTranslated(string bookKey, int page, string language = null)
 		{
 			if (bookKey == null)
 			{
@@ -330,8 +342,13 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 			}
 			lock (sync)
 			{
-				return Load(bookKey).Pages.TryGetValue(page, out StoredPage stored) && stored.Sha.Length > 0;
+				return Load(bookKey).Pages.TryGetValue(page, out StoredPage stored) && IsDone(stored, language);
 			}
+		}
+
+		private static bool IsDone(StoredPage page, string language)
+		{
+			return page.Sha.Length > 0 && (string.IsNullOrEmpty(language) || page.Languages.Contains(language));
 		}
 
 		/// <summary>The fingerprint of one page, or null when it was never translated.</summary>
@@ -373,6 +390,7 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 				if (book.Pages.TryGetValue(page, out StoredPage stored))
 				{
 					stored.Sha = "";
+					stored.Languages.Clear();
 					if (!keepEdits)
 					{
 						stored.Edits.Clear();
@@ -402,6 +420,7 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 				{
 					StoredPage stored = book.Pages[page];
 					stored.Sha = "";
+					stored.Languages.Clear();
 					if (!keepEdits)
 					{
 						stored.Edits.Clear();
@@ -511,6 +530,10 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 							foreach (JsonElement p in pages.EnumerateArray())
 							{
 								StoredPage stored = new StoredPage { Sha = TranslationBox.GetString(p, "sha") };
+								if (p.TryGetProperty("languages", out JsonElement languages) && languages.ValueKind == JsonValueKind.Array)
+								{
+									stored.Languages = languages.EnumerateArray().Where((JsonElement l) => l.ValueKind == JsonValueKind.String).Select((JsonElement l) => l.GetString()).Where((string l) => !string.IsNullOrEmpty(l)).Distinct().ToList();
+								}
 								if (p.TryGetProperty("edits", out JsonElement edits) && edits.ValueKind == JsonValueKind.Array)
 								{
 									stored.Edits = edits.EnumerateArray().Select(TranslationBox.Read).ToList();
@@ -575,6 +598,15 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 						w.WriteStartObject();
 						w.WriteNumber("page", kv.Key);
 						w.WriteString("sha", kv.Value.Sha);
+						if (kv.Value.Languages.Count > 0)
+						{
+							w.WriteStartArray("languages");
+							foreach (string language in kv.Value.Languages)
+							{
+								w.WriteStringValue(language);
+							}
+							w.WriteEndArray();
+						}
 						w.WriteStartArray("edits");
 						foreach (TranslationBox box in kv.Value.Edits)
 						{

@@ -24,6 +24,10 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 		/// <summary>The page asked about is the book's back cover (its last page): like the front cover, it keeps its own fonts (helper 1.70).</summary>
 		public bool BackCover { get; set; }
 
+		/// <summary>The language the pages are translated into ("en", "zh-CN"), or null for the helper's own (helper 1.72): the batch
+		/// translates each book into the language it was queued with.</summary>
+		public string Target { get; set; }
+
 		public TranslationApi(string baseUrl)
 		{
 			BaseUrl = (string.IsNullOrWhiteSpace(baseUrl) ? "http://127.0.0.1:8790" : baseUrl.Trim()).TrimEnd('/');
@@ -105,6 +109,10 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 			{
 				path += (path.Contains("?") ? "&" : "?") + "back_cover=1";
 			}
+			if (!string.IsNullOrEmpty(Target))
+			{
+				path += (path.Contains("?") ? "&" : "?") + "target=" + Uri.EscapeDataString(Target);
+			}
 			return ReadPage(Send(path, page, "application/octet-stream", 900000));
 		}
 
@@ -131,6 +139,10 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 			if (BackCover)
 			{
 				w.WriteBoolean("back_cover", true);
+			}
+			if (!string.IsNullOrEmpty(Target))
+			{
+				w.WriteString("target", Target);
 			}
 		}
 
@@ -521,7 +533,8 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 					Height = (int)TranslationBox.GetDouble(root, "height"),
 					Changed = TranslationBox.GetBool(root, "changed"),
 					Info = TranslationBox.GetString(root, "info"),
-					Image = Convert.FromBase64String(TranslationBox.GetString(root, "image"))
+					Image = Convert.FromBase64String(TranslationBox.GetString(root, "image")),
+					Language = TranslationBox.GetString(root, "language")
 				};
 				if (root.TryGetProperty("boxes", out JsonElement boxes) && boxes.ValueKind == JsonValueKind.Array)
 				{

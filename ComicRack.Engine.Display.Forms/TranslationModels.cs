@@ -384,6 +384,9 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 		public List<TranslationBox> Boxes { get; set; } = new List<TranslationBox>();
 
 		public byte[] Image { get; set; }
+
+		/// <summary>The language the page was translated into ("en", "zh-CN"), or "" from a helper before 1.72.</summary>
+		public string Language { get; set; } = "";
 	}
 
 	public class TranslationRegion

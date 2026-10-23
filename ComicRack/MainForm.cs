@@ -1538,6 +1538,11 @@ namespace cYo.Projects.ComicRack.Viewer
 			{
 				Name = "cmTranslationExport"
 			};
+			//The batch of the translate-ahead menu for the book being read: it is translated whole in the background, into English or Chinese
+			ToolStripMenuItem cmTranslateBook = new ToolStripMenuItem("Translate Whole Book (Batch)")
+			{
+				Name = "cmTranslateBook"
+			};
 			//the same pictures as in the translator button's menu
 			int translatorIcon = Math.Max(16, (int)Math.Round(16 * DeviceDpi / 96.0));
 			miTranslatePages.Image = cmTranslatePages.Image = TranslationButtons.ActionIcon(TranslationButtons.TranslationAction.Translate, translatorIcon);
@@ -1545,8 +1550,11 @@ namespace cYo.Projects.ComicRack.Viewer
 			miTranslationCache.Image = cmTranslationCache.Image = TranslationButtons.ActionIcon(TranslationButtons.TranslationAction.DeleteCache, translatorIcon);
 			miTranslationExport.Image = cmTranslationExport.Image = TranslationButtons.ActionIcon(TranslationButtons.TranslationAction.Export, translatorIcon);
 			miTranslationSettings.Image = cmTranslationSettings.Image = TranslationButtons.ActionIcon(TranslationButtons.TranslationAction.Settings, translatorIcon);
+			cmTranslateBook.Image = TranslationButtons.WholeBookIcon(translatorIcon);
+			cmTranslateBook.DropDownItems.AddRange(TranslationButtons.WholeBookLanguageItems(BookBeingRead, translatorIcon, "cmTranslateBook"));
 			InsertMenuItemsAfter(miMagnify, miTranslatePages, miTranslationEditor, miTranslationCache, miTranslationExport, miTranslationSettings);
-			InsertMenuItemsAfter(cmMagnify, cmTranslatePages, cmTranslationEditor, cmTranslationCache, cmTranslationExport, cmTranslationSettings);
+			InsertMenuItemsAfter(cmMagnify, cmTranslatePages, cmTranslationEditor, cmTranslationCache, cmTranslateBook, cmTranslationExport, cmTranslationSettings);
+			commands.Add(delegate { }, () => ComicDisplay.Book != null, cmTranslateBook);
 			commands.Add(ToggleTranslatePages, true, () => readerControl != null && readerControl.TranslatePages, miTranslatePages, cmTranslatePages);
 			commands.Add(OpenTranslationSettings, miTranslationSettings, cmTranslationSettings);
 			commands.Add(OpenTranslationEditor, miTranslationEditor);
@@ -3143,6 +3151,13 @@ namespace cYo.Projects.ComicRack.Viewer
 				return new ComicBook[0];
 			}
 			return list.GetBookList(ComicBookFilterType.Selected | ComicBookFilterType.IsNotFileless).ToArray();
+		}
+
+		/// <summary>The reader's right-click menu: the book being read, for the translation batch (translated whole, in the background).</summary>
+		private IEnumerable<ComicBook> BookBeingRead()
+		{
+			ComicBook book = ComicDisplay?.Book?.Comic;
+			return book != null ? new[] { book } : new ComicBook[0];
 		}
 
 		internal void ToggleTranslatePages()
