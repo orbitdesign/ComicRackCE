@@ -334,6 +334,29 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 			}
 		}
 
+		/// <summary>How many of the book's pages were translated into each language ("en", "zh-CN"); pages noted before languages were
+		/// are counted under "".</summary>
+		public Dictionary<string, int> LanguageCounts(string bookKey)
+		{
+			Dictionary<string, int> counts = new Dictionary<string, int>();
+			if (bookKey == null)
+			{
+				return counts;
+			}
+			lock (sync)
+			{
+				foreach (StoredPage page in Load(bookKey).Pages.Values.Where((StoredPage p) => p.Sha.Length > 0))
+				{
+					foreach (string language in page.Languages.Count > 0 ? page.Languages : new List<string> { "" })
+					{
+						counts.TryGetValue(language, out int n);
+						counts[language] = n + 1;
+					}
+				}
+			}
+			return counts;
+		}
+
 		public bool IsTranslated(string bookKey, int page, string language = null)
 		{
 			if (bookKey == null)

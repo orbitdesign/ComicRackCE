@@ -3038,7 +3038,26 @@ namespace cYo.Projects.ComicRack.Viewer.Views
             };
             miTranslateBooks.DropDownItems.AddRange(TranslationButtons.WholeBookLanguageItems(TranslatableSelection, size, "miTranslateBooks"));
             contextMenuItems.Items.Insert(contextMenuItems.Items.IndexOf(miExportComics) + 1, miTranslateBooks);
+            //and the translated copies of the selected books that are translated already, written in one go
+            miExportTranslated = new ToolStripMenuItem("Export Translated Book...", TranslationButtons.ActionIcon(TranslationButtons.TranslationAction.Export, size))
+            {
+                Name = "miExportTranslated"
+            };
+            miExportTranslated.Click += delegate
+            {
+                List<ComicBook> books = TranslatableSelection().ToList();
+                if (books.Count > 0)
+                {
+                    using (TranslationBatchExportDialog dialog = new TranslationBatchExportDialog(books))
+                    {
+                        dialog.ShowDialog(FindForm());
+                    }
+                }
+            };
+            contextMenuItems.Items.Insert(contextMenuItems.Items.IndexOf(miTranslateBooks) + 1, miExportTranslated);
         }
+
+        private ToolStripMenuItem miExportTranslated;
 
         private IEnumerable<ComicBook> TranslatableSelection()
         {
@@ -3050,6 +3069,8 @@ namespace cYo.Projects.ComicRack.Viewer.Views
             int count = TranslatableSelection().Count();
             miTranslateBooks.Text = count > 1 ? "Translate " + count + " Whole Books (Batch)" : "Translate Whole Book (Batch)";
             miTranslateBooks.Visible = count > 0;
+            miExportTranslated.Text = count > 1 ? "Export Translated Books..." : "Export Translated Book...";
+            miExportTranslated.Visible = count > 0;
         }
 
         private void contextMenuItems_Opening(object sender, CancelEventArgs e)
