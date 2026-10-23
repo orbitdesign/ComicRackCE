@@ -729,7 +729,12 @@ namespace cYo.Projects.ComicRack.Viewer
 			pair.BatchContinue.Click += delegate { TranslationBatch.Resume(); };
 			pair.BatchCancel = new ToolStripMenuItem("Forget the queue", GetMenuIcon(MenuIcon.Stop, null, menuSize), delegate { TranslationBatch.Cancel(); });
 			pair.Ahead.DropDownItems.AddRange(new ToolStripItem[] { pair.BatchStart, pair.BatchState, pair.BatchPause, pair.BatchContinue, pair.BatchCancel });
-			pair.Ahead.DropDownOpening += delegate { Update(pair); };
+			pair.Ahead.DropDownOpening += delegate
+			{
+				Update(pair);
+				//the selected books are queued in the helper's language of now
+				RefreshTarget(pair);
+			};
 			pair.Ahead.ButtonClick += delegate
 			{
 				if (CanContinueBatch)
@@ -1631,6 +1636,50 @@ namespace cYo.Projects.ComicRack.Viewer
 				{
 					ShowTarget(pair);
 				}
+			}
+		}
+
+		/// <summary>The whole-book picture of the translate-ahead menu, for the right-click menus' "Translate Whole Book (Batch)".</summary>
+		public static Bitmap WholeBookIcon(int size)
+		{
+			return GetMenuIcon(MenuIcon.Book, null, size);
+		}
+
+		/// <summary>The language the helper translates into, as last seen ("en", "zh-CN"), or "" when not known yet.</summary>
+		public static string CurrentTarget => targetCode;
+
+		/// <summary>The Chinese the batch's "To Chinese" asks for: the helper's own when it is set to a Chinese, else simplified.</summary>
+		public static string ChineseTarget => targetCode.StartsWith("zh") ? targetCode : "zh-CN";
+
+		/// <summary>"English", "Chinese", the code itself for another language, or null for none.</summary>
+		public static string LanguageName(string code)
+		{
+			if (string.IsNullOrEmpty(code))
+			{
+				return null;
+			}
+			return code == "en" ? "English" : code.StartsWith("zh") ? "Chinese" : code;
+		}
+
+		/// <summary>
+		/// The two entries under the right-click menus' "Translate Whole Book (Batch)": the books are queued for the batch to be
+		/// translated whole into English, or into Chinese, whatever language the reader is set to.
+		/// </summary>
+		public static ToolStripMenuItem[] WholeBookLanguageItems(Func<IEnumerable<ComicBook>> books, int size, string names)
+		{
+			ToolStripMenuItem english = new ToolStripMenuItem("To English", GetMenuIcon(MenuIcon.Language, "EN", size)) { Name = names + "English" };
+			english.Click += delegate { QueueWholeBooks(books, "en"); };
+			ToolStripMenuItem chinese = new ToolStripMenuItem("To Chinese", GetMenuIcon(MenuIcon.Language, "中", size)) { Name = names + "Chinese" };
+			chinese.Click += delegate { QueueWholeBooks(books, ChineseTarget); };
+			return new[] { english, chinese };
+		}
+
+		private static void QueueWholeBooks(Func<IEnumerable<ComicBook>> books, string target)
+		{
+			ComicBook[] list = books()?.ToArray() ?? new ComicBook[0];
+			if (list.Length > 0)
+			{
+				TranslationBatch.Start(list, target);
 			}
 		}
 

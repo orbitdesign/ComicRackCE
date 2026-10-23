@@ -338,7 +338,7 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 					Thread.Sleep(2000 * attempt);
 				}
 			}
-			store.RecordPage(bookKey, index, page.Sha);
+			store.RecordPage(bookKey, index, page.Sha, page.Language);
 			if (!page.Changed)
 			{
 				return new TranslatedProvider.Prepared { Data = data, Name = name };

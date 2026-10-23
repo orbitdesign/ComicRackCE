@@ -1158,6 +1158,7 @@ namespace cYo.Projects.ComicRack.Viewer.Views
             }
             TranslationButtons.Install(toolStrip, toolStrip.Items.Count, separatorBefore: true, separatorAfter: false);
             QuickScanButton.Install(toolStrip, toolStrip.Items.Count);
+            AddTranslateBooksItem();
             ToolStripSeparator toolStripSeparator = sepDuplicateList;
             bool visible = (tbbDuplicateList.Visible = Library != null && Library.EditMode.CanEditList());
             toolStripSeparator.Visible = visible;
@@ -3024,6 +3025,33 @@ namespace cYo.Projects.ComicRack.Viewer.Views
             base.Main.UpdateListConfigMenus(tsListLayouts.DropDownItems);
         }
 
+        private ToolStripMenuItem miTranslateBooks;
+
+        /// <summary>The batch of the translate-ahead menu in the books' right-click menu too: the selected books are translated whole,
+        /// in the background, into English or Chinese.</summary>
+        private void AddTranslateBooksItem()
+        {
+            int size = Math.Max(16, (int)Math.Round(16 * DeviceDpi / 96.0));
+            miTranslateBooks = new ToolStripMenuItem("Translate Whole Book (Batch)", TranslationButtons.WholeBookIcon(size))
+            {
+                Name = "miTranslateBooks"
+            };
+            miTranslateBooks.DropDownItems.AddRange(TranslationButtons.WholeBookLanguageItems(TranslatableSelection, size, "miTranslateBooks"));
+            contextMenuItems.Items.Insert(contextMenuItems.Items.IndexOf(miExportComics) + 1, miTranslateBooks);
+        }
+
+        private IEnumerable<ComicBook> TranslatableSelection()
+        {
+            return GetBookList(ComicBookFilterType.Selected | ComicBookFilterType.IsNotFileless);
+        }
+
+        private void UpdateTranslateBooksItem()
+        {
+            int count = TranslatableSelection().Count();
+            miTranslateBooks.Text = count > 1 ? "Translate " + count + " Whole Books (Batch)" : "Translate Whole Book (Batch)";
+            miTranslateBooks.Visible = count > 0;
+        }
+
         private void contextMenuItems_Opening(object sender, CancelEventArgs e)
         {
             IEnumerable<ComicBook> selectedBooks = GetBookList(ComicBookFilterType.Selected);
@@ -3045,6 +3073,7 @@ namespace cYo.Projects.ComicRack.Viewer.Views
             miAddList.Visible = comicLibrary != null && !comicLibrary.ComicLists.GetItems<ComicIdListItem>().IsEmpty() && hasSelectedBooksInLibrary;
             miEditList.Visible = CanReorderList(mustBeOrdered: false);
             miExportComics.Visible = ComicEditMode.CanExport();
+            UpdateTranslateBooksItem();
             miSetListBackground.Visible = BookList is ComicListItem;
 			miCopyData.Visible = miPasteData.Visible = ComicEditMode.CanEditProperties();
             FormUtility.SafeToolStripClear(miShowOnly.DropDownItems);

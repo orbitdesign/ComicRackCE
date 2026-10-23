@@ -129,6 +129,10 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 
 		public string ServerUrl { get; set; } = "http://127.0.0.1:8790";
 
+		/// <summary>The language pages are translated into ("en", "zh-CN"), or null for the helper's own (the reader's). The batch sets
+		/// it to the language each book was queued with (helper 1.72).</summary>
+		public string Target { get; set; }
+
 		/// <summary>
 		/// The book's own bytes of a page (set by the reader). The page on screen can carry the reader's colour adjustment (sharpen...),
 		/// which makes another picture of the same page than the book holds: the helper keys everything it stores on the picture it is
@@ -289,7 +293,7 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 				try
 				{
 					StyleFonts fonts = Store.GetFonts(entry.BookKey, entry.ImageIndex);
-					cached = new TranslationApi(url) { Book = entry.BookKey, BackCover = entry.BackCover }.IsCached(Fingerprint(data), fonts, entry.Cover, out picture);
+					cached = new TranslationApi(url) { Book = entry.BookKey, BackCover = entry.BackCover, Target = Target }.IsCached(Fingerprint(data), fonts, entry.Cover, out picture);
 					//the user's edits and protect strokes are drawn by the helper each time the page is shown
 					edited = cached && (Store.GetEdits(entry.BookKey, entry.ImageIndex).Count > 0 || Store.GetProtect(entry.BookKey, entry.ImageIndex).Count > 0);
 				}
@@ -817,7 +821,7 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 					{
 						throw new TranslationApiException("The page could not be read.", serverDown: false);
 					}
-					done(new TranslationApi(url) { Book = bookKey, BackCover = backCover }.Render(data, boxes, protect, fonts, cover).Image, null);
+					done(new TranslationApi(url) { Book = bookKey, BackCover = backCover, Target = Target }.Render(data, boxes, protect, fonts, cover).Image, null);
 				}
 				catch (Exception ex)
 				{
@@ -1130,7 +1134,7 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 			}
 			try
 			{
-				TranslationApi api = new TranslationApi(ServerUrl) { Book = entry.BookKey, BackCover = entry.BackCover };
+				TranslationApi api = new TranslationApi(ServerUrl) { Book = entry.BookKey, BackCover = entry.BackCover, Target = Target };
 				List<ProtectStroke> protect = Store.GetProtect(entry.BookKey, entry.ImageIndex);
 				StyleFonts fonts = Store.GetFonts(entry.BookKey, entry.ImageIndex);
 				if (renderOnly)
@@ -1196,7 +1200,8 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 					entry.ResultBytes = result == State.Done ? page.Image : null;
 					entry.Source = null;
 					entry.RenderOnly = false;
-					Store.RecordPage(entry.BookKey, entry.ImageIndex, page.Sha);
+					//the language the helper says it used (an older helper does not say: then the one asked for, if any)
+					Store.RecordPage(entry.BookKey, entry.ImageIndex, page.Sha, string.IsNullOrEmpty(page.Language) ? Target : page.Language);
 				}
 				else if (renderOnly)
 				{

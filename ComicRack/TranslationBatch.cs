@@ -44,7 +44,10 @@ namespace cYo.Projects.ComicRack.Viewer
 
 			public string Problem;
 
-			public int Translated => TranslationStore.Shared.TranslatedPageCount(BookKey);
+			/// <summary>The language the book is translated into ("en", "zh-CN"), or null for the helper's own (not known when queued).</summary>
+			public string Target;
+
+			public int Translated => TranslationStore.Shared.TranslatedPageCount(BookKey, Target);
 
 			public int Pages => Total > 0 ? Total : Math.Max(0, Comic.PageCount);
 
@@ -154,20 +157,30 @@ namespace cYo.Projects.ComicRack.Viewer
 		/// translator's light is amber, as for any real translating.</summary>
 		public static bool IsWorking => IsRunning && !Yielding;
 
-		/// <summary>Adds books to the queue (those already in it are left where they are) and starts translating.</summary>
-		public static void Start(IEnumerable<ComicBook> books)
+		/// <summary>Adds books to the queue (those already in it for the same language are left where they are) and starts translating.
+		/// The books are translated into the language given ("en", "zh-CN"), or into the helper's language of now.</summary>
+		public static void Start(IEnumerable<ComicBook> books, string target = null)
 		{
+			if (string.IsNullOrEmpty(target))
+			{
+				target = TranslationButtons.CurrentTarget;
+			}
+			if (string.IsNullOrEmpty(target))
+			{
+				target = null;
+			}
 			lock (sync)
 			{
 				items.RemoveAll((Item i) => i.Finished);
 				foreach (ComicBook comic in books)
 				{
 					string key = TranslationStore.BookKeyOf(comic);
-					if (key == null || items.Any((Item i) => i.BookKey == key))
+					if (key == null || items.Any((Item i) => i.BookKey == key && i.Target == target))
 					{
 						continue;
 					}
-					items.Add(new Item { Comic = comic, BookKey = key, Title = comic.Caption });
+					string language = TranslationButtons.LanguageName(target);
+					items.Add(new Item { Comic = comic, BookKey = key, Target = target, Title = comic.Caption + (language != null ? " (" + language + ")" : "") });
 				}
 			}
 			Resume();
@@ -410,6 +423,12 @@ namespace cYo.Projects.ComicRack.Viewer
 				}
 				item.Total = provider.Count;
 				item.Skipped.Clear();
+				if (svc.Target != item.Target)
+				{
+					//Another language than the book before: what the service remembers of pages is about that language.
+					svc.Clear();
+					svc.Target = item.Target;
+				}
 				//Pages the helper could not do (it was busy, or did not answer for a moment) are asked for again, a few times.
 				for (int pass = 0; pass < 4 && !token.IsCancellationRequested; pass++)
 				{
@@ -440,7 +459,7 @@ namespace cYo.Projects.ComicRack.Viewer
 							return;
 						}
 						PageKey key = item.Comic.GetImageKey(index) as PageKey;
-						if (key == null || store.IsTranslated(item.BookKey, index) || svc.IsKnown(key))
+						if (key == null || store.IsTranslated(item.BookKey, index, item.Target) || svc.IsKnown(key))
 						{
 							continue;
 						}
@@ -500,7 +519,7 @@ namespace cYo.Projects.ComicRack.Viewer
 					//goes on with the next book. The book stays in the queue; continuing tries only these pages again.
 					for (int index = 0; index < item.Total; index++)
 					{
-						if (!store.IsTranslated(item.BookKey, index))
+						if (!store.IsTranslated(item.BookKey, index, item.Target))
 						{
 							item.Skipped.Add(index);
 						}
