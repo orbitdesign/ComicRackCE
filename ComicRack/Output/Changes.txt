@@ -1,4 +1,4 @@
-﻿orbitdesign Build 1.169 (based on Community Edition 0.9.186):
+﻿orbitdesign Build 1.170 (based on Community Edition 0.9.186):
 
 * 1.1 (2026-09-21) FIX: Hardware acceleration stability. Fixed OpenGL extension detection, replaced the deprecated automatic mip map generation that crashed some drivers, checked texture uploads for errors, and added a startup guard that switches hardware acceleration off for one session if ComicRack failed to start last time.
 * 1.2 (2026-09-22) NEW: Direct2D renderer for the reader. Used by default when hardware acceleration is on, with OpenGL and then software rendering as fallbacks. Handles graphics device resets, uses high quality cubic sampling for "Enable Hardware Filters", and supports paper textures. Start with -hwgl to use the old OpenGL renderer.
@@ -173,6 +173,8 @@
 * 1.167 (2026-10-23) NEW: "Translate Whole Book (Batch)" in the right-click menus: in the reader it puts the book being read into the translation batch, in the book list the selected books ("Translate 3 Whole Books (Batch)"). It is the same batch as "Translate the selected books (whole books)" in the translate-ahead button's menu: the books are translated whole in the background.
 * 1.168 (2026-10-23) NEW: "Translate Whole Book (Batch)" in the right-click menus has two entries, To English and To Chinese: the book is translated into that language whatever the reader is set to, so one batch can hold books in both, and the same book can be queued in each (the batch menu and the status bar name the language after the title). Pages are now noted per language: a book already translated into English and queued in Chinese is translated again instead of being taken as done (it was before, also after switching the language). Pages noted by earlier builds count for no language: queued again, they are only loaded from the helper's cache. Needs helper 1.72.
 * 1.169 (2026-10-23) CHANGE: In the reader's right-click menu, "Translate Whole Book (Batch)" is just above "Export Translated Book" (it was under "Translate Pages").
+* 1.170 (2026-10-23) CHANGE: A library window (Open in New Window) opens with the search of the last one: what was in its search box when it was closed (or when ComicRack closed with it open), also after a restart.
+* 1.170 (2026-10-23) FIX: The translator helper's icon no longer stays in the tray after the helper is stopped (by the Translation services button, or as ComicRack closes) until the mouse passes over it: the helper is asked to stop (helper 1.73), takes its icon away and closes its window. It is only killed when it does not stop within 5 seconds, or is an older helper.
 
 Community Edition Build 0.9.186:
 

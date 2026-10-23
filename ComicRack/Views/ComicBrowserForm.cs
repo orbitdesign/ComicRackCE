@@ -41,6 +41,21 @@ namespace cYo.Projects.ComicRack.Viewer.Views
 			}
 		}
 
+		/// <summary>The text in the window's search box.</summary>
+		[Browsable(false)]
+		[DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+		public string QuickSearch
+		{
+			get
+			{
+				return comicBrowser.QuickSearch;
+			}
+			set
+			{
+				comicBrowser.QuickSearch = value;
+			}
+		}
+
 		[Browsable(false)]
 		[DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
 		public bool BookListOwned

@@ -417,9 +417,60 @@ namespace cYo.Projects.ComicRack.Viewer
 				}
 				top = parent;
 			}
+			//Asked to stop first (helper 1.73): it takes its tray icon away and exits, and its run.bat window closes with it. Killed, its
+			//icon stayed in the tray until the mouse passed over it. Killed only when it does not go (an older helper, or a busy one).
+			if (AskHelperToQuit(top))
+			{
+				return;
+			}
 			using (Process kill = Process.Start(new ProcessStartInfo("taskkill", "/PID " + top + " /T /F") { CreateNoWindow = true, UseShellExecute = false }))
 			{
 				kill.WaitForExit(8000);
+			}
+		}
+
+		/// <summary>Asks the helper to stop and waits a few seconds for the process given (its run.bat window, or itself) to end.</summary>
+		private static bool AskHelperToQuit(int processId)
+		{
+			Process process;
+			try
+			{
+				process = Process.GetProcessById(processId);
+			}
+			catch (Exception)
+			{
+				return true;            //gone already
+			}
+			using (process)
+			{
+				try
+				{
+					HttpWebRequest request = (HttpWebRequest)WebRequest.Create(HelperUrl + "/api/quit");
+					request.Method = "POST";
+					request.ContentLength = 0;
+					request.Proxy = null;
+					request.Timeout = 2000;
+					using (HttpWebResponse response = (HttpWebResponse)request.GetResponse())
+					using (StreamReader reader = new StreamReader(response.GetResponseStream()))
+					{
+						if (!Regex.IsMatch(reader.ReadToEnd(), "\"stopping\"\\s*:\\s*true"))
+						{
+							return false;
+						}
+					}
+				}
+				catch (Exception)
+				{
+					return false;           //an older helper (no such call), or no answer
+				}
+				try
+				{
+					return process.WaitForExit(5000);
+				}
+				catch (Exception)
+				{
+					return true;
+				}
 			}
 		}
 

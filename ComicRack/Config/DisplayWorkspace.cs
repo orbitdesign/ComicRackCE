@@ -183,6 +183,15 @@ namespace cYo.Projects.ComicRack.Viewer.Config
 			set;
 		}
 
+		/// <summary>What was searched for in the last library window, so the next one opens with the same search.</summary>
+		[Browsable(false)]
+		[DefaultValue(null)]
+		public string ListWindowSearch
+		{
+			get;
+			set;
+		}
+
 		[Browsable(false)]
 		public Size PreferencesOutputSize
 		{

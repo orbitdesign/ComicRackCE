@@ -72,6 +72,8 @@ namespace cYo.Projects.ComicRack.Viewer.Views
 
 		private FormWindowState listWindowState = FormWindowState.Normal;
 
+		private string listWindowSearch = string.Empty;
+
 		private TabBar.TabBarItem lastBrowser;
 
 		private Control comicViewer;
@@ -716,6 +718,10 @@ namespace cYo.Projects.ComicRack.Viewer.Views
 					listWindowBounds = workspace.ListWindowBounds;
 					listWindowState = workspace.ListWindowState;
 				}
+				if (workspace.ListWindowSearch != null)
+				{
+					listWindowSearch = workspace.ListWindowSearch;
+				}
 				if (fileView != null)
 				{
 					fileView.ViewSettings = workspace.FileView;
@@ -739,6 +745,7 @@ namespace cYo.Projects.ComicRack.Viewer.Views
 				}
 				ws.ListWindowBounds = listWindowBounds;
 				ws.ListWindowState = listWindowState;
+				ws.ListWindowSearch = listWindowSearch;
 			}
 			if (ws != null && ws.DatabaseView != null && dbView != null)
 			{
@@ -791,12 +798,22 @@ namespace cYo.Projects.ComicRack.Viewer.Views
 			comicBrowserForm.Show();
 			comicBrowserForm.Main = base.Main;
 			comicBrowserForm.BookList = bookList;
+			//the search of the last library window, again
+			if (!string.IsNullOrEmpty(listWindowSearch))
+			{
+				comicBrowserForm.QuickSearch = listWindowSearch;
+			}
 			openBrowsers.Add(comicBrowserForm);
 		}
 
-		private void RememberListWindow(Form form)
+		private void RememberListWindow(ComicBrowserForm form)
 		{
-			if (form.IsDisposed || form.WindowState == FormWindowState.Minimized)
+			if (form.IsDisposed)
+			{
+				return;
+			}
+			listWindowSearch = form.QuickSearch ?? string.Empty;
+			if (form.WindowState == FormWindowState.Minimized)
 			{
 				return;
 			}
