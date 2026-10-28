@@ -141,16 +141,46 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 		/// </summary>
 		public Func<PageKey, byte[]> OriginalBytes { get; set; }
 
+		/// <summary>True when the page sent for this key is the book's own bytes, read out of the book again (see OriginalBytes).</summary>
+		private bool NeedsOriginalBytes(PageKey key)
+		{
+			return OriginalBytes != null && key != null && !key.Adjustment.IsEmpty && (int)key.Rotation == 0;
+		}
+
+		/// <summary>The book's own bytes of the last pages read out of the book: reading a page out of its archive again can take
+		/// seconds (a solid archive, a network drive), and the editor sends the page again for every change.</summary>
+		private readonly List<KeyValuePair<PageKey, byte[]>> originalBytesCache = new List<KeyValuePair<PageKey, byte[]>>();
+
 		private byte[] UploadBytesFor(PageKey key, PageImage image)
 		{
 			Func<PageKey, byte[]> original = OriginalBytes;
-			if (original != null && key != null && !key.Adjustment.IsEmpty && (int)key.Rotation == 0)
+			if (NeedsOriginalBytes(key))
 			{
+				lock (originalBytesCache)
+				{
+					int i = originalBytesCache.FindIndex((KeyValuePair<PageKey, byte[]> kv) => kv.Key.Equals(key));
+					if (i >= 0)
+					{
+						KeyValuePair<PageKey, byte[]> hit = originalBytesCache[i];
+						originalBytesCache.RemoveAt(i);
+						originalBytesCache.Add(hit);
+						return hit.Value;
+					}
+				}
 				try
 				{
 					byte[] raw = original(key);
 					if (IsReadableFormat(raw))
 					{
+						lock (originalBytesCache)
+						{
+							originalBytesCache.RemoveAll((KeyValuePair<PageKey, byte[]> kv) => kv.Key.Equals(key));
+							originalBytesCache.Add(new KeyValuePair<PageKey, byte[]>(key, raw));
+							while (originalBytesCache.Count > 6)
+							{
+								originalBytesCache.RemoveAt(0);
+							}
+						}
 						return raw;
 					}
 				}
@@ -160,6 +190,9 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 			}
 			return GetUploadBytes(image);
 		}
+
+		/// <summary>The pages whose bytes are being read out of the book for a request (on a background thread).</summary>
+		private readonly HashSet<PageKey> loading = new HashSet<PageKey>();
 
 		/// <summary>Where the user's changes and the list of translated pages are kept.</summary>
 		public TranslationStore Store { get; }
@@ -326,7 +359,7 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 			{
 				lock (sync)
 				{
-					return entries.Values.Any((Entry e) => e.State == State.Pending || e.State == State.Working);
+					return loadQueue.Count > 0 || loading.Count > 0 || entries.Values.Any((Entry e) => e.State == State.Pending || e.State == State.Working);
 				}
 			}
 		}
@@ -468,10 +501,99 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 					}
 				}
 			}
+			if (NeedsOriginalBytes(key))
+			{
+				//The book's own bytes are read out of the book again: never on the reader's window thread, which asks for the pages
+				//ahead while it paints (it stood still for over a minute with several pages ahead in a slow archive).
+				//One page at a time, the most wanted first: reads of one archive wait for each other, and the page being looked at
+				//is loaded from it too.
+				bool start;
+				lock (sync)
+				{
+					Loading waiting = loadQueue.FirstOrDefault((Loading l) => l.Key.Equals(key));
+					if (waiting != null)
+					{
+						waiting.Priority = Math.Min(waiting.Priority, priority);
+						return;
+					}
+					if (loading.Contains(key))
+					{
+						return;
+					}
+					loadQueue.Add(new Loading { Key = key, Image = image, Priority = priority, Book = book, Keep = keep, Order = ++order });
+					start = !loaderRunning;
+					loaderRunning = true;
+				}
+				if (start)
+				{
+					ThreadPool.QueueUserWorkItem(delegate { LoadQueued(); });
+				}
+				return;
+			}
+			AddRequest(key, image, priority, book, keep);
+		}
+
+		private class Loading
+		{
+			public PageKey Key;
+
+			public PageImage Image;
+
+			public int Priority;
+
+			public ComicBook Book;
+
+			public bool Keep;
+
+			public long Order;
+		}
+
+		private readonly List<Loading> loadQueue = new List<Loading>();
+
+		private bool loaderRunning;
+
+		/// <summary>Reads the queued pages out of the book and asks for them, one at a time, the most wanted (then the oldest) first.</summary>
+		private void LoadQueued()
+		{
+			while (true)
+			{
+				Loading next;
+				lock (sync)
+				{
+					next = loadQueue.OrderBy((Loading l) => l.Priority).ThenBy((Loading l) => l.Order).FirstOrDefault();
+					if (next == null || stopping)
+					{
+						loadQueue.Clear();
+						loaderRunning = false;
+						return;
+					}
+					loadQueue.Remove(next);
+					loading.Add(next.Key);
+				}
+				try
+				{
+					AddRequest(next.Key, next.Image, next.Priority, next.Book, next.Keep);
+				}
+				catch (Exception)
+				{
+					//the picture was let go meanwhile: the page is asked for again on the next look
+				}
+				finally
+				{
+					lock (sync)
+					{
+						loading.Remove(next.Key);
+					}
+				}
+			}
+		}
+
+		private void AddRequest(PageKey key, PageImage image, int priority, ComicBook book, bool keep)
+		{
 			//Outside the lock: may encode the page when its original format is not one the
 			//helper can read.
 			byte[] data = UploadBytesFor(key, image);
-			if (data == null)
+			if (data == null || stopping)
 			{
 				return;
 			}
@@ -687,9 +809,10 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 		/// Reads and translates the text inside a rectangle of the page (in page pixels). The result
 		/// arrives on a background thread, with an error text when it failed.
 		/// </summary>
-		public void ReadRegion(PageImage original, int[] rect, Action<TranslationRegion, string> done, bool sign = false)
+		public void ReadRegion(PageImage original, int[] rect, Action<TranslationRegion, string> done, bool sign = false, PageKey key = null)
 		{
-			byte[] data = original == null ? null : GetUploadBytes(original);
+			//the book's own bytes, as for translating: the page shown can carry the reader's colour adjustment (sharpen...)
+			byte[] data = original == null ? null : UploadBytesFor(key, original);
 			string url = ServerUrl;
 			ThreadPool.QueueUserWorkItem(delegate
 			{
@@ -709,9 +832,10 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 		}
 
 		/// <summary>Looks for the font of the lettering inside a rectangle of the page. The answer arrives on a background thread.</summary>
-		public void IdentifyFont(PageImage original, int[] rect, string text, bool online, Action<FontIdentification, string> done)
+		public void IdentifyFont(PageImage original, int[] rect, string text, bool online, Action<FontIdentification, string> done, PageKey key = null)
 		{
-			byte[] data = original == null ? null : GetUploadBytes(original);
+			//the book's own bytes, as for translating: on a sharpened page the helper found too little lettering, and had no stored mask
+			byte[] data = original == null ? null : UploadBytesFor(key, original);
 			string url = ServerUrl;
 			ThreadPool.QueueUserWorkItem(delegate
 			{
@@ -731,9 +855,9 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 		}
 
 		/// <summary>Looks for the font of all the given boxes of one page together. The answer arrives on a background thread.</summary>
-		public void IdentifyPageFont(PageImage original, List<int[]> rects, string text, bool online, Action<FontIdentification, string> done, List<string> texts = null)
+		public void IdentifyPageFont(PageImage original, List<int[]> rects, string text, bool online, Action<FontIdentification, string> done, List<string> texts = null, PageKey key = null)
 		{
-			byte[] data = original == null ? null : GetUploadBytes(original);
+			byte[] data = original == null ? null : UploadBytesFor(key, original);
 			string url = ServerUrl;
 			ThreadPool.QueueUserWorkItem(delegate
 			{
@@ -848,9 +972,11 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 		}
 
 		/// <summary>The bytes of a page as they are sent to the helper (so that it finds what it stored for it).</summary>
-		public byte[] UploadBytesOf(PageImage image)
+		/// <summary>The bytes the helper is given for a page: the book's own when the key of the page is given (as for translating; the helper
+		/// knows the page by them), else the picture as it is.</summary>
+		public byte[] UploadBytesOf(PageImage image, PageKey key = null)
 		{
-			return image == null ? null : GetUploadBytes(image);
+			return image == null ? null : UploadBytesFor(key, image);
 		}
 
 		/// <summary>Looks for the font of a book from a sample of its pages. The answer arrives on a background thread.</summary>
@@ -999,8 +1125,13 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 			lock (sync)
 			{
 				entries.Clear();
+				loadQueue.Clear();
 				status = null;
 				serverDownUntil = DateTime.MinValue;
+			}
+			lock (originalBytesCache)
+			{
+				originalBytesCache.Clear();
 			}
 		}
 

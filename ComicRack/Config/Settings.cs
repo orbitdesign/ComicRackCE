@@ -1384,6 +1384,55 @@ namespace cYo.Projects.ComicRack.Viewer.Config
 			}
 		}
 
+		private bool translatorServiceButtons;
+
+		/// <summary>
+		/// The helper's and Ollama's start / stop entries of the translator power button's menu are shown on the toolbar too, as two
+		/// buttons next to it.
+		/// </summary>
+		[Browsable(false)]
+		[DefaultValue(false)]
+		public bool TranslatorServiceButtons
+		{
+			get
+			{
+				return translatorServiceButtons;
+			}
+			set
+			{
+				if (translatorServiceButtons != value)
+				{
+					translatorServiceButtons = value;
+					FireEvent(null);
+				}
+			}
+		}
+
+		private int translatorAheadPages = 3;
+
+		/// <summary>
+		/// How many pages after the one being read the reader keeps translated while it translates (Translation Settings), and what a
+		/// click on the translate-ahead button translates ("Next N pages").
+		/// </summary>
+		[Browsable(false)]
+		[DefaultValue(3)]
+		public int TranslatorAheadPages
+		{
+			get
+			{
+				return translatorAheadPages;
+			}
+			set
+			{
+				value = Math.Max(1, Math.Min(100, value));
+				if (translatorAheadPages != value)
+				{
+					translatorAheadPages = value;
+					FireEvent(null);
+				}
+			}
+		}
+
 		/// <summary>
 		/// Whether the translation status panel (light and translated page count) shows at the top left of the reader.
 		/// </summary>

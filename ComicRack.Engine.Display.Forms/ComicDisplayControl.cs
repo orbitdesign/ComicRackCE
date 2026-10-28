@@ -749,7 +749,12 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 						pageTranslator = new PageTranslationService
 						{
 							ServerUrl = translationServerUrl,
-							OriginalBytes = delegate (PageKey k) { return IsValid && ReferenceEquals(k.Source, this) ? Book.GetByteImage(k.Index) : null; }
+							//(asked for on a background thread: the key's book must still be the one open)
+							OriginalBytes = delegate (PageKey k)
+							{
+								ComicBookNavigator open = Book;
+								return IsValid && open != null && ReferenceEquals(k.Source, this) && string.Equals(open.Comic?.FileLocation, k.Location, StringComparison.OrdinalIgnoreCase) ? open.GetByteImage(k.Index) : null;
+							}
 						};
 						pageTranslator.PageFinished += pageTranslator_PageFinished;
 						pageTranslator.StateChanged += pageTranslator_StateChanged;
@@ -2061,9 +2066,15 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 			return null;
 		}
 
+		/// <summary>How many pages after the one being read are translated while reading (Translation Settings; 3 before it was one).</summary>
+		[Browsable(false)]
+		[DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+		public int TranslateAheadPages { get; set; } = 3;
+
 		private void RequestTranslationAhead(PageTranslationService service, int page)
 		{
-			for (int i = 1; i <= 3; i++)
+			int ahead = Math.Max(1, TranslateAheadPages);
+			for (int i = 1; i <= ahead; i++)
 			{
 				int next = SeekPage(page, i);
 				if (next < 0)
@@ -2080,6 +2091,12 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 					if (itemLock != null && itemLock.Item != null && !itemLock.Item.Merged)
 					{
 						service.Request(key, itemLock.Item, i, Book?.Comic);
+					}
+					else if (i > 2)
+					{
+						//not loaded yet (beyond what the reader keeps ready): loaded in the background, and asked for on the next look,
+						//which comes when a page is finished
+						pagePool.CachePage(key, fastMem: true, Book, bottom: true);
 					}
 				}
 			}
@@ -2103,6 +2120,12 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 					if (object.Equals(e.Key, GetPageKey(CurrentPage)) || (TwoPageDisplay && object.Equals(e.Key, GetPageKey(NextPage))) || !DisplayedPages.Where((int dp) => object.Equals(e.Key, GetPageKey(dp))).IsEmpty())
 					{
 						Invalidate();
+					}
+					else if (pageTranslator != null)
+					{
+						//a page ahead was done: the next ones are asked for (those loaded meanwhile too), so the reader keeps
+						//the set number of pages ahead translated (TranslateAheadPages)
+						RequestTranslationAhead(pageTranslator, CurrentPage);
 					}
 				});
 			}

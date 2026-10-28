@@ -123,6 +123,9 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 
 		private NumericUpDown nudQuality;
 
+		//ComicRack's own setting (not the helper's): pages translated ahead while reading, and by a click on the translate-ahead button
+		private NumericUpDown nudAhead;
+
 		private NumericUpDown nudCacheMb;
 
 		private Label lblCacheInfo;
@@ -366,7 +369,7 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			cboInpaint.SelectedIndexChanged += delegate { Edited(); UpdateInpaintHint(); };
 
 			// --- Speed and storage ---
-			GroupBox speed = Group(storage, "Speed", 8, 8, 556, 130);
+			GroupBox speed = Group(storage, "Speed", 8, 8, 556, 162);
 			Place(speed, "Text blocks per request:", 14, 29);
 			nudBatch = Number(speed, 170, 26, 1, 32, "nudBatch");
 			Hint(speed, 250, 29, 296, 28).Text = "Higher is faster but a small model may lose count.";
@@ -376,8 +379,13 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			Place(speed, "Translated image quality:", 14, 93);
 			nudQuality = Number(speed, 170, 90, 50, 100, "nudQuality");
 			Place(speed, "%", 250, 93);
+			Place(speed, "Translate ahead:", 14, 125);
+			nudAhead = Number(speed, 170, 122, 1, 100, "nudAhead");
+			nudAhead.Value = Math.Max(nudAhead.Minimum, Math.Min(nudAhead.Maximum, Program.Settings.TranslatorAheadPages));
+			Place(speed, "pages", 250, 125);
+			Hint(speed, 300, 125, 246, 30).Text = "Kept ready after the page being read; a click on the ahead button does this many.";
 
-			GroupBox cache = Group(storage, "Translated page cache", 8, 144, 556, 280);
+			GroupBox cache = Group(storage, "Translated page cache", 8, 176, 556, 280);
 			Place(cache, "Keep up to:", 14, 29);
 			nudCacheMb = Number(cache, 170, 26, 50, 2000000, "nudCacheMb");
 			Place(cache, "MB", 250, 29);
@@ -428,7 +436,7 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			AcceptButton = btOk;
 			CancelButton = btCancel;
 
-			foreach (NumericUpDown n in new[] { nudBatch, nudTimeout, nudQuality, nudCacheMb })
+			foreach (NumericUpDown n in new[] { nudBatch, nudTimeout, nudQuality, nudCacheMb, nudAhead })
 			{
 				n.ValueChanged += delegate { Edited(); };
 			}
@@ -1031,6 +1039,8 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 				onSaved?.Invoke();
 				return;
 			}
+			//ComicRack's own setting, kept here; the reader takes it when the helper's settings are saved (SettingsApplied)
+			Program.Settings.TranslatorAheadPages = (int)nudAhead.Value;
 			if (CacheFolderChangedWithoutCopy() && MessageBox.Show(this, "The pages translated so far stay in " + cacheActive + ".\n\nIn the new folder, every page that is not there is translated again. Press \"Copy the stored pages to this folder\" first to take them along.\n\nUse the new folder without copying?", Text, MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes)
 			{
 				return;
