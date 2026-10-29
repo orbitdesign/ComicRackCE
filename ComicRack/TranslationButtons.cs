@@ -1737,10 +1737,10 @@ namespace cYo.Projects.ComicRack.Viewer
 				case TranslationAction.HelperStart:
 				case TranslationAction.HelperStop:
 					{
-						//the translator's bubble, with what a click does; grey while the helper is stopped (the start picture is shown then)
+						//the translator's bubble, with what a click does; grey while the helper is stopped (the start picture is shown then), green while it runs
 						GraphicsState state = g.Save();
 						g.ScaleTransform(0.78f, 0.78f);
-						DrawSpeechBubble(g, size, kind == TranslationAction.HelperStart ? ColorOf(TranslationLed.Off) : amber);
+						DrawSpeechBubble(g, size, kind == TranslationAction.HelperStart ? ColorOf(TranslationLed.Off) : ColorOf(TranslationLed.On));
 						g.Restore(state);
 						DrawBadge(g, u, kind == TranslationAction.HelperStart, green, red);
 						break;
