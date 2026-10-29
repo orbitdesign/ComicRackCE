@@ -209,14 +209,11 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 					}
 					WriteBook(w);
 					List<ProtectStroke> strokes = protect?.Where((ProtectStroke p) => p != null && p.Points.Length >= 2).ToList();
-					if (strokes != null && strokes.Count > 0)
+					if (strokes != null)
 					{
-						w.WriteStartArray("protect");
-						foreach (ProtectStroke stroke in strokes)
-						{
-							stroke.Write(w);
-						}
-						w.WriteEndArray();
+						//the wipe brush's strokes go apart: a helper before 1.78 ignores them (rather than protecting what they cover)
+						ProtectStroke.WriteAll(w, "protect", strokes.Where((ProtectStroke s) => !s.Wipe));
+						ProtectStroke.WriteAll(w, "wipe", strokes.Where((ProtectStroke s) => s.Wipe));
 					}
 					w.WriteEndObject();
 				}

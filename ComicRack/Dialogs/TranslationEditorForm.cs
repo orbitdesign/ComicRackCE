@@ -159,22 +159,30 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			{
 				Off,
 				Paint,
-				Erase
+				Erase,
+				Wipe
 			}
 
-			/// <summary>The protect brush: Paint marks artwork to be left as it is, Erase takes strokes away again.</summary>
+			/// <summary>The brushes: Paint marks artwork to be left as it is, Wipe marks original text the helper missed (it is
+			/// cleaned), Erase takes strokes of either away again.</summary>
 			public BrushKind Brush { get; set; }
 
 			/// <summary>The brush's radius in page pixels.</summary>
 			public int BrushRadius { get; set; } = 24;
 
-			/// <summary>The strokes of the protect brush on this page.</summary>
+			/// <summary>The strokes of the protect brush and of the wipe brush on this page.</summary>
 			public List<ProtectStroke> Protect { get; set; } = new List<ProtectStroke>();
 
 			/// <summary>A stroke was painted or erased: the page has to be drawn again.</summary>
 			public event EventHandler ProtectChanged;
 
+			/// <summary>A stroke of the wipe brush was painted (after ProtectChanged): the text under it may be read.</summary>
+			public event Action<ProtectStroke> WipePainted;
+
 			private List<int> brushPoints;
+
+			/// <summary>Where the brush was last let go of (page pixels): Shift+click draws a straight stroke from there.</summary>
+			private PointF? brushLast;
 
 			private Point? brushAt;
 
@@ -218,6 +226,10 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 				if (!keepView || changed)
 				{
 					Fit();
+				}
+				if (!keepView)
+				{
+					brushLast = null;      //another page: a straight stroke starts on this one
 				}
 				Invalidate();
 			}
@@ -884,8 +896,12 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			}
 
 
-			/// <summary>Draws one protect stroke over the page as a translucent blue band.</summary>
-			private void PaintStroke(Graphics g, int[] points, int radius)
+			private static readonly Color ProtectColor = Color.FromArgb(105, 40, 130, 255);
+
+			private static readonly Color WipeColor = Color.FromArgb(105, 255, 60, 40);
+
+			/// <summary>Draws one brush stroke over the page as a translucent band (blue for protect, red for wipe).</summary>
+			private void PaintStroke(Graphics g, int[] points, int radius, Color color)
 			{
 				if (points == null || points.Length < 2)
 				{
@@ -897,7 +913,6 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 				{
 					line[i] = new PointF(points[2 * i] * zoom + pan.X, points[2 * i + 1] * zoom + pan.Y);
 				}
-				Color color = Color.FromArgb(105, 40, 130, 255);
 				if (line.Length == 1)
 				{
 					using (SolidBrush fill = new SolidBrush(color))
@@ -942,6 +957,24 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 				brushPoints.Add(y);
 			}
 
+			/// <summary>Shift+click with a brush: the brush goes in a straight line from where it was last let go of to here.</summary>
+			private void BrushLine(PointF from, PointF to)
+			{
+				double length = Math.Sqrt((to.X - from.X) * (to.X - from.X) + (to.Y - from.Y) * (to.Y - from.Y));
+				int steps = Math.Max(1, (int)Math.Ceiling(length / Math.Max(2.0, BrushRadius / 3.0)));
+				if (brushPoints != null)
+				{
+					brushPoints.Add((int)Math.Round(from.X));
+					brushPoints.Add((int)Math.Round(from.Y));
+				}
+				for (int i = 1; i <= steps; i++)
+				{
+					BrushTo(new PointF(from.X + (to.X - from.X) * i / steps, from.Y + (to.Y - from.Y) * i / steps));
+				}
+			}
+
+			private bool Painting => Brush == BrushKind.Paint || Brush == BrushKind.Wipe;
+
 			protected override void OnMouseLeave(EventArgs e)
 			{
 				base.OnMouseLeave(e);
@@ -977,16 +1010,24 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 				g.SmoothingMode = SmoothingMode.AntiAlias;
 				foreach (ProtectStroke stroke in Protect)
 				{
-					PaintStroke(g, stroke.Points, stroke.Radius);
+					PaintStroke(g, stroke.Points, stroke.Radius, stroke.Wipe ? WipeColor : ProtectColor);
 				}
-				if (drag == Drag.Brush && Brush == BrushKind.Paint && brushPoints != null)
+				if (drag == Drag.Brush && Painting && brushPoints != null)
 				{
-					PaintStroke(g, brushPoints.ToArray(), BrushRadius);
+					PaintStroke(g, brushPoints.ToArray(), BrushRadius, Brush == BrushKind.Wipe ? WipeColor : ProtectColor);
+				}
+				if (Brush != BrushKind.Off && brushAt.HasValue && image != null && drag == Drag.None && brushLast.HasValue && (ModifierKeys & Keys.Shift) != 0)
+				{
+					//where Shift+click would draw the straight stroke
+					using (Pen guide = new Pen(Color.FromArgb(200, 255, 255, 255), 1.5f) { DashStyle = DashStyle.Dash })
+					{
+						g.DrawLine(guide, brushLast.Value.X * zoom + pan.X, brushLast.Value.Y * zoom + pan.Y, brushAt.Value.X, brushAt.Value.Y);
+					}
 				}
 				if (Brush != BrushKind.Off && brushAt.HasValue && image != null)
 				{
 					float r = Math.Max(3f, BrushRadius * zoom);
-					using (Pen ring = new Pen(Brush == BrushKind.Erase ? Color.FromArgb(235, 255, 80, 80) : Color.FromArgb(235, 255, 255, 255), 1.5f))
+					using (Pen ring = new Pen(Brush == BrushKind.Erase ? Color.FromArgb(235, 255, 80, 80) : Brush == BrushKind.Wipe ? Color.FromArgb(235, 255, 170, 60) : Color.FromArgb(235, 255, 255, 255), 1.5f))
 					using (Pen shadow = new Pen(Color.FromArgb(160, 0, 0, 0), 3f))
 					{
 						g.DrawEllipse(shadow, brushAt.Value.X - r, brushAt.Value.Y - r, 2 * r, 2 * r);
@@ -1294,8 +1335,15 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 				{
 					drag = Drag.Brush;
 					brushErased = false;
-					brushPoints = Brush == BrushKind.Paint ? new List<int>() : null;
-					BrushTo(ToImage(e.Location));
+					brushPoints = Painting ? new List<int>() : null;
+					if ((ModifierKeys & Keys.Shift) != 0 && brushLast.HasValue)
+					{
+						BrushLine(brushLast.Value, ToImage(e.Location));
+					}
+					else
+					{
+						BrushTo(ToImage(e.Location));
+					}
 					brushAt = e.Location;
 					Invalidate();
 					return;
@@ -1765,11 +1813,14 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 				case Drag.Brush:
 					{
 						bool changed = brushErased;
-						if (Brush == BrushKind.Paint && brushPoints != null && brushPoints.Count >= 2)
+						ProtectStroke painted = null;
+						if (Painting && brushPoints != null && brushPoints.Count >= 2)
 						{
-							Protect.Add(new ProtectStroke { Radius = BrushRadius, Points = brushPoints.ToArray() });
+							painted = new ProtectStroke { Radius = BrushRadius, Points = brushPoints.ToArray(), Wipe = Brush == BrushKind.Wipe };
+							Protect.Add(painted);
 							changed = true;
 						}
+						brushLast = ToImage(e.Location);
 						brushPoints = null;
 						brushErased = false;
 						Cursor = Cursors.Cross;
@@ -1777,6 +1828,10 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 						if (changed)
 						{
 							ProtectChanged?.Invoke(this, EventArgs.Empty);
+						}
+						if (painted != null && painted.Wipe)
+						{
+							WipePainted?.Invoke(painted);
 						}
 						break;
 					}
@@ -1955,6 +2010,8 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 
 		private Button btEraser;
 
+		private Button btWipe;
+
 		private Button btClearProtect;
 
 		private TrackBar tbBrush;
@@ -2125,7 +2182,7 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			y += 36;
 			btUndo = new Button { Text = "Undo", Location = new Point(10, y), Size = new Size(100, 26), Enabled = false, Name = "btUndo" };
 			btRedo = new Button { Text = "Redo", Location = new Point(114, y), Size = new Size(100, 26), Enabled = false, Name = "btRedo" };
-			new ToolTip().SetToolTip(btUndo, "Undo the last change on this page (Ctrl+Z), up to 5 steps: boxes, text, shapes, the protect brush and font choices");
+			new ToolTip().SetToolTip(btUndo, "Undo the last change on this page (Ctrl+Z), up to 5 steps: boxes, text, shapes, the brushes and font choices");
 			new ToolTip().SetToolTip(btRedo, "Do again what was undone (Ctrl+Y)");
 			side.Controls.AddRange(new Control[] { btUndo, btRedo });
 			y += 34;
@@ -2144,13 +2201,15 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			new ToolTip().SetToolTip(btRestore, "Bring back the boxes deleted on this page");
 			side.Controls.AddRange(new Control[] { btAdd, btAddShape, btDelete, btRestore });
 			y += 38;
-			btBrush = new Button { Text = "Protect brush", Location = new Point(10, y), Size = new Size(118, 28), Name = "btBrush" };
-			btEraser = new Button { Text = "Erase strokes", Location = new Point(130, y), Size = new Size(96, 28), Name = "btEraser" };
-			btClearProtect = new Button { Text = "Clear all", Location = new Point(230, y), Size = new Size(98, 28), Name = "btClearProtect" };
-			new ToolTip().SetToolTip(btBrush, "Paint over artwork that must stay as it is (a head, a hand): the helper does not wipe it as text and does not letter over it. The bubble outline follows.");
-			new ToolTip().SetToolTip(btEraser, "Rub out protect strokes you painted");
-			new ToolTip().SetToolTip(btClearProtect, "Remove every protect stroke on this page");
-			side.Controls.AddRange(new Control[] { btBrush, btEraser, btClearProtect });
+			btBrush = new Button { Text = "Protect brush", Location = new Point(10, y), Size = new Size(90, 28), Name = "btBrush" };
+			btWipe = new Button { Text = "Wipe brush", Location = new Point(102, y), Size = new Size(84, 28), Name = "btWipe" };
+			btEraser = new Button { Text = "Erase strokes", Location = new Point(188, y), Size = new Size(84, 28), Name = "btEraser" };
+			btClearProtect = new Button { Text = "Clear all", Location = new Point(274, y), Size = new Size(54, 28), Name = "btClearProtect" };
+			new ToolTip().SetToolTip(btBrush, "Paint over artwork that must stay as it is (a head, a hand): the helper does not wipe it as text and does not letter over it. The bubble outline follows. Click, then Shift+click elsewhere, for a straight stroke.");
+			new ToolTip().SetToolTip(btWipe, "Paint over original text the translator missed or did not clean: the letters under the paint are wiped (a bubble outline or a line of the drawing the brush runs over is kept) and the box next to them gets their room. Text no box holds is read and translated as a new box. Click, then Shift+click elsewhere, for a straight stroke.");
+			new ToolTip().SetToolTip(btEraser, "Rub out protect and wipe strokes you painted");
+			new ToolTip().SetToolTip(btClearProtect, "Remove every protect and wipe stroke on this page");
+			side.Controls.AddRange(new Control[] { btBrush, btWipe, btEraser, btClearProtect });
 			y += 34;
 			side.Controls.Add(new Label { Text = "Brush size:", Location = new Point(10, y + 4), Size = new Size(64, 16) });
 			tbBrush = new TrackBar { Location = new Point(78, y), Size = new Size(190, 30), Minimum = 4, Maximum = 120, TickFrequency = 20, Value = 24, SmallChange = 2, LargeChange = 10, Name = "tbBrush", AutoSize = false };
@@ -2367,6 +2426,7 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			btIdentify.Click += delegate { IdentifyFont(); };
 			btBrush.Click += delegate { SetBrushMode(canvas.Brush == PageCanvas.BrushKind.Paint ? PageCanvas.BrushKind.Off : PageCanvas.BrushKind.Paint); };
 			btEraser.Click += delegate { SetBrushMode(canvas.Brush == PageCanvas.BrushKind.Erase ? PageCanvas.BrushKind.Off : PageCanvas.BrushKind.Erase); };
+			btWipe.Click += delegate { SetBrushMode(canvas.Brush == PageCanvas.BrushKind.Wipe ? PageCanvas.BrushKind.Off : PageCanvas.BrushKind.Wipe); };
 			btClearProtect.Click += delegate
 			{
 				if (canvas.Protect.Count > 0)
@@ -2400,6 +2460,7 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 				}
 			};
 			canvas.ProtectChanged += delegate { CommitProtect(); };
+			canvas.WipePainted += OnWipePainted;
 			btAddShape.Click += delegate { ShowAddShapeMenu(); };
 			cboShape.SelectedIndexChanged += delegate
 			{
@@ -3375,7 +3436,7 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 
 		private static bool SameStrokes(List<ProtectStroke> a, List<ProtectStroke> b)
 		{
-			return a.Count == b.Count && a.Zip(b, (ProtectStroke x, ProtectStroke y) => x.Radius == y.Radius && x.Points.SequenceEqual(y.Points)).All((bool same) => same);
+			return a.Count == b.Count && a.Zip(b, (ProtectStroke x, ProtectStroke y) => x.Radius == y.Radius && x.Wipe == y.Wipe && x.Points.SequenceEqual(y.Points)).All((bool same) => same);
 		}
 
 		/// <summary>Puts the page back to a state: the boxes and strokes on the canvas and in the service, the font choices in the book's record.</summary>
@@ -3431,7 +3492,7 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			SyncList();
 		}
 
-		/// <summary>Turns the protect brush (or its eraser) on or off; it takes the place of drawing a new box.</summary>
+		/// <summary>Turns the protect brush, the wipe brush or the eraser on or off; it takes the place of drawing a new box.</summary>
 		private void SetBrushMode(PageCanvas.BrushKind kind)
 		{
 			if (kind != PageCanvas.BrushKind.Off)
@@ -3439,18 +3500,100 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 				SetAddMode(false);
 			}
 			canvas.Brush = kind;
-			btBrush.Text = kind == PageCanvas.BrushKind.Paint ? "Painting... (click to stop)" : "Protect brush";
-			btEraser.Text = kind == PageCanvas.BrushKind.Erase ? "Erasing... (stop)" : "Erase strokes";
+			ShowBrushButtons();
 			canvas.Cursor = kind != PageCanvas.BrushKind.Off ? Cursors.Cross : Cursors.Default;
 			if (kind == PageCanvas.BrushKind.Paint)
 			{
-				SetStatus("Paint over the artwork that must stay as it is. The page is drawn again when you let go.");
+				SetStatus("Paint over the artwork that must stay as it is. The page is drawn again when you let go. Shift+click draws a straight stroke from where you let go.");
+			}
+			else if (kind == PageCanvas.BrushKind.Wipe)
+			{
+				SetStatus("Paint over the original text to wipe. The page is drawn again when you let go. Shift+click draws a straight stroke from where you let go.");
 			}
 			else if (kind == PageCanvas.BrushKind.Erase)
 			{
-				SetStatus("Rub over a protect stroke to take it away.");
+				SetStatus("Rub over a protect or wipe stroke to take it away. Shift+click rubs in a straight line.");
 			}
 			canvas.Invalidate();
+		}
+
+		/// <summary>The brush buttons say which brush is on.</summary>
+		private void ShowBrushButtons()
+		{
+			btBrush.Text = canvas.Brush == PageCanvas.BrushKind.Paint ? "Painting..." : "Protect brush";
+			btWipe.Text = canvas.Brush == PageCanvas.BrushKind.Wipe ? "Wiping..." : "Wipe brush";
+			btEraser.Text = canvas.Brush == PageCanvas.BrushKind.Erase ? "Erasing..." : "Erase strokes";
+		}
+
+		/// <summary>
+		/// A wipe stroke was painted. Text under it that no box holds is read and translated as a new box (nothing is added when
+		/// no text is read there: it is only wiped). Text next to a box is read again with that box's text, and the box takes the
+		/// new reading when it found more words (not when you typed the box's translation yourself). Paint inside a box is only
+		/// wiped: the box's cleaning gets those letters.
+		/// </summary>
+		private void OnWipePainted(ProtectStroke stroke)
+		{
+			if (service == null || key == null || stroke.Points.Length < 2)
+			{
+				return;
+			}
+			int r = stroke.Radius;
+			int[] xs = stroke.Points.Where((int v, int i) => i % 2 == 0).ToArray();
+			int[] ys = stroke.Points.Where((int v, int i) => i % 2 == 1).ToArray();
+			int[] painted = { Math.Max(0, xs.Min() - r), Math.Max(0, ys.Min() - r), xs.Max() + r, ys.Max() + r };
+			Func<int[], int[], long> overlap = delegate (int[] a, int[] b)
+			{
+				long w = Math.Min(a[2], b[2]) - Math.Max(a[0], b[0]), h = Math.Min(a[3], b[3]) - Math.Max(a[1], b[1]);
+				return w > 0 && h > 0 ? w * h : 0;
+			};
+			long area = Math.Max(1L, (long)(painted[2] - painted[0]) * (painted[3] - painted[1]));
+			//the box the paint is next to: its text place, grown by the brush's width
+			TranslationBox near = canvas.Visible.Where((TranslationBox b) => !b.Skip && b.Shape == null && b.Src != null && b.Src.Length == 4)
+				.Select((TranslationBox b) => new { Box = b, Inside = overlap(painted, b.Src), Near = overlap(painted, new[] { b.Src[0] - 2 * r, b.Src[1] - 2 * r, b.Src[2] + 2 * r, b.Src[3] + 2 * r }) })
+				.Where(x => x.Near > 0).OrderByDescending(x => x.Inside).ThenByDescending(x => x.Near).Select(x => x.Box).FirstOrDefault();
+			if (near == null)
+			{
+				ReadNewRegion(painted, null, fromWipe: true);
+				return;
+			}
+			if (overlap(painted, near.Src) >= 0.8 * area)
+			{
+				return;     //inside the box: its own text, wiped with it
+			}
+			if (near.TextEdited)
+			{
+				SetStatus("The letters are wiped and the box next to them gets their room. Its translation is the one you typed, so it was not read again.");
+				return;
+			}
+			int[] both = { Math.Min(near.Src[0], painted[0]), Math.Min(near.Src[1], painted[1]), Math.Max(near.Src[2], painted[2]), Math.Max(near.Src[3], painted[3]) };
+			PageKey requested = key;
+			TranslationBox box = near;
+			using (IItemLock<PageImage> original = reader.GetOriginalPage(page))
+			{
+				service.ReadRegion(original?.Item, both, delegate (TranslationRegion region, string problem)
+				{
+					BeginInvokeSafe(delegate
+					{
+						if (!object.Equals(requested, key) || !canvas.Boxes.Contains(box) || box.TextEdited || problem != null || region == null)
+						{
+							return;
+						}
+						Func<string, int> letters = (string t) => (t ?? "").Count(char.IsLetterOrDigit);
+						if (string.IsNullOrWhiteSpace(region.Translation) || letters(region.Text) <= letters(box.Text) + 1)
+						{
+							return;     //nothing more was read there: the paint was over leftovers of the box's own text
+						}
+						box.Text = region.Text;
+						box.Translation = region.Translation;
+						box.TextEdited = true;      //kept with the book, like a translation typed in
+						SyncList();
+						SyncControls();
+						canvas.Invalidate();
+						CommitNow();
+						SetStatus("The words under the paint were read with the box next to them: \"" + (region.Translation.Length > 60 ? region.Translation.Substring(0, 60) + "..." : region.Translation) + "\"");
+					});
+				}, sign: box.AsSign, key: requested);
+			}
 		}
 
 		/// <summary>Opens the window that finds the fonts closest to the selected box's lettering.</summary>
@@ -3496,7 +3639,7 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 					{
 						using (IItemLock<PageImage> item = reader.GetOriginalPage(i))
 						{
-							byte[] bytes = item?.Item != null ? service.UploadBytesOf(item.Item) : null;
+							byte[] bytes = item?.Item != null ? service.UploadBytesOf(item.Item, reader.GetTranslationPageKey(i)) : null;
 							if (bytes != null)
 							{
 								pages.Add(bytes);
@@ -3536,11 +3679,11 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 					};
 					if (scope == TranslationFontDialog.Scope.Box && rect != null)
 					{
-						service.IdentifyFont(original.Item, rect, boxText, online, thisPage);
+						service.IdentifyFont(original.Item, rect, boxText, online, thisPage, reader.GetTranslationPageKey(shownPage));
 					}
 					else if (pageRects.Count > 0)
 					{
-						service.IdentifyPageFont(original.Item, pageRects, pageText, online, thisPage, pageTexts);
+						service.IdentifyPageFont(original.Item, pageRects, pageText, online, thisPage, pageTexts, reader.GetTranslationPageKey(shownPage));
 					}
 					else
 					{
@@ -3639,7 +3782,7 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 				}
 				using (IItemLock<PageImage> original = reader.GetOriginalPage(previewPage))
 				{
-					return original?.Item != null ? service.UploadBytesOf(original.Item) : null;
+					return original?.Item != null ? service.UploadBytesOf(original.Item, reader.GetTranslationPageKey(previewPage)) : null;
 				}
 			};
 			//the page as it was before any translating: the picture the book itself holds
@@ -3647,7 +3790,7 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			{
 				using (IItemLock<PageImage> original = reader.GetOriginalPage(previewPage))
 				{
-					return original?.Item != null ? service.UploadBytesOf(original.Item) : null;
+					return original?.Item != null ? service.UploadBytesOf(original.Item, reader.GetTranslationPageKey(previewPage)) : null;
 				}
 			};
 			//Another page for the preview (a sample page with the lettering style looked at): it is read in from the helper's cache
@@ -3707,7 +3850,7 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			}
 		}
 
-		/// <summary>Saves the page's protect strokes and has the page drawn again with them.</summary>
+		/// <summary>Saves the page's protect and wipe strokes and has the page drawn again with them.</summary>
 		private void CommitProtect()
 		{
 			if (key == null || service == null)
@@ -3724,7 +3867,7 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			{
 				RememberStep(before);
 			}
-			SetStatus(accepted ? "Drawing the page..." : "This page is not translated yet; the protected area was not applied.");
+			SetStatus(accepted ? "Drawing the page..." : "This page is not translated yet; the brush strokes were not applied.");
 		}
 
 		private void SetAddMode(bool on)
@@ -3736,8 +3879,7 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			if (on && canvas.Brush != PageCanvas.BrushKind.Off)
 			{
 				canvas.Brush = PageCanvas.BrushKind.Off;
-				btBrush.Text = "Protect brush";
-				btEraser.Text = "Erase strokes";
+				ShowBrushButtons();
 			}
 			canvas.AddMode = on;
 			btAdd.Text = on ? "Draw the box on the page..." : "Add text box";
@@ -3759,8 +3901,7 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			if (canvas.Brush != PageCanvas.BrushKind.Off)
 			{
 				canvas.Brush = PageCanvas.BrushKind.Off;
-				btBrush.Text = "Protect brush";
-				btEraser.Text = "Erase strokes";
+				ShowBrushButtons();
 			}
 			canvas.BeginPolygon();
 			btAdd.Text = "Click the points...";
@@ -3790,9 +3931,12 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 		}
 
 		/// <summary>Reads and translates the text in a region just drawn; the new box has the shape of the polygon when there is one.</summary>
-		private void ReadNewRegion(int[] rect, int[] polygon)
+		private void ReadNewRegion(int[] rect, int[] polygon, bool fromWipe = false)
 		{
-			SetAddMode(false);
+			if (!fromWipe)
+			{
+				SetAddMode(false);
+			}
 			if (service == null || key == null)
 			{
 				return;
@@ -3815,6 +3959,12 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 						if (problem != null)
 						{
 							SetStatus(problem);
+							canvas.Invalidate();
+							return;
+						}
+						if (fromWipe && (string.IsNullOrWhiteSpace(region.Text) || string.IsNullOrWhiteSpace(region.Translation)))
+						{
+							SetStatus("Wiped. No text was read there, so no box was added.");
 							canvas.Invalidate();
 							return;
 						}
@@ -3848,7 +3998,7 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 							SetStatus("No text was read there. Type the translation in the box on the right.");
 						}
 					});
-				});
+				}, key: requested);
 			}
 		}
 
@@ -4110,7 +4260,7 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 						canvas.Invalidate();
 						CommitNow();
 					});
-				}, sign: box.AsSign);
+				}, sign: box.AsSign, key: requested);
 			}
 		}
 

@@ -565,6 +565,7 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 	/// <summary>
 	/// A stroke of the protect brush: artwork the user painted over so that the helper leaves it as it is (does not wipe it as
 	/// text) and does not letter over it. Points are x, y pairs in page pixels; Radius is the brush's radius in page pixels.
+	/// With Wipe set it is a stroke of the wipe brush instead: original text the helper missed, which it cleans (helper 1.78).
 	/// </summary>
 	public class ProtectStroke
 	{
@@ -572,9 +573,28 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 
 		public int[] Points { get; set; } = new int[0];
 
+		/// <summary>A stroke of the wipe brush (sent and kept as "wipe", apart from the protect strokes).</summary>
+		public bool Wipe { get; set; }
+
 		public ProtectStroke Clone()
 		{
-			return new ProtectStroke { Radius = Radius, Points = (int[])Points.Clone() };
+			return new ProtectStroke { Radius = Radius, Points = (int[])Points.Clone(), Wipe = Wipe };
+		}
+
+		/// <summary>Writes the strokes of one kind as a named array; nothing when there are none.</summary>
+		internal static void WriteAll(Utf8JsonWriter w, string name, IEnumerable<ProtectStroke> strokes)
+		{
+			List<ProtectStroke> list = strokes.ToList();
+			if (list.Count == 0)
+			{
+				return;
+			}
+			w.WriteStartArray(name);
+			foreach (ProtectStroke stroke in list)
+			{
+				stroke.Write(w);
+			}
+			w.WriteEndArray();
 		}
 
 		/// <summary>True when the stroke passes within the given distance of a point.</summary>

@@ -3292,6 +3292,7 @@ namespace cYo.Projects.ComicRack.Viewer
 					if (readerControl != null)
 					{
 						readerControl.TranslationServerUrl = Program.Settings.TranslatorServerUrl;
+						readerControl.TranslateAheadPages = Program.Settings.TranslatorAheadPages;
 						readerControl.RefreshTranslations();
 					}
 				};
@@ -4782,6 +4783,7 @@ namespace cYo.Projects.ComicRack.Viewer
 			readerContainer.Controls.SetChildIndex(quickOpenView, 0);
 			readerControl = pageDisplay;
 			pageDisplay.TranslationStatusVisible = Program.Settings.TranslatorShowStatus;
+			pageDisplay.TranslateAheadPages = Program.Settings.TranslatorAheadPages;
 			//The batch translation steps aside while the reader is translating pages for the book being read (or translating
 			//ahead), and carries on when the reader is idle again.
 			TranslationBatch.ReaderBusy = () =>

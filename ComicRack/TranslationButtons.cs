@@ -632,6 +632,13 @@ namespace cYo.Projects.ComicRack.Viewer
 
 			public ToolStripMenuItem ExitItem;
 
+			//The helper's and Ollama's start / stop entries on the toolbar too, next to the power button (when the option is on)
+			public ToolStripButton HelperButton;
+
+			public ToolStripButton OllamaButton;
+
+			public ToolStripMenuItem ButtonsItem;
+
 			//A split button: its arrow opens the menu; the button opens it too, except while a batch waits to be continued (paused or
 			//stopped, with the small play mark on its icon), when the button continues the batch.
 			public ToolStripSplitButton Ahead;
@@ -736,11 +743,23 @@ namespace cYo.Projects.ComicRack.Viewer
 			pair.ExitItem = new ToolStripMenuItem("Stop both when ComicRack closes", ActionIcon(TranslationAction.StopOnExit, iconSize));
 			pair.ExitItem.Click += delegate { Program.Settings.TranslatorStopOnExit = !Program.Settings.TranslatorStopOnExit; };
 			pair.Services.DropDownItems.Add(pair.ExitItem);
+			pair.ButtonsItem = new ToolStripMenuItem("Show Start / Stop buttons on the toolbar");
+			pair.ButtonsItem.Click += delegate
+			{
+				Program.Settings.TranslatorServiceButtons = !Program.Settings.TranslatorServiceButtons;
+				RefreshAll();
+			};
+			pair.Services.DropDownItems.Add(pair.ButtonsItem);
 			pair.Services.DropDownOpening += delegate
 			{
 				pair.ExitItem.Checked = Program.Settings.TranslatorStopOnExit;
+				pair.ButtonsItem.Checked = Program.Settings.TranslatorServiceButtons;
 				Update(pair);
 			};
+			pair.HelperButton = new ToolStripButton { Name = "tbTranslatorHelper", DisplayStyle = ToolStripItemDisplayStyle.Image, AutoToolTip = false, Visible = false };
+			pair.HelperButton.Click += delegate { TranslationServices.ToggleHelper(Main); };
+			pair.OllamaButton = new ToolStripButton { Name = "tbTranslatorOllama", DisplayStyle = ToolStripItemDisplayStyle.Image, AutoToolTip = false, Visible = false };
+			pair.OllamaButton.Click += delegate { TranslationServices.ToggleOllama(); };
 
 			pair.Ahead = new ToolStripSplitButton
 			{
@@ -797,6 +816,11 @@ namespace cYo.Projects.ComicRack.Viewer
 						pair.Ahead.ShowDropDown();
 					}
 				}
+				else if (Main?.TranslationReader?.Book != null && !Main.TranslationReader.IsPreTranslating)
+				{
+					//the number of pages set in Translation Settings; the arrow has the other choices
+					Main.TranslationReader.StartPreTranslate(Program.Settings.TranslatorAheadPages);
+				}
 				else
 				{
 					pair.Ahead.ShowDropDown();
@@ -812,6 +836,8 @@ namespace cYo.Projects.ComicRack.Viewer
 				dropDownButton.DropDownItemClicked += delegate { GiveKeyboardBack(strip); };
 				dropDownButton.Click += delegate { GiveKeyboardBack(strip); };
 			}
+			pair.HelperButton.Click += delegate { GiveKeyboardBack(strip); };
+			pair.OllamaButton.Click += delegate { GiveKeyboardBack(strip); };
 
 			List<ToolStripItem> items = new List<ToolStripItem>();
 			if (separatorBefore)
@@ -820,6 +846,8 @@ namespace cYo.Projects.ComicRack.Viewer
 			}
 			items.Add(pair.Translator);
 			items.Add(pair.Services);
+			items.Add(pair.HelperButton);
+			items.Add(pair.OllamaButton);
 			items.Add(pair.Ahead);
 			if (separatorAfter)
 			{
@@ -1152,7 +1180,8 @@ namespace cYo.Projects.ComicRack.Viewer
 			{
 				reader.GetPreTranslateProgress(out int aheadDone, out int aheadTotal);
 				p.AheadState.Text = ahead ? "Translating ahead: " + aheadDone + " of " + aheadTotal + " pages" : "Translate the pages after this one before you get to them";
-				p.Ahead.ToolTipText = ahead ? "Translating ahead: " + aheadDone + " of " + aheadTotal + " pages. Click to change or stop." : "Translate pages ahead of reading (5, 10, 15... or the whole book)";
+				int next = Program.Settings.TranslatorAheadPages;
+				p.Ahead.ToolTipText = ahead ? "Translating ahead: " + aheadDone + " of " + aheadTotal + " pages. Click to change or stop." : "Click: translate the next " + next + (next == 1 ? " page" : " pages") + " (set in Translation Settings).\nThe arrow: 5, 10, 15... or the whole book";
 			}
 			p.AheadStop.Enabled = ahead;
 			UpdateBatchMenu(p);
@@ -1166,6 +1195,17 @@ namespace cYo.Projects.ComicRack.Viewer
 			p.HelperItem.Image = ActionIcon(helper ? TranslationAction.HelperStop : TranslationAction.HelperStart, itemSize);
 			p.OllamaItem.Image = ActionIcon(ollama ? TranslationAction.OllamaStop : TranslationAction.OllamaStart, itemSize);
 			p.HelperItem.Enabled = p.OllamaItem.Enabled = !TranslationServices.Busy;
+			//the same two on the toolbar (the option in the power button's menu), at the toolbar's own icon size
+			bool shown = Program.Settings.TranslatorServiceButtons;
+			p.HelperButton.Visible = p.OllamaButton.Visible = shown;
+			if (shown)
+			{
+				p.HelperButton.Image = ActionIcon(helper ? TranslationAction.HelperStop : TranslationAction.HelperStart, size);
+				p.OllamaButton.Image = ActionIcon(ollama ? TranslationAction.OllamaStop : TranslationAction.OllamaStart, size);
+				p.HelperButton.ToolTipText = p.HelperItem.Text + (helper ? " (running)" : " (stopped)");
+				p.OllamaButton.ToolTipText = p.OllamaItem.Text + (ollama ? " (running)" : " (stopped)");
+				p.HelperButton.Enabled = p.OllamaButton.Enabled = !TranslationServices.Busy;
+			}
 			string action = TranslationServices.Busy ? "working..." : (helper || ollama ? "Click to stop both." : "Click to start both.");
 			p.Services.ToolTipText = state + " " + action + (string.IsNullOrEmpty(TranslationServices.Problem) ? "" : "  Problem: " + TranslationServices.Problem);
 		}
@@ -1527,10 +1567,10 @@ namespace cYo.Projects.ComicRack.Viewer
 				case TranslationAction.HelperStart:
 				case TranslationAction.HelperStop:
 					{
-						//the translator's bubble, with what a click does
+						//the translator's bubble, with what a click does; grey while the helper is stopped (the start picture is shown then)
 						GraphicsState state = g.Save();
 						g.ScaleTransform(0.78f, 0.78f);
-						DrawSpeechBubble(g, size, amber);
+						DrawSpeechBubble(g, size, kind == TranslationAction.HelperStart ? ColorOf(TranslationLed.Off) : amber);
 						g.Restore(state);
 						DrawBadge(g, u, kind == TranslationAction.HelperStart, green, red);
 						break;
@@ -1538,9 +1578,10 @@ namespace cYo.Projects.ComicRack.Viewer
 				case TranslationAction.OllamaStart:
 				case TranslationAction.OllamaStop:
 					{
-						//a chip (the language model), with what a click does
+						//a chip (the language model), with what a click does; green while Ollama runs (the stop picture is shown then)
+						bool running = kind == TranslationAction.OllamaStop;
 						RectangleF chip = new RectangleF(2.5f * u, 2 * u, 8.5f * u, 8.5f * u);
-						using (Pen pins = new Pen(Color.FromArgb(150, 150, 160), Math.Max(1f, u)))
+						using (Pen pins = new Pen(running ? Color.FromArgb(110, 200, 130) : Color.FromArgb(150, 150, 160), Math.Max(1f, u)))
 						{
 							for (int i = 0; i < 3; i++)
 							{
@@ -1551,7 +1592,7 @@ namespace cYo.Projects.ComicRack.Viewer
 								g.DrawLine(pins, 11 * u, p - 1.4f * u + 0.6f * u, 12.5f * u, p - 1.4f * u + 0.6f * u);
 							}
 						}
-						using (SolidBrush body = new SolidBrush(Color.FromArgb(95, 95, 108)))
+						using (SolidBrush body = new SolidBrush(running ? Color.FromArgb(40, 150, 70) : Color.FromArgb(95, 95, 108)))
 						{
 							g.FillRectangle(body, chip);
 						}

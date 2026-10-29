@@ -569,6 +569,15 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 								{
 									stored.Protect = strokes.EnumerateArray().Select(ProtectStroke.Read).Where((ProtectStroke x) => x != null).ToList();
 								}
+								if (p.TryGetProperty("wipe", out JsonElement wiped) && wiped.ValueKind == JsonValueKind.Array)
+								{
+									//the wipe brush's strokes are kept with the protect brush's
+									foreach (ProtectStroke stroke in wiped.EnumerateArray().Select(ProtectStroke.Read).Where((ProtectStroke x) => x != null))
+									{
+										stroke.Wipe = true;
+										stored.Protect.Add(stroke);
+									}
+								}
 								book.Pages[(int)TranslationBox.GetDouble(p, "page")] = stored;
 							}
 						}
@@ -640,15 +649,8 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 						{
 							kv.Value.Fonts.Write(w, "fonts");
 						}
-						if (kv.Value.Protect.Count > 0)
-						{
-							w.WriteStartArray("protect");
-							foreach (ProtectStroke stroke in kv.Value.Protect)
-							{
-								stroke.Write(w);
-							}
-							w.WriteEndArray();
-						}
+						ProtectStroke.WriteAll(w, "protect", kv.Value.Protect.Where((ProtectStroke s) => !s.Wipe));
+						ProtectStroke.WriteAll(w, "wipe", kv.Value.Protect.Where((ProtectStroke s) => s.Wipe));
 						w.WriteEndObject();
 					}
 					w.WriteEndArray();
