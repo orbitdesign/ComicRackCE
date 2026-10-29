@@ -920,15 +920,30 @@ namespace cYo.Projects.ComicRack.Viewer
 				}
 				p?.Ahead.ShowDropDown();
 			};
+			//the translated books being written in the background (Export Translated Books), just after the batch
+			exportStatus = new ToolStripStatusLabel
+			{
+				Name = "tsTranslationExport",
+				BorderSides = ToolStripStatusLabelBorderSides.All,
+				BorderStyle = Border3DStyle.SunkenOuter,
+				DisplayStyle = ToolStripItemDisplayStyle.ImageAndText,
+				ImageAlign = ContentAlignment.MiddleLeft,
+				TextImageRelation = TextImageRelation.ImageBeforeText,
+				Visible = false
+			};
+			exportStatus.Click += delegate { ShowExportMenu(); };
 			int index = before != null ? strip.Items.IndexOf(before) : -1;
 			if (index >= 0)
 			{
 				strip.Items.Insert(index, batchStatus);
+				strip.Items.Insert(index + 1, exportStatus);
 			}
 			else
 			{
 				strip.Items.Add(batchStatus);
+				strip.Items.Add(exportStatus);
 			}
+			TranslationExportQueue.Changed += delegate { RefreshAll(); };
 			//The theme gave the status bar's other entries their border when the window was made (the dark theme draws a faded
 			//grey one in place of the white sunken edge); it is applied again so this entry gets the same. Entries already
 			//themed are left as they are.
@@ -940,6 +955,156 @@ namespace cYo.Projects.ComicRack.Viewer
 			{
 			}
 			UpdateBatchStatus();
+			UpdateExportStatus();
+		}
+
+		private static ToolStripStatusLabel exportStatus;
+
+		private static void UpdateExportStatus()
+		{
+			ToolStripStatusLabel label = exportStatus;
+			if (label == null || label.Owner == null || label.Owner.IsDisposed)
+			{
+				return;
+			}
+			List<TranslationExportQueue.Item> all = TranslationExportQueue.Items;
+			bool running = TranslationExportQueue.IsRunning;
+			TranslationExportQueue.Item current = TranslationExportQueue.Current;
+			int written = all.Count((TranslationExportQueue.Item i) => i.Written != null);
+			int failed = all.Count((TranslationExportQueue.Item i) => i.Problem != null);
+			int stopped = all.Count((TranslationExportQueue.Item i) => i.Cancelled);
+			string text;
+			if (running && current != null)
+			{
+				int others = all.Count((TranslationExportQueue.Item i) => !i.Finished && i != current);
+				string done = current.Total > 0 ? Math.Min(current.Done, current.Total) + "/" + current.Total : "starting";
+				text = "Export: " + ShortTitle(current.Title) + "  " + done + (others > 0 ? "  (+" + others + (others == 1 ? " book" : " books") + ")" : "");
+			}
+			else if (running)
+			{
+				text = "Export: starting...";
+			}
+			else if (stopped > 0)
+			{
+				text = "Export stopped: " + written + " of " + all.Count + (all.Count == 1 ? " book" : " books") + " written";
+			}
+			else
+			{
+				text = "Export done: " + written + (written == 1 ? " book" : " books") + " written" + (failed > 0 ? ", " + failed + " failed" : "");
+			}
+			int size = Math.Max(16, label.Owner.ImageScalingSize.Height);
+			if (label.Image == null || label.Image.Height != size)
+			{
+				label.Image = ActionIcon(TranslationAction.Export, size);
+			}
+			if (label.Text != text)
+			{
+				label.Text = text;
+			}
+			label.ForeColor = !running && failed > 0 ? ColorOf(TranslationLed.Problem) : label.Owner.ForeColor;
+			label.ToolTipText = ExportListText(all) + "\n" + (running ? "Click to stop exporting." : "Click for the written books or to clear this message.");
+			label.Visible = all.Count > 0;
+		}
+
+		/// <summary>The books of the export, one per line, with how each one went.</summary>
+		private static string ExportListText(List<TranslationExportQueue.Item> all)
+		{
+			StringBuilder sb = new StringBuilder();
+			foreach (TranslationExportQueue.Item item in all.Take(ListedBooks))
+			{
+				if (sb.Length > 0)
+				{
+					sb.Append("\n");
+				}
+				sb.Append(Shorten(item.Title)).Append(": ").Append(ExportItemState(item));
+			}
+			if (all.Count > ListedBooks)
+			{
+				sb.Append("\n... and ").Append(all.Count - ListedBooks).Append(" more");
+			}
+			return sb.ToString();
+		}
+
+		private static string ExportItemState(TranslationExportQueue.Item item)
+		{
+			if (item.Written != null)
+			{
+				return "written";
+			}
+			if (item.Problem != null)
+			{
+				return "failed: " + item.Problem;
+			}
+			if (item.Cancelled)
+			{
+				return "stopped";
+			}
+			if (item == TranslationExportQueue.Current)
+			{
+				string doing = item.Complete ? "writing" : "translating and writing";
+				return item.Total > 0 ? doing + ", page " + Math.Min(item.Done, item.Total) + " of " + item.Total : doing + "...";
+			}
+			return "waiting";
+		}
+
+		/// <summary>The export's menu, from its status bar entry: its books, stop while it runs; once done, the folder of a written book
+		/// and clearing the message.</summary>
+		private static void ShowExportMenu()
+		{
+			ToolStripStatusLabel label = exportStatus;
+			if (label?.Owner == null || label.Owner.IsDisposed)
+			{
+				return;
+			}
+			List<TranslationExportQueue.Item> all = TranslationExportQueue.Items;
+			bool running = TranslationExportQueue.IsRunning;
+			ContextMenuStrip menu = new ContextMenuStrip();
+			int size = Math.Max(16, label.Owner.ImageScalingSize.Height);
+			foreach (TranslationExportQueue.Item item in all.Take(ListedBooks))
+			{
+				TranslationExportQueue.Item book = item;
+				ToolStripMenuItem line = new ToolStripMenuItem(Shorten(item.Title) + ": " + ExportItemState(item)) { Enabled = item.Written != null };
+				if (item.Written != null)
+				{
+					line.ToolTipText = "Show " + item.Written + " in its folder";
+					line.Click += delegate { ShowInFolder(book.Written); };
+				}
+				menu.Items.Add(line);
+			}
+			if (all.Count > ListedBooks)
+			{
+				menu.Items.Add(new ToolStripMenuItem("... and " + (all.Count - ListedBooks) + " more") { Enabled = false });
+			}
+			menu.Items.Add(new ToolStripSeparator());
+			if (running)
+			{
+				menu.Items.Add(new ToolStripMenuItem("Stop exporting", GetMenuIcon(MenuIcon.Stop, null, size), delegate { TranslationExportQueue.Stop(); }));
+			}
+			else
+			{
+				menu.Items.Add(new ToolStripMenuItem("Clear this message", null, delegate { TranslationExportQueue.Clear(); }));
+			}
+			menu.Closed += delegate { label.Owner?.BeginInvoke((Action)menu.Dispose); };
+			try
+			{
+				menu.Theme();
+			}
+			catch (Exception)
+			{
+			}
+			Rectangle bounds = label.Bounds;
+			menu.Show(label.Owner, new Point(bounds.Left, bounds.Top), ToolStripDropDownDirection.AboveRight);
+		}
+
+		private static void ShowInFolder(string path)
+		{
+			try
+			{
+				System.Diagnostics.Process.Start("explorer.exe", "/select,\"" + path + "\"");
+			}
+			catch (Exception)
+			{
+			}
 		}
 
 		private static void UpdateBatchStatus()
@@ -1058,12 +1223,17 @@ namespace cYo.Projects.ComicRack.Viewer
 					{
 						if (label.Owner.IsHandleCreated)
 						{
-							label.Owner.BeginInvoke((Action)UpdateBatchStatus);
+							label.Owner.BeginInvoke((Action)delegate
+							{
+								UpdateBatchStatus();
+								UpdateExportStatus();
+							});
 						}
 					}
 					else
 					{
 						UpdateBatchStatus();
+						UpdateExportStatus();
 					}
 				}
 				catch (Exception)

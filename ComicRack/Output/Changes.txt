@@ -1,4 +1,4 @@
-﻿orbitdesign Build 1.180 (based on Community Edition 0.9.186):
+﻿orbitdesign Build 1.181 (based on Community Edition 0.9.186):
 
 * 1.1 (2026-09-21) FIX: Hardware acceleration stability. Fixed OpenGL extension detection, replaced the deprecated automatic mip map generation that crashed some drivers, checked texture uploads for errors, and added a startup guard that switches hardware acceleration off for one session if ComicRack failed to start last time.
 * 1.2 (2026-09-22) NEW: Direct2D renderer for the reader. Used by default when hardware acceleration is on, with OpenGL and then software rendering as fallbacks. Handles graphics device resets, uses high quality cubic sampling for "Enable Hardware Filters", and supports paper textures. Start with -hwgl to use the old OpenGL renderer.
@@ -185,6 +185,7 @@
 * 1.178 (2026-10-29) NEW: "Show Start / Stop buttons on the toolbar" in the menu of the translator's power button (the one for the helper and Ollama). When it is ticked, Start / Stop Translator Helper and Start / Stop Ollama are also two buttons on the toolbar, right after the power button: a red square stops, a green triangle starts, and the tooltip says what is running. Off by default; remembered.
 * 1.179 (2026-10-29) CHANGE: The Ollama button and menu entry show a green chip while Ollama is running (grey while it is stopped), and the helper button's bubble is grey while the helper is stopped (amber while it runs), so their state can be seen at a glance.
 * 1.180 (2026-10-29) NEW: Export Translated Books: when some of the ticked books were exported already, a Skip button leaves those files as they are and writes the others (Replace writes them again, Cancel writes nothing). Skipped books show "skipped: exported already" in the list.
+* 1.181 (2026-10-29) CHANGE: Export Translated Books writes the books in the background, like the batch translation: Export hands them over and the window closes. The status bar shows the book being written and its pages (and how many books follow); a click there stops the export. When it is done the entry says how many books were written or failed; its menu lists them, a written book opens in its folder, and "Clear this message" hides it. Books exported while one runs are written after it; a book already being exported is not queued twice.
 
 Community Edition Build 0.9.186:
 
