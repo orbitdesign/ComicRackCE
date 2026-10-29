@@ -1,4 +1,4 @@
-﻿orbitdesign Build 1.179 (based on Community Edition 0.9.186):
+﻿orbitdesign Build 1.180 (based on Community Edition 0.9.186):
 
 * 1.1 (2026-09-21) FIX: Hardware acceleration stability. Fixed OpenGL extension detection, replaced the deprecated automatic mip map generation that crashed some drivers, checked texture uploads for errors, and added a startup guard that switches hardware acceleration off for one session if ComicRack failed to start last time.
 * 1.2 (2026-09-22) NEW: Direct2D renderer for the reader. Used by default when hardware acceleration is on, with OpenGL and then software rendering as fallbacks. Handles graphics device resets, uses high quality cubic sampling for "Enable Hardware Filters", and supports paper textures. Start with -hwgl to use the old OpenGL renderer.
@@ -184,6 +184,7 @@
 * 1.177 (2026-10-24) FIX: The reader froze for over a minute while translating ahead (Not Responding, then it came back). With a colour adjustment on (Sharpen in the display settings) the translator is given the book's own picture of each page, and that was read out of the book's archive on the window's own thread, while it painted the page, for every page ahead; since 1.174 that is all the pages set in "Translate ahead", asked for again each time one is done, and a page read out of a large or solid archive can take seconds. Those reads are now done in the background, one page at a time and the page being read first, and the last few pages read are kept, so the editor does not read the archive again for every brush stroke or change.
 * 1.178 (2026-10-29) NEW: "Show Start / Stop buttons on the toolbar" in the menu of the translator's power button (the one for the helper and Ollama). When it is ticked, Start / Stop Translator Helper and Start / Stop Ollama are also two buttons on the toolbar, right after the power button: a red square stops, a green triangle starts, and the tooltip says what is running. Off by default; remembered.
 * 1.179 (2026-10-29) CHANGE: The Ollama button and menu entry show a green chip while Ollama is running (grey while it is stopped), and the helper button's bubble is grey while the helper is stopped (amber while it runs), so their state can be seen at a glance.
+* 1.180 (2026-10-29) NEW: Export Translated Books: when some of the ticked books were exported already, a Skip button leaves those files as they are and writes the others (Replace writes them again, Cancel writes nothing). Skipped books show "skipped: exported already" in the list.
 
 Community Edition Build 0.9.186:
 

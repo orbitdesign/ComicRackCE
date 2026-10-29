@@ -434,11 +434,32 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			todo = todo.GroupBy((Job j) => ExportFor(j).TargetPath, StringComparer.OrdinalIgnoreCase).Select((IGrouping<string, Job> g) => g.OrderByDescending((Job j) => j.Complete).First()).ToList();
 			if (!chkOverwrite.Checked)
 			{
-				List<string> existing = todo.Select((Job j) => ExportFor(j).TargetPath).Where(File.Exists).ToList();
+				List<Job> existing = todo.Where((Job j) => File.Exists(ExportFor(j).TargetPath)).ToList();
 				if (existing.Count > 0)
 				{
-					MessageBox.Show(this, (existing.Count == 1 ? "This file already exists:\n" : "These files already exist:\n") + string.Join("\n", existing.Take(8)) + (existing.Count > 8 ? "\n..." : "") + "\n\nTick \"Replace a file if it already exists\", or untick those books.", Text, MessageBoxButtons.OK, MessageBoxIcon.Information);
-					return;
+					DialogResult answer = AskExisting(existing.Select((Job j) => ExportFor(j).TargetPath).ToList(), existing.Count == todo.Count);
+					if (answer == DialogResult.Cancel)
+					{
+						return;
+					}
+					if (answer == DialogResult.Ignore)
+					{
+						//skip: the books exported already are left as they are, the others are written
+						foreach (Job skipped in existing)
+						{
+							skipped.Row.SubItems[3].Text = "skipped: exported already";
+						}
+						todo = todo.Except(existing).ToList();
+						if (todo.Count == 0)
+						{
+							lblProgress.Text = "Nothing written: every ticked book is exported already.";
+							return;
+						}
+					}
+					else
+					{
+						chkOverwrite.Checked = true;
+					}
 				}
 			}
 			bool addToLibrary = chkAdd.Checked;
@@ -516,6 +537,57 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 				Name = "Export translated books"
 			};
 			worker.Start();
+		}
+
+		/// <summary>
+		/// Asks what to do with books whose translated copy is there already: Ignore skips them (the others are written), Retry
+		/// replaces them, Cancel writes nothing.
+		/// </summary>
+		private DialogResult AskExisting(List<string> existing, bool all)
+		{
+			using (ExistingPrompt prompt = new ExistingPrompt())
+			{
+				prompt.Text = Text;
+				Label message = new Label
+				{
+					Text = (existing.Count == 1 ? "This file already exists:\n" : existing.Count + " files already exist:\n") + string.Join("\n", existing.Take(8)) + (existing.Count > 8 ? "\n..." : "")
+						+ "\n\n" + (all ? "Skip writes nothing: every ticked book is exported already." : "Skip leaves " + (existing.Count == 1 ? "it" : "them") + " as " + (existing.Count == 1 ? "it is" : "they are") + " and writes the other books.")
+						+ " Replace writes " + (existing.Count == 1 ? "it" : "them") + " again.",
+					Location = new Point(12, 12),
+					MaximumSize = new Size(560, 0),
+					AutoSize = true
+				};
+				prompt.Controls.Add(message);
+				Size used = message.GetPreferredSize(new Size(560, 0));
+				int top = 12 + used.Height + 16;
+				Button skip = new Button { Text = "Skip", DialogResult = DialogResult.Ignore, Size = new Size(84, 28), Name = "btSkip" };
+				Button replace = new Button { Text = "Replace", DialogResult = DialogResult.Retry, Size = new Size(84, 28), Name = "btReplace" };
+				Button cancel = new Button { Text = "Cancel", DialogResult = DialogResult.Cancel, Size = new Size(84, 28), Name = "btCancel" };
+				int width = Math.Max(used.Width + 24, 3 * 84 + 2 * 6 + 24);
+				cancel.Location = new Point(width - 12 - 84, top);
+				replace.Location = new Point(cancel.Left - 6 - 84, top);
+				skip.Location = new Point(replace.Left - 6 - 84, top);
+				prompt.Controls.AddRange(new Control[] { skip, replace, cancel });
+				prompt.AcceptButton = skip;
+				prompt.CancelButton = cancel;
+				prompt.ClientSize = new Size(width, top + 28 + 12);
+				return prompt.ShowDialog(this);
+			}
+		}
+
+		private class ExistingPrompt : FormEx
+		{
+			public override UIComponent UIComponent => UIComponent.Content;
+
+			public ExistingPrompt()
+			{
+				AutoScaleMode = AutoScaleMode.None;
+				FormBorderStyle = FormBorderStyle.FixedDialog;
+				StartPosition = FormStartPosition.CenterParent;
+				MaximizeBox = false;
+				MinimizeBox = false;
+				ShowInTaskbar = false;
+			}
 		}
 
 		private void Cancel()
