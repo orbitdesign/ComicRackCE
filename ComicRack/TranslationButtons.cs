@@ -1567,10 +1567,10 @@ namespace cYo.Projects.ComicRack.Viewer
 				case TranslationAction.HelperStart:
 				case TranslationAction.HelperStop:
 					{
-						//the translator's bubble, with what a click does
+						//the translator's bubble, with what a click does; grey while the helper is stopped (the start picture is shown then)
 						GraphicsState state = g.Save();
 						g.ScaleTransform(0.78f, 0.78f);
-						DrawSpeechBubble(g, size, amber);
+						DrawSpeechBubble(g, size, kind == TranslationAction.HelperStart ? ColorOf(TranslationLed.Off) : amber);
 						g.Restore(state);
 						DrawBadge(g, u, kind == TranslationAction.HelperStart, green, red);
 						break;
@@ -1578,9 +1578,10 @@ namespace cYo.Projects.ComicRack.Viewer
 				case TranslationAction.OllamaStart:
 				case TranslationAction.OllamaStop:
 					{
-						//a chip (the language model), with what a click does
+						//a chip (the language model), with what a click does; green while Ollama runs (the stop picture is shown then)
+						bool running = kind == TranslationAction.OllamaStop;
 						RectangleF chip = new RectangleF(2.5f * u, 2 * u, 8.5f * u, 8.5f * u);
-						using (Pen pins = new Pen(Color.FromArgb(150, 150, 160), Math.Max(1f, u)))
+						using (Pen pins = new Pen(running ? Color.FromArgb(110, 200, 130) : Color.FromArgb(150, 150, 160), Math.Max(1f, u)))
 						{
 							for (int i = 0; i < 3; i++)
 							{
@@ -1591,7 +1592,7 @@ namespace cYo.Projects.ComicRack.Viewer
 								g.DrawLine(pins, 11 * u, p - 1.4f * u + 0.6f * u, 12.5f * u, p - 1.4f * u + 0.6f * u);
 							}
 						}
-						using (SolidBrush body = new SolidBrush(Color.FromArgb(95, 95, 108)))
+						using (SolidBrush body = new SolidBrush(running ? Color.FromArgb(40, 150, 70) : Color.FromArgb(95, 95, 108)))
 						{
 							g.FillRectangle(body, chip);
 						}
