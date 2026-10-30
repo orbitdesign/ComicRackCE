@@ -932,16 +932,25 @@ namespace cYo.Projects.ComicRack.Viewer
 				Visible = false
 			};
 			exportStatus.Click += delegate { ShowExportMenu(); };
+			//while it runs, two buttons beside it: skip the book being written, stop the export
+			exportSkip = new ToolStripButton { Name = "tsTranslationExportSkip", DisplayStyle = ToolStripItemDisplayStyle.Image, AutoToolTip = false, ToolTipText = "Skip this book: it is not written, and the export goes on with the next", Visible = false };
+			exportSkip.Click += delegate { TranslationExportQueue.SkipCurrent(); };
+			exportStop = new ToolStripButton { Name = "tsTranslationExportStop", DisplayStyle = ToolStripItemDisplayStyle.Image, AutoToolTip = false, ToolTipText = "Stop exporting: the book being written and those waiting are not written (the books written so far stay)", Visible = false };
+			exportStop.Click += delegate { TranslationExportQueue.Stop(); };
 			int index = before != null ? strip.Items.IndexOf(before) : -1;
 			if (index >= 0)
 			{
 				strip.Items.Insert(index, batchStatus);
 				strip.Items.Insert(index + 1, exportStatus);
+				strip.Items.Insert(index + 2, exportSkip);
+				strip.Items.Insert(index + 3, exportStop);
 			}
 			else
 			{
 				strip.Items.Add(batchStatus);
 				strip.Items.Add(exportStatus);
+				strip.Items.Add(exportSkip);
+				strip.Items.Add(exportStop);
 			}
 			TranslationExportQueue.Changed += delegate { RefreshAll(); };
 			//The theme gave the status bar's other entries their border when the window was made (the dark theme draws a faded
@@ -960,6 +969,10 @@ namespace cYo.Projects.ComicRack.Viewer
 
 		private static ToolStripStatusLabel exportStatus;
 
+		private static ToolStripButton exportSkip;
+
+		private static ToolStripButton exportStop;
+
 		private static void UpdateExportStatus()
 		{
 			ToolStripStatusLabel label = exportStatus;
@@ -973,6 +986,7 @@ namespace cYo.Projects.ComicRack.Viewer
 			int written = all.Count((TranslationExportQueue.Item i) => i.Written != null);
 			int failed = all.Count((TranslationExportQueue.Item i) => i.Problem != null);
 			int stopped = all.Count((TranslationExportQueue.Item i) => i.Cancelled);
+			int skipped = all.Count((TranslationExportQueue.Item i) => i.SkipAsked && i.Finished && i.Written == null);
 			string text;
 			if (running && current != null)
 			{
@@ -990,7 +1004,7 @@ namespace cYo.Projects.ComicRack.Viewer
 			}
 			else
 			{
-				text = "Export done: " + written + (written == 1 ? " book" : " books") + " written" + (failed > 0 ? ", " + failed + " failed" : "");
+				text = "Export done: " + written + (written == 1 ? " book" : " books") + " written" + (skipped > 0 ? ", " + skipped + " skipped" : "") + (failed > 0 ? ", " + failed + " failed" : "");
 			}
 			int size = Math.Max(16, label.Owner.ImageScalingSize.Height);
 			if (label.Image == null || label.Image.Height != size)
@@ -1002,8 +1016,18 @@ namespace cYo.Projects.ComicRack.Viewer
 				label.Text = text;
 			}
 			label.ForeColor = !running && failed > 0 ? ColorOf(TranslationLed.Problem) : label.Owner.ForeColor;
-			label.ToolTipText = ExportListText(all) + "\n" + (running ? "Click to stop exporting." : "Click for the written books or to clear this message.");
+			label.ToolTipText = ExportListText(all) + "\n" + (running ? "Click for the export's menu; the buttons beside it skip this book or stop the export." : "Click for the written books or to clear this message.");
 			label.Visible = all.Count > 0;
+			if (exportSkip != null && exportStop != null)
+			{
+				if (exportSkip.Image == null || exportSkip.Image.Height != size)
+				{
+					exportSkip.Image = GetMenuIcon(MenuIcon.Skip, null, size);
+					exportStop.Image = GetMenuIcon(MenuIcon.Stop, null, size);
+				}
+				exportSkip.Visible = exportStop.Visible = running;
+				exportSkip.Enabled = current != null && !current.SkipAsked;
+			}
 		}
 
 		/// <summary>The books of the export, one per line, with how each one went.</summary>
@@ -1038,6 +1062,10 @@ namespace cYo.Projects.ComicRack.Viewer
 			if (item.Cancelled)
 			{
 				return "stopped";
+			}
+			if (item.SkipAsked)
+			{
+				return item.Finished ? "skipped" : "skipping...";
 			}
 			if (item == TranslationExportQueue.Current)
 			{
@@ -1078,6 +1106,8 @@ namespace cYo.Projects.ComicRack.Viewer
 			menu.Items.Add(new ToolStripSeparator());
 			if (running)
 			{
+				TranslationExportQueue.Item current = TranslationExportQueue.Current;
+				menu.Items.Add(new ToolStripMenuItem("Skip this book (go on with the next)", GetMenuIcon(MenuIcon.Skip, null, size), delegate { TranslationExportQueue.SkipCurrent(); }) { Enabled = current != null && !current.SkipAsked });
 				menu.Items.Add(new ToolStripMenuItem("Stop exporting", GetMenuIcon(MenuIcon.Stop, null, size), delegate { TranslationExportQueue.Stop(); }));
 			}
 			else
@@ -1832,6 +1862,7 @@ namespace cYo.Projects.ComicRack.Viewer
 			Rest,
 			Book,
 			Stop,
+			Skip,
 			Language,
 			LanguageOn
 		}
@@ -2015,6 +2046,16 @@ namespace cYo.Projects.ComicRack.Viewer
 									g.DrawLine(line, 13.5f * u, 6.5f * u, 10 * u, 7.3f * u);
 									g.DrawLine(line, 13.5f * u, 9 * u, 10 * u, 9.8f * u);
 								}
+								break;
+							}
+						case MenuIcon.Skip:
+							{
+								//"next": a triangle and a bar, on past this one
+								PointF[] play = { new PointF(2.5f * u, 3 * u), new PointF(2.5f * u, 13 * u), new PointF(10.5f * u, 8 * u) };
+								g.FillPolygon(accentBrush, play);
+								g.DrawPolygon(rimPen, play);
+								g.FillRectangle(accentBrush, 11.5f * u, 3 * u, 2.5f * u, 10 * u);
+								g.DrawRectangle(rimPen, 11.5f * u, 3 * u, 2.5f * u, 10 * u);
 								break;
 							}
 						case MenuIcon.Language:

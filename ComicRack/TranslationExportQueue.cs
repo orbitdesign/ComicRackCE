@@ -10,7 +10,8 @@ namespace cYo.Projects.ComicRack.Viewer
 	/// <summary>
 	/// Writes translated copies of books one after the other in the background, like the batch translation: Export Translated
 	/// Books queues them and closes, the status bar shows the book being written and its pages, and a click there stops the
-	/// export or, when it is done, clears the message. Books added while it runs are written after the others.
+	/// export or, when it is done, clears the message; the Skip and Stop buttons beside it skip the book being written or stop
+	/// the export. Books added while it runs are written after the others.
 	/// </summary>
 	public static class TranslationExportQueue
 	{
@@ -40,6 +41,9 @@ namespace cYo.Projects.ComicRack.Viewer
 			public string Problem;
 
 			public bool Cancelled;
+
+			/// <summary>"Skip this book" was used on it: it is not written, and the export goes on with the next.</summary>
+			public bool SkipAsked;
 		}
 
 		private static readonly object sync = new object();
@@ -157,6 +161,19 @@ namespace cYo.Projects.ComicRack.Viewer
 			RaiseChanged(true);
 		}
 
+		/// <summary>Gives up the book being written (its file is not written) and goes on with the next.</summary>
+		public static void SkipCurrent()
+		{
+			Item item = Current;
+			if (item == null || item.Finished)
+			{
+				return;
+			}
+			item.SkipAsked = true;
+			item.Export.Cancel();
+			RaiseChanged(true);
+		}
+
 		/// <summary>Forgets the results of an export that ended.</summary>
 		public static void Clear()
 		{
@@ -208,15 +225,16 @@ namespace cYo.Projects.ComicRack.Viewer
 					}
 					catch (OperationCanceledException)
 					{
-						item.Cancelled = true;
+						item.Cancelled = !item.SkipAsked;
 					}
 					catch (Exception ex)
 					{
-						if (stopping)
+						//skipped or stopped from the status bar: the export's failing then is what was asked for
+						if (stopping && !item.SkipAsked)
 						{
 							item.Cancelled = true;
 						}
-						else
+						else if (!item.SkipAsked)
 						{
 							item.Problem = ex.Message;
 						}
