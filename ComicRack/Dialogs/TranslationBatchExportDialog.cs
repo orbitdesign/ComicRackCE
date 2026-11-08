@@ -105,19 +105,11 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 
 		private Label lblNote;
 
-		private ProgressBar progress;
-
-		private Label lblProgress;
+		private Label lblBackground;
 
 		private Button btStart;
 
 		private Button btClose;
-
-		private volatile TranslationExport running;
-
-		private volatile bool cancelled;
-
-		private bool working;
 
 		private bool showingLanguage;
 
@@ -169,9 +161,9 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			//a book without a file cannot be written
 			list.ItemCheck += delegate (object s, ItemCheckEventArgs e)
 			{
-				if (working || !(list.Items[e.Index].Tag is Job job) || !job.Tickable)
+				if (!(list.Items[e.Index].Tag is Job job) || !job.Tickable)
 				{
-					e.NewValue = working ? e.CurrentValue : CheckState.Unchecked;
+					e.NewValue = CheckState.Unchecked;
 				}
 			};
 			list.ItemChecked += delegate { UpdateButtons(); };
@@ -207,11 +199,10 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			chkOverwrite = new CheckBox { Text = "Replace a file if it already exists", Location = new Point(88, 362), Size = new Size(580, 22), Anchor = bottomWide, Name = "chkOverwrite" };
 			chkAdd = new CheckBox { Text = "Add the new books to my library", Location = new Point(88, 384), Size = new Size(580, 22), Anchor = bottomWide, Name = "chkAdd" };
 			lblNote = new Label { Location = new Point(12, 410), Size = new Size(656, 18), ForeColor = gray, AutoEllipsis = true, Anchor = bottomWide, Name = "lblNote" };
-			progress = new ProgressBar { Location = new Point(12, 432), Size = new Size(656, 16), Anchor = bottomWide, Name = "progress" };
-			lblProgress = new Label { Location = new Point(12, 452), Size = new Size(480, 18), AutoEllipsis = true, Anchor = bottomWide, Name = "lblProgress" };
+			lblBackground = new Label { Text = "The books are written in the background: the status bar shows how far it got, and a click there stops it. You can close this window and go on reading.", Location = new Point(12, 430), Size = new Size(656, 30), ForeColor = gray, Anchor = bottomWide, Name = "lblBackground" };
 			btStart = new Button { Text = "Export", Location = new Point(500, 466), Size = new Size(84, 28), Anchor = bottomRight, Name = "btStart", Enabled = false };
 			btClose = new Button { Text = "Close", Location = new Point(590, 466), Size = new Size(78, 28), Anchor = bottomRight, Name = "btClose" };
-			Controls.AddRange(new Control[] { chkBeside, txtFolder, btBrowse, chkOverwrite, chkAdd, lblNote, progress, lblProgress, btStart, btClose });
+			Controls.AddRange(new Control[] { chkBeside, txtFolder, btBrowse, chkOverwrite, chkAdd, lblNote, lblBackground, btStart, btClose });
 			AcceptButton = btStart;
 
 			chkBeside.CheckedChanged += delegate
@@ -231,25 +222,7 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 				}
 			};
 			btStart.Click += delegate { Start(); };
-			btClose.Click += delegate
-			{
-				if (working)
-				{
-					Cancel();
-				}
-				else
-				{
-					Close();
-				}
-			};
-			FormClosing += delegate (object s, FormClosingEventArgs e)
-			{
-				if (working)
-				{
-					e.Cancel = true;
-					Cancel();
-				}
-			};
+			btClose.Click += delegate { Close(); };
 			lblNote.Text = "Looking at the books...";
 			//once the window is there, so the answer has somewhere to go
 			Load += delegate { LoadBooks(); };
@@ -358,7 +331,7 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 		private void ShowLanguage()
 		{
 			List<Job> selected = SelectedUnfinished;
-			cboLanguage.Enabled = lblLanguage.Enabled = !working && selected.Count > 0;
+			cboLanguage.Enabled = lblLanguage.Enabled = selected.Count > 0;
 			if (selected.Count == 0)
 			{
 				return;
@@ -388,7 +361,7 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 
 		private void UpdateButtons()
 		{
-			btStart.Enabled = !working && Ticked.Count > 0 && (chkBeside.Checked || !string.IsNullOrWhiteSpace(txtFolder.Text));
+			btStart.Enabled = Ticked.Count > 0 && (chkBeside.Checked || !string.IsNullOrWhiteSpace(txtFolder.Text));
 		}
 
 		private ExportSetting SettingFor(Job job)
@@ -432,127 +405,108 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			}
 			//the same book twice into one language (an unfinished one set to a language it is complete in too) is written once
 			todo = todo.GroupBy((Job j) => ExportFor(j).TargetPath, StringComparer.OrdinalIgnoreCase).Select((IGrouping<string, Job> g) => g.OrderByDescending((Job j) => j.Complete).First()).ToList();
+			//books the background export is writing already, or will, are not queued twice
+			List<Job> queued = todo.Where((Job j) => TranslationExportQueue.IsQueued(ExportFor(j).TargetPath)).ToList();
+			foreach (Job job in queued)
+			{
+				job.Row.SubItems[3].Text = "being exported already";
+			}
+			todo = todo.Except(queued).ToList();
+			if (todo.Count == 0)
+			{
+				lblNote.Text = "Nothing added: every ticked book is being exported already.";
+				return;
+			}
 			if (!chkOverwrite.Checked)
 			{
-				List<string> existing = todo.Select((Job j) => ExportFor(j).TargetPath).Where(File.Exists).ToList();
+				List<Job> existing = todo.Where((Job j) => File.Exists(ExportFor(j).TargetPath)).ToList();
 				if (existing.Count > 0)
 				{
-					MessageBox.Show(this, (existing.Count == 1 ? "This file already exists:\n" : "These files already exist:\n") + string.Join("\n", existing.Take(8)) + (existing.Count > 8 ? "\n..." : "") + "\n\nTick \"Replace a file if it already exists\", or untick those books.", Text, MessageBoxButtons.OK, MessageBoxIcon.Information);
-					return;
+					DialogResult answer = AskExisting(existing.Select((Job j) => ExportFor(j).TargetPath).ToList(), existing.Count == todo.Count);
+					if (answer == DialogResult.Cancel)
+					{
+						return;
+					}
+					if (answer == DialogResult.Ignore)
+					{
+						//skip: the books exported already are left as they are, the others are written
+						foreach (Job skipped in existing)
+						{
+							skipped.Row.SubItems[3].Text = "skipped: exported already";
+						}
+						todo = todo.Except(existing).ToList();
+						if (todo.Count == 0)
+						{
+							lblNote.Text = "Nothing written: every ticked book is exported already.";
+							return;
+						}
+					}
+					else
+					{
+						chkOverwrite.Checked = true;
+					}
 				}
 			}
 			bool addToLibrary = chkAdd.Checked;
-			List<KeyValuePair<Job, TranslationExport>> work = todo.Select((Job j) => new KeyValuePair<Job, TranslationExport>(j, ExportFor(j))).ToList();
-			working = true;
-			cancelled = false;
-			cboFormat.Enabled = chkBeside.Enabled = txtFolder.Enabled = btBrowse.Enabled = chkOverwrite.Enabled = chkAdd.Enabled = false;
-			cboLanguage.Enabled = lblLanguage.Enabled = false;
-			btStart.Enabled = false;
-			btClose.Text = "Cancel";
-			progress.Maximum = Math.Max(1, work.Sum((KeyValuePair<Job, TranslationExport> w) => Math.Max(1, w.Key.Pages)));
-			progress.Value = 0;
-			foreach (KeyValuePair<Job, TranslationExport> w in work)
+			TranslationExportQueue.Start(todo.Select((Job j) => new TranslationExportQueue.Item
 			{
-				w.Key.Row.SubItems[3].Text = "waiting";
-			}
-			Thread worker = new Thread(delegate ()
+				Title = j.Book.Caption + (TranslationButtons.LanguageName(j.Target) != null ? " (" + TranslationButtons.LanguageName(j.Target) + ")" : ""),
+				Export = ExportFor(j),
+				Complete = j.Complete,
+				AddToLibrary = addToLibrary
+			}).ToList());
+			Close();
+		}
+
+		/// <summary>
+		/// Asks what to do with books whose translated copy is there already: Ignore skips them (the others are written), Retry
+		/// replaces them, Cancel writes nothing.
+		/// </summary>
+		private DialogResult AskExisting(List<string> existing, bool all)
+		{
+			using (ExistingPrompt prompt = new ExistingPrompt())
 			{
-				List<string> written = new List<string>();
-				List<string> failed = new List<string>();
-				int before = 0;
-				for (int i = 0; i < work.Count && !cancelled; i++)
+				prompt.Text = Text;
+				Label message = new Label
 				{
-					Job job = work[i].Key;
-					TranslationExport export = work[i].Value;
-					int number = i + 1;
-					int offset = before;
-					string doing = job.Complete ? "page " : "translating page ";
-					running = export;
-					BeginInvokeSafe(delegate
-					{
-						job.Row.SubItems[3].Text = job.Complete ? "writing..." : "translating and writing...";
-						lblProgress.Text = "Book " + number + " of " + work.Count + ": " + job.Book.Caption;
-					});
-					export.Progress += delegate (int done, int total)
-					{
-						BeginInvokeSafe(delegate
-						{
-							progress.Value = Math.Min(progress.Maximum, offset + done);
-							lblProgress.Text = "Book " + number + " of " + work.Count + ", " + doing + done + " of " + total + ": " + job.Book.Caption;
-						});
-					};
-					string status;
-					try
-					{
-						string path = export.Run();
-						written.Add(path);
-						if (addToLibrary)
-						{
-							Program.BookFactory.Create(path, CreateBookOption.AddToStorage);
-						}
-						status = "done";
-					}
-					catch (OperationCanceledException)
-					{
-						status = "cancelled";
-					}
-					catch (Exception ex)
-					{
-						failed.Add("\"" + job.Book.Caption + "\": " + ex.Message);
-						status = "failed: " + ex.Message;
-					}
-					before += Math.Max(1, job.Pages);
-					BeginInvokeSafe(delegate
-					{
-						job.Row.SubItems[3].Text = status;
-						progress.Value = Math.Min(progress.Maximum, before);
-					});
-				}
-				running = null;
-				BeginInvokeSafe(delegate { Finished(written, failed, work.Count); });
-			})
-			{
-				IsBackground = true,
-				Name = "Export translated books"
-			};
-			worker.Start();
+					Text = (existing.Count == 1 ? "This file already exists:\n" : existing.Count + " files already exist:\n") + string.Join("\n", existing.Take(8)) + (existing.Count > 8 ? "\n..." : "")
+						+ "\n\n" + (all ? "Skip writes nothing: every ticked book is exported already." : "Skip leaves " + (existing.Count == 1 ? "it" : "them") + " as " + (existing.Count == 1 ? "it is" : "they are") + " and writes the other books.")
+						+ " Replace writes " + (existing.Count == 1 ? "it" : "them") + " again.",
+					Location = new Point(12, 12),
+					MaximumSize = new Size(560, 0),
+					AutoSize = true
+				};
+				prompt.Controls.Add(message);
+				Size used = message.GetPreferredSize(new Size(560, 0));
+				int top = 12 + used.Height + 16;
+				Button skip = new Button { Text = "Skip", DialogResult = DialogResult.Ignore, Size = new Size(84, 28), Name = "btSkip" };
+				Button replace = new Button { Text = "Replace", DialogResult = DialogResult.Retry, Size = new Size(84, 28), Name = "btReplace" };
+				Button cancel = new Button { Text = "Cancel", DialogResult = DialogResult.Cancel, Size = new Size(84, 28), Name = "btCancel" };
+				int width = Math.Max(used.Width + 24, 3 * 84 + 2 * 6 + 24);
+				cancel.Location = new Point(width - 12 - 84, top);
+				replace.Location = new Point(cancel.Left - 6 - 84, top);
+				skip.Location = new Point(replace.Left - 6 - 84, top);
+				prompt.Controls.AddRange(new Control[] { skip, replace, cancel });
+				prompt.AcceptButton = skip;
+				prompt.CancelButton = cancel;
+				prompt.ClientSize = new Size(width, top + 28 + 12);
+				return prompt.ShowDialog(this);
+			}
 		}
 
-		private void Cancel()
+		private class ExistingPrompt : FormEx
 		{
-			cancelled = true;
-			running?.Cancel();
-			btClose.Enabled = false;
-			lblProgress.Text = "Cancelling...";
-		}
+			public override UIComponent UIComponent => UIComponent.Content;
 
-		private void Finished(List<string> written, List<string> failed, int asked)
-		{
-			working = false;
-			btClose.Enabled = true;
-			btClose.Text = "Close";
-			cboFormat.Enabled = chkBeside.Enabled = chkOverwrite.Enabled = chkAdd.Enabled = true;
-			txtFolder.Enabled = btBrowse.Enabled = !chkBeside.Checked;
-			//what was translated now counts: refresh the numbers
-			TranslationStore store = TranslationStore.Shared;
-			foreach (Job job in jobs.Where((Job j) => j.BookKey != null))
+			public ExistingPrompt()
 			{
-				job.Counts = store.LanguageCounts(job.BookKey);
+				AutoScaleMode = AutoScaleMode.None;
+				FormBorderStyle = FormBorderStyle.FixedDialog;
+				StartPosition = FormStartPosition.CenterParent;
+				MaximizeBox = false;
+				MinimizeBox = false;
+				ShowInTaskbar = false;
 			}
-			ShowLanguage();
-			UpdateButtons();
-			string summary = written.Count + " of " + asked + (asked == 1 ? " book" : " books") + " written";
-			lblProgress.Text = (cancelled ? "Cancelled. " : "") + summary + (failed.Count > 0 ? ", " + failed.Count + " failed." : ".");
-			if (cancelled)
-			{
-				return;
-			}
-			string text = summary + ":" + (written.Count > 0 ? "\n" + string.Join("\n", written.Take(10)) + (written.Count > 10 ? "\n..." : "") : "");
-			if (failed.Count > 0)
-			{
-				text += "\n\nNot written:\n" + string.Join("\n", failed.Take(10));
-			}
-			MessageBox.Show(this, text, Text, MessageBoxButtons.OK, failed.Count > 0 ? MessageBoxIcon.Warning : MessageBoxIcon.Information);
 		}
 
 		private void BeginInvokeSafe(Action action)
