@@ -11,6 +11,7 @@ using cYo.Projects.ComicRack.Engine;
 using cYo.Projects.ComicRack.Engine.Display.Forms;
 using cYo.Projects.ComicRack.Engine.IO;
 using cYo.Projects.ComicRack.Engine.IO.Provider;
+using cYo.Projects.ComicRack.Viewer.Config;
 
 namespace cYo.Projects.ComicRack.Viewer.Dialogs
 {
@@ -77,8 +78,6 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			}
 		}
 
-		private const string NameEnding = " - AI Translated";
-
 		private readonly List<ComicBook> books;
 
 		private readonly List<Job> jobs = new List<Job>();
@@ -102,6 +101,8 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 		private CheckBox chkOverwrite;
 
 		private CheckBox chkAdd;
+
+		private CheckBox chkBatch;
 
 		private Label lblNote;
 
@@ -127,8 +128,8 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			MaximizeBox = false;
 			MinimizeBox = false;
 			ShowInTaskbar = false;
-			ClientSize = new Size(680, 500);
-			MinimumSize = new Size(560, 450);
+			ClientSize = new Size(680, 522);
+			MinimumSize = new Size(560, 472);
 			Color gray = ThemeManager.IsDarkModeEnabled ? Color.FromArgb(150, 150, 150) : Color.FromArgb(110, 110, 110);
 			AnchorStyles topWide = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
 			AnchorStyles bottomWide = AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
@@ -198,11 +199,13 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			btBrowse = new Button { Text = "Browse...", Location = new Point(586, 334), Size = new Size(82, 24), Anchor = bottomRight, Name = "btBrowse", Enabled = false };
 			chkOverwrite = new CheckBox { Text = "Replace a file if it already exists", Location = new Point(88, 362), Size = new Size(580, 22), Anchor = bottomWide, Name = "chkOverwrite" };
 			chkAdd = new CheckBox { Text = "Add the new books to my library", Location = new Point(88, 384), Size = new Size(580, 22), Anchor = bottomWide, Name = "chkAdd" };
-			lblNote = new Label { Location = new Point(12, 410), Size = new Size(656, 18), ForeColor = gray, AutoEllipsis = true, Anchor = bottomWide, Name = "lblNote" };
-			lblBackground = new Label { Text = "The books are written in the background: the status bar shows how far it got, and a click there stops it. You can close this window and go on reading.", Location = new Point(12, 430), Size = new Size(656, 30), ForeColor = gray, Anchor = bottomWide, Name = "lblBackground" };
-			btStart = new Button { Text = "Export", Location = new Point(500, 466), Size = new Size(84, 28), Anchor = bottomRight, Name = "btStart", Enabled = false };
-			btClose = new Button { Text = "Close", Location = new Point(590, 466), Size = new Size(78, 28), Anchor = bottomRight, Name = "btClose" };
-			Controls.AddRange(new Control[] { chkBeside, txtFolder, btBrowse, chkOverwrite, chkAdd, lblNote, lblBackground, btStart, btClose });
+			chkBatch = new CheckBox { Text = "Also write each book the batch translation finishes, with these choices", Location = new Point(88, 406), Size = new Size(580, 22), Anchor = bottomWide, Name = "chkBatch" };
+			lblNote = new Label { Location = new Point(12, 432), Size = new Size(656, 18), ForeColor = gray, AutoEllipsis = true, Anchor = bottomWide, Name = "lblNote" };
+			lblBackground = new Label { Text = "The books are written in the background: the status bar shows how far it got, and a click there stops it. You can close this window and go on reading.", Location = new Point(12, 452), Size = new Size(656, 30), ForeColor = gray, Anchor = bottomWide, Name = "lblBackground" };
+			btStart = new Button { Text = "Export", Location = new Point(500, 488), Size = new Size(84, 28), Anchor = bottomRight, Name = "btStart", Enabled = false };
+			btClose = new Button { Text = "Close", Location = new Point(590, 488), Size = new Size(78, 28), Anchor = bottomRight, Name = "btClose" };
+			Controls.AddRange(new Control[] { chkBeside, txtFolder, btBrowse, chkOverwrite, chkAdd, chkBatch, lblNote, lblBackground, btStart, btClose });
+			LoadChoices();
 			AcceptButton = btStart;
 
 			chkBeside.CheckedChanged += delegate
@@ -364,37 +367,33 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 			btStart.Enabled = Ticked.Count > 0 && (chkBeside.Checked || !string.IsNullOrWhiteSpace(txtFolder.Text));
 		}
 
-		private ExportSetting SettingFor(Job job)
+		/// <summary>The choices last used (they are kept in the settings, and the batch translation writes its books with them).</summary>
+		private void LoadChoices()
 		{
-			string language = TranslationButtons.LanguageName(job.Target);
-			return new ExportSetting
-			{
-				Target = ExportTarget.NewFolder,
-				TargetFolder = chkBeside.Checked ? Path.GetDirectoryName(job.Book.FilePath) : txtFolder.Text.Trim(),
-				Naming = ExportNaming.Custom,
-				CustomName = job.Book.FileName + NameEnding + (language != null ? " (" + language + ")" : ""),
-				CustomNamingStart = 0,
-				FormatId = Choice.FormatId,
-				Overwrite = chkOverwrite.Checked,
-				EmbedComicInfo = true
-			};
+			Settings settings = Program.Settings;
+			int format = cboFormat.Items.Cast<FormatChoice>().ToList().FindIndex((FormatChoice c) => c.FormatId == settings.TranslatorExportFormatId && c.Rar == settings.TranslatorExportRar);
+			cboFormat.SelectedIndex = Math.Max(0, format);
+			chkBeside.Checked = settings.TranslatorExportBeside || string.IsNullOrWhiteSpace(settings.TranslatorExportFolder);
+			txtFolder.Text = settings.TranslatorExportFolder ?? "";
+			chkAdd.Checked = settings.TranslatorExportAddToLibrary;
+			chkBatch.Checked = settings.TranslatorBatchExport;
 		}
 
-		private TranslationExport ExportFor(Job job)
+		private void SaveChoices()
 		{
-			return new TranslationExport(job.Book, SettingFor(job), Program.CacheManager?.ImagePool, Program.Settings.TranslatorServerUrl, TranslationStore.Shared)
-			{
-				Target = job.Target,
-				//a translated book is written from what the translator stored; an unfinished one has the rest translated
-				StoredOnly = job.Complete,
-				RarPath = Choice.Rar ? rarPath : null
-			};
+			Settings settings = Program.Settings;
+			settings.TranslatorExportFormatId = Choice.FormatId;
+			settings.TranslatorExportRar = Choice.Rar;
+			settings.TranslatorExportBeside = chkBeside.Checked;
+			settings.TranslatorExportFolder = string.IsNullOrWhiteSpace(txtFolder.Text) ? null : txtFolder.Text.Trim();
+			settings.TranslatorExportAddToLibrary = chkAdd.Checked;
+			settings.TranslatorBatchExport = chkBatch.Checked;
 		}
 
 		private void Start()
 		{
-			List<Job> todo = Ticked;
-			if (todo.Count == 0)
+			List<Job> ticked = Ticked;
+			if (ticked.Count == 0)
 			{
 				return;
 			}
@@ -403,13 +402,16 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 				MessageBox.Show(this, "The translator is not running. Start it with the Translation services button: the translated pages are kept by the translator.", Text, MessageBoxButtons.OK, MessageBoxIcon.Information);
 				return;
 			}
+			SaveChoices();
+			bool overwrite = chkOverwrite.Checked;
+			List<KeyValuePair<Job, TranslationExportQueue.Item>> todo = ticked.Select((Job j) => new KeyValuePair<Job, TranslationExportQueue.Item>(j, TranslationExportQueue.Item.For(j.Book, j.Target, j.Complete, overwrite))).ToList();
 			//the same book twice into one language (an unfinished one set to a language it is complete in too) is written once
-			todo = todo.GroupBy((Job j) => ExportFor(j).TargetPath, StringComparer.OrdinalIgnoreCase).Select((IGrouping<string, Job> g) => g.OrderByDescending((Job j) => j.Complete).First()).ToList();
+			todo = todo.GroupBy((KeyValuePair<Job, TranslationExportQueue.Item> w) => w.Value.TargetPath, StringComparer.OrdinalIgnoreCase).Select((IGrouping<string, KeyValuePair<Job, TranslationExportQueue.Item>> g) => g.OrderByDescending((KeyValuePair<Job, TranslationExportQueue.Item> w) => w.Key.Complete).First()).ToList();
 			//books the background export is writing already, or will, are not queued twice
-			List<Job> queued = todo.Where((Job j) => TranslationExportQueue.IsQueued(ExportFor(j).TargetPath)).ToList();
-			foreach (Job job in queued)
+			List<KeyValuePair<Job, TranslationExportQueue.Item>> queued = todo.Where((KeyValuePair<Job, TranslationExportQueue.Item> w) => TranslationExportQueue.IsQueued(w.Value.TargetPath)).ToList();
+			foreach (KeyValuePair<Job, TranslationExportQueue.Item> w in queued)
 			{
-				job.Row.SubItems[3].Text = "being exported already";
+				w.Key.Row.SubItems[3].Text = "being exported already";
 			}
 			todo = todo.Except(queued).ToList();
 			if (todo.Count == 0)
@@ -417,52 +419,49 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 				lblNote.Text = "Nothing added: every ticked book is being exported already.";
 				return;
 			}
-			if (!chkOverwrite.Checked)
+			if (!overwrite)
 			{
-				List<Job> existing = todo.Where((Job j) => File.Exists(ExportFor(j).TargetPath)).ToList();
+				List<KeyValuePair<Job, TranslationExportQueue.Item>> existing = todo.Where((KeyValuePair<Job, TranslationExportQueue.Item> w) => File.Exists(w.Value.TargetPath)).ToList();
 				if (existing.Count > 0)
 				{
-					DialogResult answer = AskExisting(existing.Select((Job j) => ExportFor(j).TargetPath).ToList(), existing.Count == todo.Count);
+					//a copy is out of date when the book's translation changed after it was written (pages translated, edited or forgotten)
+					TranslationStore store = TranslationStore.Shared;
+					List<KeyValuePair<Job, TranslationExportQueue.Item>> changed = existing.Where((KeyValuePair<Job, TranslationExportQueue.Item> w) => store.LastChanged(w.Key.BookKey) > File.GetLastWriteTimeUtc(w.Value.TargetPath).AddSeconds(2)).ToList();
+					DialogResult answer = AskExisting(existing.Select((KeyValuePair<Job, TranslationExportQueue.Item> w) => w.Value.TargetPath + (changed.Contains(w) ? "   (changed since)" : "")).ToList(), changed.Count, existing.Count == todo.Count);
 					if (answer == DialogResult.Cancel)
 					{
 						return;
 					}
-					if (answer == DialogResult.Ignore)
+					//Retry: every copy is written again; Yes: only the ones out of date; Ignore: none of them
+					List<KeyValuePair<Job, TranslationExportQueue.Item>> again = answer == DialogResult.Retry ? existing : answer == DialogResult.Yes ? changed : new List<KeyValuePair<Job, TranslationExportQueue.Item>>();
+					foreach (KeyValuePair<Job, TranslationExportQueue.Item> w in existing)
 					{
-						//skip: the books exported already are left as they are, the others are written
-						foreach (Job skipped in existing)
+						if (again.Contains(w))
 						{
-							skipped.Row.SubItems[3].Text = "skipped: exported already";
+							w.Value.Overwrite = true;
 						}
-						todo = todo.Except(existing).ToList();
-						if (todo.Count == 0)
+						else
 						{
-							lblNote.Text = "Nothing written: every ticked book is exported already.";
-							return;
+							w.Key.Row.SubItems[3].Text = changed.Contains(w) ? "skipped: exported already" : "skipped: exported, unchanged since";
 						}
 					}
-					else
+					todo = todo.Where((KeyValuePair<Job, TranslationExportQueue.Item> w) => !existing.Contains(w) || again.Contains(w)).ToList();
+					if (todo.Count == 0)
 					{
-						chkOverwrite.Checked = true;
+						lblNote.Text = "Nothing written: every ticked book is exported already" + (answer == DialogResult.Yes ? " and unchanged since." : ".");
+						return;
 					}
 				}
 			}
-			bool addToLibrary = chkAdd.Checked;
-			TranslationExportQueue.Start(todo.Select((Job j) => new TranslationExportQueue.Item
-			{
-				Title = j.Book.Caption + (TranslationButtons.LanguageName(j.Target) != null ? " (" + TranslationButtons.LanguageName(j.Target) + ")" : ""),
-				Export = ExportFor(j),
-				Complete = j.Complete,
-				AddToLibrary = addToLibrary
-			}).ToList());
+			TranslationExportQueue.Start(todo.Select((KeyValuePair<Job, TranslationExportQueue.Item> w) => w.Value).ToList());
 			Close();
 		}
 
 		/// <summary>
-		/// Asks what to do with books whose translated copy is there already: Ignore skips them (the others are written), Retry
-		/// replaces them, Cancel writes nothing.
+		/// Asks what to do with books whose translated copy is there already: Ignore skips them (the others are written), Yes writes
+		/// again only those whose translation changed since, Retry replaces them all, Cancel writes nothing.
 		/// </summary>
-		private DialogResult AskExisting(List<string> existing, bool all)
+		private DialogResult AskExisting(List<string> existing, int changed, bool all)
 		{
 			using (ExistingPrompt prompt = new ExistingPrompt())
 			{
@@ -471,7 +470,8 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 				{
 					Text = (existing.Count == 1 ? "This file already exists:\n" : existing.Count + " files already exist:\n") + string.Join("\n", existing.Take(8)) + (existing.Count > 8 ? "\n..." : "")
 						+ "\n\n" + (all ? "Skip writes nothing: every ticked book is exported already." : "Skip leaves " + (existing.Count == 1 ? "it" : "them") + " as " + (existing.Count == 1 ? "it is" : "they are") + " and writes the other books.")
-						+ " Replace writes " + (existing.Count == 1 ? "it" : "them") + " again.",
+						+ (changed > 0 ? " Changed only writes again the " + (changed == 1 ? "one" : changed + " books") + " whose translation changed since " + (changed == 1 ? "it was" : "they were") + " written (pages translated or edited)." : " None of them changed since " + (existing.Count == 1 ? "it was" : "they were") + " written.")
+						+ " Replace writes " + (existing.Count == 1 ? "it" : "all of them") + " again.",
 					Location = new Point(12, 12),
 					MaximumSize = new Size(560, 0),
 					AutoSize = true
@@ -480,14 +480,16 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 				Size used = message.GetPreferredSize(new Size(560, 0));
 				int top = 12 + used.Height + 16;
 				Button skip = new Button { Text = "Skip", DialogResult = DialogResult.Ignore, Size = new Size(84, 28), Name = "btSkip" };
+				Button update = new Button { Text = changed > 0 ? "Changed only (" + changed + ")" : "Changed only", DialogResult = DialogResult.Yes, Size = new Size(124, 28), Name = "btChanged", Enabled = changed > 0 };
 				Button replace = new Button { Text = "Replace", DialogResult = DialogResult.Retry, Size = new Size(84, 28), Name = "btReplace" };
 				Button cancel = new Button { Text = "Cancel", DialogResult = DialogResult.Cancel, Size = new Size(84, 28), Name = "btCancel" };
-				int width = Math.Max(used.Width + 24, 3 * 84 + 2 * 6 + 24);
+				int width = Math.Max(used.Width + 24, 3 * 84 + 124 + 3 * 6 + 24);
 				cancel.Location = new Point(width - 12 - 84, top);
 				replace.Location = new Point(cancel.Left - 6 - 84, top);
-				skip.Location = new Point(replace.Left - 6 - 84, top);
-				prompt.Controls.AddRange(new Control[] { skip, replace, cancel });
-				prompt.AcceptButton = skip;
+				update.Location = new Point(replace.Left - 6 - 124, top);
+				skip.Location = new Point(update.Left - 6 - 84, top);
+				prompt.Controls.AddRange(new Control[] { skip, update, replace, cancel });
+				prompt.AcceptButton = changed > 0 ? update : skip;
 				prompt.CancelButton = cancel;
 				prompt.ClientSize = new Size(width, top + 28 + 12);
 				return prompt.ShowDialog(this);

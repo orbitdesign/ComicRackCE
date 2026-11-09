@@ -1454,6 +1454,37 @@ namespace cYo.Projects.ComicRack.Viewer.Config
 			}
 		}
 
+		/// <summary>Export Translated Books, as last used: the file format (0 = the same as each original book).</summary>
+		[Browsable(false)]
+		[DefaultValue(0)]
+		public int TranslatorExportFormatId { get; set; }
+
+		/// <summary>Export Translated Books, as last used: packed as .cbr with WinRAR.</summary>
+		[Browsable(false)]
+		[DefaultValue(false)]
+		public bool TranslatorExportRar { get; set; }
+
+		/// <summary>Export Translated Books, as last used: each book is saved next to its original (else in TranslatorExportFolder).</summary>
+		[Browsable(false)]
+		[DefaultValue(true)]
+		public bool TranslatorExportBeside { get; set; } = true;
+
+		/// <summary>Export Translated Books, as last used: the folder the books are saved in when not next to their originals.</summary>
+		[Browsable(false)]
+		[DefaultValue(null)]
+		public string TranslatorExportFolder { get; set; }
+
+		/// <summary>Export Translated Books, as last used: the written books are added to the library.</summary>
+		[Browsable(false)]
+		[DefaultValue(false)]
+		public bool TranslatorExportAddToLibrary { get; set; }
+
+		/// <summary>The batch translation writes the translated copy of each book once every page of it is translated, with the
+		/// choices last used in Export Translated Books.</summary>
+		[Browsable(false)]
+		[DefaultValue(false)]
+		public bool TranslatorBatchExport { get; set; }
+
 		private readonly List<string> quickScanFolders = new List<string>();
 
 		private readonly List<string> quickScanTicked = new List<string>();

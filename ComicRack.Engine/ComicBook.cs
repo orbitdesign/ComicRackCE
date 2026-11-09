@@ -1577,6 +1577,28 @@ namespace cYo.Projects.ComicRack.Engine
 
         public string ShadowVolumeAsText => FormatVolume(ShadowVolume);
 
+        /// <summary>Tells how far the book is translated and exported (the page translator's store, which the engine does not know):
+        /// set by the application.</summary>
+        public static Func<ComicBook, string> TranslationStateProvider { get; set; }
+
+        /// <summary>"Translated (English)", "Exported (English)", "Partly translated (English 12/48)"... or empty: the Translation
+        /// column and the Translation smart list rule.</summary>
+        [Browsable(false)]
+        public string TranslationState
+        {
+            get
+            {
+                try
+                {
+                    return TranslationStateProvider?.Invoke(this) ?? string.Empty;
+                }
+                catch (Exception)
+                {
+                    return string.Empty;
+                }
+            }
+        }
+
         public string ShadowCountAsText
         {
             get
