@@ -21,6 +21,25 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 		/// letters the bubbles of a book's pages in one font: the font most of its pages point to.</summary>
 		public string Book { get; set; }
 
+		/// <summary>The series a book belongs to, from its key (set by the application, which knows the library); the helper (1.81 and
+		/// later) keeps the names it met in a series and translates them the same way in the series' other books.</summary>
+		public static Func<string, string> SeriesOf { get; set; }
+
+		private string Series
+		{
+			get
+			{
+				try
+				{
+					return string.IsNullOrEmpty(Book) ? null : SeriesOf?.Invoke(Book);
+				}
+				catch (Exception)
+				{
+					return null;
+				}
+			}
+		}
+
 		/// <summary>The page asked about is the book's back cover (its last page): like the front cover, it keeps its own fonts (helper 1.70).</summary>
 		public bool BackCover { get; set; }
 
@@ -104,6 +123,11 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 			if (!string.IsNullOrEmpty(Book))
 			{
 				path += (path.Contains("?") ? "&" : "?") + "book=" + Uri.EscapeDataString(Book);
+				string series = Series;
+				if (!string.IsNullOrEmpty(series))
+				{
+					path += "&series=" + Uri.EscapeDataString(series);
+				}
 			}
 			if (BackCover)
 			{
@@ -135,6 +159,11 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 			if (!string.IsNullOrEmpty(Book))
 			{
 				w.WriteString("book", Book);
+				string series = Series;
+				if (!string.IsNullOrEmpty(series))
+				{
+					w.WriteString("series", series);
+				}
 			}
 			if (BackCover)
 			{

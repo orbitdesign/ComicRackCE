@@ -278,6 +278,10 @@ namespace cYo.Projects.ComicRack.Viewer
 					Current = item;
 					RaiseChanged(true);
 					DoBook(item, mine.Token);
+					if (item.Finished && item.Problem == null && Program.Settings.TranslatorBatchExport)
+					{
+						ExportFinished(item);
+					}
 					if (mine.IsCancellationRequested)
 					{
 						stopped = true;
@@ -342,6 +346,23 @@ namespace cYo.Projects.ComicRack.Viewer
 					asked.Clear();
 				}
 				RaiseChanged(true);
+			}
+		}
+
+		/// <summary>Every page of the book is translated: its translated copy is written in the background (with the choices last used
+		/// in Export Translated Books), replacing the copy written before, which is out of date now.</summary>
+		private static void ExportFinished(Item item)
+		{
+			try
+			{
+				if (!string.IsNullOrEmpty(item.Comic.FilePath))
+				{
+					TranslationExportQueue.Start(new[] { TranslationExportQueue.Item.For(item.Comic, item.Target, complete: true, overwrite: true) });
+				}
+			}
+			catch (Exception ex)
+			{
+				Notice = "\"" + item.Title + "\" was translated, but its translated copy could not be queued for writing: " + ex.Message;
 			}
 		}
 

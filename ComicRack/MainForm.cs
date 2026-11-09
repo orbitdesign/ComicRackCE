@@ -968,6 +968,11 @@ namespace cYo.Projects.ComicRack.Viewer
 			statusStrip.Items.Insert(statusStrip.Items.Count - 1, thumbSize);
 			TranslationButtons.Install(mainToolStrip, 0, separatorBefore: false, separatorAfter: true);
 			TranslationButtons.InstallBatchStatus(statusStrip, tsBook);
+			//the page translator's view of the library: the Translation column, the series sent with each page, and an export left
+			//when ComicRack closed (it waits, paused, in the status bar)
+			ComicBook.TranslationStateProvider = TranslationButtons.TranslationStateOf;
+			TranslationApi.SeriesOf = TranslationButtons.SeriesOfBookKey;
+			TranslationExportQueue.Restore((Guid id, string file) => (id != Guid.Empty ? Program.Database.Books[id] : null) ?? (string.IsNullOrEmpty(file) ? null : Program.Database.Books[file]));
 			thumbSize.TrackBar.Scroll += TrackBar_Scroll;
 			ThumbRenderer.DefaultRatingImage1 = Resources.StarYellow.ToOptimized();
 			ThumbRenderer.DefaultRatingImage2 = Resources.StarBlue.ToOptimized();

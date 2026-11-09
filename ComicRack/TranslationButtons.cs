@@ -713,6 +713,16 @@ namespace cYo.Projects.ComicRack.Viewer
 			pair.Translator.DropDownItems.Add(new ToolStripMenuItem("Edit Translated Text...", ActionIcon(TranslationAction.Edit, iconSize), delegate { Main?.OpenTranslationEditor(); }));
 			pair.Translator.DropDownItems.Add(new ToolStripMenuItem("Delete Translation Cache...", ActionIcon(TranslationAction.DeleteCache, iconSize), delegate { Main?.OpenTranslationCache(); }));
 			pair.Translator.DropDownItems.Add(new ToolStripMenuItem("Export Translated Book...", ActionIcon(TranslationAction.Export, iconSize), delegate { Main?.OpenTranslationExport(); }));
+			pair.Translator.DropDownItems.Add(new ToolStripMenuItem("Series Names...", GetMenuIcon(MenuIcon.Book, null, iconSize), delegate
+			{
+				//the series of the book being read, else of the first book selected in the library
+				string series = Main?.TranslationReader?.Book?.Comic?.ShadowSeries;
+				if (string.IsNullOrWhiteSpace(series))
+				{
+					series = Main?.GetBooksForTranslation().FirstOrDefault()?.ShadowSeries;
+				}
+				OpenSeriesNames(Main, series);
+			}));
 			pair.Translator.DropDownItems.Add(new ToolStripSeparator());
 			pair.Translator.DropDownItems.Add(new ToolStripMenuItem("Translation Settings...", ActionIcon(TranslationAction.Settings, iconSize), delegate { Main?.OpenTranslationSettings(); }));
 			pair.Translator.DropDownOpening += delegate
@@ -798,7 +808,7 @@ namespace cYo.Projects.ComicRack.Viewer
 			pair.BatchContinue = new ToolStripMenuItem("Continue translating previously selected books");
 			pair.BatchContinue.Click += delegate { TranslationBatch.Resume(); };
 			pair.BatchCancel = new ToolStripMenuItem("Forget the queue", GetMenuIcon(MenuIcon.Stop, null, menuSize), delegate { TranslationBatch.Cancel(); });
-			pair.Ahead.DropDownItems.AddRange(new ToolStripItem[] { pair.BatchStart, pair.BatchState, pair.BatchPause, pair.BatchContinue, pair.BatchCancel });
+			pair.Ahead.DropDownItems.AddRange(new ToolStripItem[] { pair.BatchStart, BatchExportItem("tbBatchExport"), pair.BatchState, pair.BatchPause, pair.BatchContinue, pair.BatchCancel });
 			pair.Ahead.DropDownOpening += delegate
 			{
 				Update(pair);
@@ -987,6 +997,7 @@ namespace cYo.Projects.ComicRack.Viewer
 			int failed = all.Count((TranslationExportQueue.Item i) => i.Problem != null);
 			int stopped = all.Count((TranslationExportQueue.Item i) => i.Cancelled);
 			int skipped = all.Count((TranslationExportQueue.Item i) => i.SkipAsked && i.Finished && i.Written == null);
+			int waiting = all.Count((TranslationExportQueue.Item i) => !i.Finished);
 			string text;
 			if (running && current != null)
 			{
@@ -997,6 +1008,11 @@ namespace cYo.Projects.ComicRack.Viewer
 			else if (running)
 			{
 				text = "Export: starting...";
+			}
+			else if (waiting > 0)
+			{
+				//left when ComicRack closed during the export
+				text = "Export paused: " + waiting + (waiting == 1 ? " book" : " books") + " waiting";
 			}
 			else if (stopped > 0)
 			{
@@ -1016,7 +1032,7 @@ namespace cYo.Projects.ComicRack.Viewer
 				label.Text = text;
 			}
 			label.ForeColor = !running && failed > 0 ? ColorOf(TranslationLed.Problem) : label.Owner.ForeColor;
-			label.ToolTipText = ExportListText(all) + "\n" + (running ? "Click for the export's menu; the buttons beside it skip this book or stop the export." : "Click for the written books or to clear this message.");
+			label.ToolTipText = ExportListText(all) + "\n" + (running ? "Click for the export's menu; the buttons beside it skip this book or stop the export." : waiting > 0 ? "ComicRack was closed during the export. Click to continue it or forget these books." : "Click for the written books or to clear this message.");
 			label.Visible = all.Count > 0;
 			if (exportSkip != null && exportStop != null)
 			{
@@ -1109,6 +1125,12 @@ namespace cYo.Projects.ComicRack.Viewer
 				TranslationExportQueue.Item current = TranslationExportQueue.Current;
 				menu.Items.Add(new ToolStripMenuItem("Skip this book (go on with the next)", GetMenuIcon(MenuIcon.Skip, null, size), delegate { TranslationExportQueue.SkipCurrent(); }) { Enabled = current != null && !current.SkipAsked });
 				menu.Items.Add(new ToolStripMenuItem("Stop exporting", GetMenuIcon(MenuIcon.Stop, null, size), delegate { TranslationExportQueue.Stop(); }));
+			}
+			else if (TranslationExportQueue.IsPaused)
+			{
+				int waiting = TranslationExportQueue.Waiting.Count;
+				menu.Items.Add(new ToolStripMenuItem("Continue exporting (" + waiting + (waiting == 1 ? " book" : " books") + ")", GetMenuIcon(MenuIcon.Rest, null, size), delegate { TranslationExportQueue.Resume(); }));
+				menu.Items.Add(new ToolStripMenuItem("Forget these books", GetMenuIcon(MenuIcon.Stop, null, size), delegate { TranslationExportQueue.Clear(); }));
 			}
 			else
 			{
@@ -1964,7 +1986,88 @@ namespace cYo.Projects.ComicRack.Viewer
 			english.Click += delegate { QueueWholeBooks(books, "en"); };
 			ToolStripMenuItem chinese = new ToolStripMenuItem("To Chinese", GetMenuIcon(MenuIcon.Language, "中", size)) { Name = names + "Chinese" };
 			chinese.Click += delegate { QueueWholeBooks(books, ChineseTarget); };
-			return new[] { english, chinese };
+			return new[] { english, chinese, BatchExportItem(names + "Export") };
+		}
+
+		/// <summary>The option to write each book's translated copy once the batch translated it (with the choices last used in Export
+		/// Translated Books); ticked as the setting is each time its menu opens.</summary>
+		public static ToolStripMenuItem BatchExportItem(string name)
+		{
+			ToolStripMenuItem item = new ToolStripMenuItem("Export each book when it is translated") { Name = name, CheckOnClick = true, Checked = Program.Settings.TranslatorBatchExport, ToolTipText = "Writes the translated copy of each book as soon as the batch has translated all of it, as Export Translated Books last did (format, folder)" };
+			item.CheckedChanged += delegate { Program.Settings.TranslatorBatchExport = item.Checked; };
+			item.VisibleChanged += delegate
+			{
+				if (item.Visible)
+				{
+					item.Checked = Program.Settings.TranslatorBatchExport;
+				}
+			};
+			return item;
+		}
+
+		/// <summary>Opens the Series Names window on a series (or the first one with names).</summary>
+		public static void OpenSeriesNames(IWin32Window owner, string series)
+		{
+			using (SeriesNamesDialog dialog = new SeriesNamesDialog(series))
+			{
+				dialog.ShowDialog(owner);
+			}
+		}
+
+		/// <summary>The series of the library book a translation key ("book-" and its id) stands for, or null (a book outside the
+		/// library, or one without a series).</summary>
+		public static string SeriesOfBookKey(string bookKey)
+		{
+			if (bookKey == null || !bookKey.StartsWith("book-") || !Guid.TryParseExact(bookKey.Substring(5), "N", out Guid id))
+			{
+				return null;
+			}
+			string series = Program.Database?.Books[id]?.ShadowSeries;
+			return string.IsNullOrWhiteSpace(series) ? null : series.Trim();
+		}
+
+		/// <summary>
+		/// How far the book is translated, in each language, and whether its translated copy was written and is up to date: the
+		/// library's Translation column and smart list rule. "Exported (English)", "Exported, changed since (English)", "Translated
+		/// (English)", "Partly translated (English 12/48)"; empty for a book the translator never saw.
+		/// </summary>
+		public static string TranslationStateOf(ComicBook book)
+		{
+			string key = TranslationStore.BookKeyOf(book);
+			if (key == null)
+			{
+				return "";
+			}
+			TranslationStore store = TranslationStore.Shared;
+			Dictionary<string, int> counts = store.LanguageCounts(key);
+			if (counts.Count == 0)
+			{
+				return "";
+			}
+			int pages = book.PageCount;
+			List<TranslationStore.ExportRecord> exports = store.GetExports(key);
+			DateTime changed = store.LastChanged(key);
+			List<string> parts = new List<string>();
+			foreach (KeyValuePair<string, int> count in counts.OrderByDescending((KeyValuePair<string, int> c) => c.Value))
+			{
+				string language = LanguageName(count.Key);
+				string named = language != null ? " (" + language + ")" : "";
+				if (pages <= 0 || count.Value < pages)
+				{
+					parts.Add("Partly translated (" + (language != null ? language + " " : "") + count.Value + "/" + (pages > 0 ? pages.ToString() : "?") + ")");
+					continue;
+				}
+				TranslationStore.ExportRecord export = exports.FirstOrDefault((TranslationStore.ExportRecord e) => e.Language == count.Key && File.Exists(e.Path));
+				if (export == null)
+				{
+					parts.Add("Translated" + named);
+				}
+				else
+				{
+					parts.Add(changed > export.Time.AddSeconds(2) ? "Exported, changed since" + named : "Exported" + named);
+				}
+			}
+			return string.Join("; ", parts);
 		}
 
 		private static void QueueWholeBooks(Func<IEnumerable<ComicBook>> books, string target)

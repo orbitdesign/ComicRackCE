@@ -846,6 +846,8 @@ namespace cYo.Projects.ComicRack.Viewer.Views
             itemView.Columns.Add(new ItemViewColumn(212, "Series: Opened", 50, new ComicListField("SeriesStatLastOpenedTime", "Last time a book was opened from the Series", null, StringTrimming.Word, typeof(DateTime)), new CoverViewItemStatsComparer<ComicBookSeriesStatsLastOpenedTimeComparer>(), new CoverViewItemStatsGrouper<ComicBookStatsGroupLastOpenedTime>(), visible: false, StringAlignment.Far, strings));
             itemView.Columns.Add(new ItemViewColumn(213, "Series: Book released", 50, new ComicListField("SeriesStatLastReleasedTime", "Last time a book of this Series was released", null, StringTrimming.Word, typeof(DateTime)), new CoverViewItemStatsComparer<ComicBookSeriesStatsLastReleasedTimeComparer>(), new CoverViewItemStatsGrouper<ComicBookStatsGroupLastReleasedTime>(), visible: false, StringAlignment.Far, strings));
             itemView.Columns.Add(new ItemViewColumn(214, "Actual File Format (slow)", 40, new ComicListField("ActualFileFormat", "Actual File format of the Book (based on the header)"), new CoverViewItemBookComparer<ComicBookActualFileFormatComparer>(), new CoverViewItemBookGrouper<ComicBookGroupActualFileFormat>(), visible: false));
+            //how far the page translator got with the book, and whether its translated copy is written (and up to date)
+            itemView.Columns.Add(new ItemViewColumn(215, "Translation", 120, new ComicListField("TranslationState", "How far the Book is translated by the page translator, and whether its translated copy was exported"), new CoverViewItemBookComparer<ComicBookTranslationComparer>(), null, visible: false));
             SubView.TranslateColumns(itemView.Columns);
             foreach (ItemViewColumn column in itemView.Columns)
             {
@@ -3055,6 +3057,10 @@ namespace cYo.Projects.ComicRack.Viewer.Views
                 }
             };
             contextMenuItems.Items.Insert(contextMenuItems.Items.IndexOf(miTranslateBooks) + 1, miExportTranslated);
+            //the names the translator keeps for the selected book's series, so they read the same in all its books
+            ToolStripMenuItem miSeriesNames = new ToolStripMenuItem("Series Names (Translation)...") { Name = "miSeriesNames" };
+            miSeriesNames.Click += delegate { TranslationButtons.OpenSeriesNames(FindForm(), TranslatableSelection().FirstOrDefault()?.ShadowSeries); };
+            contextMenuItems.Items.Insert(contextMenuItems.Items.IndexOf(miExportTranslated) + 1, miSeriesNames);
         }
 
         private ToolStripMenuItem miExportTranslated;

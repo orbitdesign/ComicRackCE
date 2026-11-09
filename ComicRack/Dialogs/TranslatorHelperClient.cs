@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Net;
 using System.Text;
 using System.Text.Json;
@@ -146,6 +147,16 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 	/// Talks to the settings API of the ComicTranslator helper (a small local web service).
 	/// Every call blocks, so callers run them off the user-interface thread.
 	/// </summary>
+	/// <summary>The names the helper keeps for a series in one language (helper 1.81): {name as written: its translation}.</summary>
+	public class SeriesNameList
+	{
+		public string Series { get; set; }
+
+		public string Language { get; set; }
+
+		public Dictionary<string, string> Names { get; } = new Dictionary<string, string>();
+	}
+
 	public class TranslatorHelperClient
 	{
 		public string BaseUrl { get; }
@@ -195,6 +206,48 @@ namespace cYo.Projects.ComicRack.Viewer.Dialogs
 					Seconds = r.TryGetProperty("seconds", out JsonElement s) && s.ValueKind == JsonValueKind.Number ? s.GetDouble() : 0
 				};
 			}
+		}
+
+		/// <summary>The names kept for every series and language. An older helper (before 1.81) answers 404.</summary>
+		public List<SeriesNameList> GetSeriesNames()
+		{
+			return ParseNames(Send("GET", "/api/names", null, 8000));
+		}
+
+		/// <summary>Sets a series' names in a language (an empty list forgets them); returns every series' names afterwards.</summary>
+		public List<SeriesNameList> SaveSeriesNames(string series, string language, IDictionary<string, string> names)
+		{
+			Dictionary<string, object> body = new Dictionary<string, object>
+			{
+				["series"] = series ?? string.Empty,
+				["language"] = language ?? "en",
+				["names"] = names.ToDictionary((KeyValuePair<string, string> kv) => kv.Key, (KeyValuePair<string, string> kv) => (object)kv.Value)
+			};
+			return ParseNames(Send("POST", "/api/names", ToJson(body), 8000));
+		}
+
+		private static List<SeriesNameList> ParseNames(string json)
+		{
+			List<SeriesNameList> list = new List<SeriesNameList>();
+			using (JsonDocument doc = JsonDocument.Parse(json))
+			{
+				if (doc.RootElement.TryGetProperty("series", out JsonElement all) && all.ValueKind == JsonValueKind.Array)
+				{
+					foreach (JsonElement e in all.EnumerateArray())
+					{
+						SeriesNameList entry = new SeriesNameList { Series = Str(e, "series"), Language = Str(e, "language") };
+						if (e.TryGetProperty("names", out JsonElement names) && names.ValueKind == JsonValueKind.Object)
+						{
+							foreach (JsonProperty name in names.EnumerateObject())
+							{
+								entry.Names[name.Name] = name.Value.ValueKind == JsonValueKind.String ? name.Value.GetString() : string.Empty;
+							}
+						}
+						list.Add(entry);
+					}
+				}
+			}
+			return list;
 		}
 
 		public void ClearCache()

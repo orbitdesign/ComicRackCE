@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Security.Cryptography;
@@ -14,10 +15,21 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 	/// boxes added by hand) together with the book, in one small JSON file per book. The file is
 	/// found again through the book's library id, or its path for books that are not in the library.
 	/// It also remembers which pages of the book were translated (and the page's fingerprint, which
-	/// is how the helper's stored copy of the page is found and forgotten).
+	/// is how the helper's stored copy of the page is found and forgotten), when the book's translation last changed, and the
+	/// translated copies written of it (Export Translated Books).
 	/// </summary>
 	public class TranslationStore
 	{
+		/// <summary>A translated copy of the book that was written: where, in what language, and when.</summary>
+		public class ExportRecord
+		{
+			public string Language = "";
+
+			public string Path = "";
+
+			public DateTime Time;
+		}
+
 		private class StoredPage
 		{
 			public string Sha = "";
@@ -46,6 +58,12 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 			public StyleFonts Fonts = new StyleFonts();
 
 			public readonly SortedDictionary<int, StoredPage> Pages = new SortedDictionary<int, StoredPage>();
+
+			//When a page was last translated, changed by the user or forgotten (UTC); not set in files written before 1.184.
+			public DateTime Changed;
+
+			//The translated copies written, one per language (the last one).
+			public readonly List<ExportRecord> Exports = new List<ExportRecord>();
 
 			public bool Dirty;
 		}
@@ -139,12 +157,12 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 					//another picture of the page: what it was translated into before is about the old one
 					stored.Sha = sha;
 					stored.Languages.Clear();
-					book.Dirty = true;
+					Touch(book);
 				}
 				if (!string.IsNullOrEmpty(language) && !stored.Languages.Contains(language))
 				{
 					stored.Languages.Add(language);
-					book.Dirty = true;
+					Touch(book);
 				}
 				Save(bookKey, book);
 			}
@@ -183,7 +201,7 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 					stored.Sha = sha;
 				}
 				stored.Edits = boxes.Where((TranslationBox b) => b.IsEdited).Select((TranslationBox b) => b.Clone()).ToList();
-				book.Dirty = true;
+				Touch(book);
 				Save(bookKey, book);
 			}
 		}
@@ -250,7 +268,7 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 				{
 					book.Pages.Remove(page);
 				}
-				book.Dirty = true;
+				Touch(book);
 				Save(bookKey, book);
 			}
 		}
@@ -265,7 +283,7 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 			{
 				BookData book = Load(bookKey);
 				book.Fonts = (fonts ?? new StyleFonts()).Clone();
-				book.Dirty = true;
+				Touch(book);
 				Save(bookKey, book);
 			}
 		}
@@ -303,7 +321,7 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 				{
 					book.Pages.Remove(page);
 				}
-				book.Dirty = true;
+				Touch(book);
 				Save(bookKey, book);
 			}
 		}
@@ -424,7 +442,7 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 					{
 						book.Pages.Remove(page);
 					}
-					book.Dirty = true;
+					Touch(book);
 					Save(bookKey, book);
 				}
 			}
@@ -455,8 +473,70 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 						book.Pages.Remove(page);
 					}
 				}
+				Touch(book);
+				Save(bookKey, book);
+			}
+		}
+
+		private static void Touch(BookData book)
+		{
+			book.Changed = DateTime.UtcNow;
+			book.Dirty = true;
+		}
+
+		/// <summary>When the book's translation last changed (a page translated, changed or forgotten), in UTC; for a book noted before
+		/// 1.184, when its file was last written. DateTime.MinValue when nothing of it is stored.</summary>
+		public DateTime LastChanged(string bookKey)
+		{
+			if (bookKey == null)
+			{
+				return DateTime.MinValue;
+			}
+			lock (sync)
+			{
+				BookData book = Load(bookKey);
+				if (book.Changed != DateTime.MinValue)
+				{
+					return book.Changed;
+				}
+				string file = FileOf(bookKey);
+				return File.Exists(file) ? File.GetLastWriteTimeUtc(file) : DateTime.MinValue;
+			}
+		}
+
+		/// <summary>Notes that a translated copy of the book was written (it replaces the one noted before for that language).</summary>
+		public void RecordExport(string bookKey, string language, string path)
+		{
+			if (bookKey == null || string.IsNullOrEmpty(path))
+			{
+				return;
+			}
+			lock (sync)
+			{
+				BookData book = Load(bookKey);
+				string file = FileOf(bookKey);
+				if (book.Changed == DateTime.MinValue && File.Exists(file))
+				{
+					//a file from before 1.184: its time is when the translation last changed, and saving now would move it
+					book.Changed = File.GetLastWriteTimeUtc(file);
+				}
+				book.Exports.RemoveAll((ExportRecord e) => e.Language == (language ?? ""));
+				book.Exports.Add(new ExportRecord { Language = language ?? "", Path = path, Time = DateTime.UtcNow });
 				book.Dirty = true;
 				Save(bookKey, book);
+			}
+		}
+
+		/// <summary>The translated copies noted for the book (copies).</summary>
+		public List<ExportRecord> GetExports(string bookKey)
+		{
+			if (bookKey == null)
+			{
+				return new List<ExportRecord>();
+			}
+			lock (sync)
+			{
+				return Load(bookKey).Exports.Select((ExportRecord e) => new ExportRecord { Language = e.Language, Path = e.Path, Time = e.Time }).ToList();
 			}
 		}
 
@@ -544,6 +624,18 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 						JsonElement root = doc.RootElement;
 						book.Title = TranslationBox.GetString(root, "title");
 						book.Path = TranslationBox.GetString(root, "path");
+						if (DateTime.TryParse(TranslationBox.GetString(root, "changed"), CultureInfo.InvariantCulture, DateTimeStyles.AdjustToUniversal | DateTimeStyles.AssumeUniversal, out DateTime changed))
+						{
+							book.Changed = changed;
+						}
+						if (root.TryGetProperty("exports", out JsonElement exports) && exports.ValueKind == JsonValueKind.Array)
+						{
+							foreach (JsonElement e in exports.EnumerateArray())
+							{
+								DateTime.TryParse(TranslationBox.GetString(e, "time"), CultureInfo.InvariantCulture, DateTimeStyles.AdjustToUniversal | DateTimeStyles.AssumeUniversal, out DateTime time);
+								book.Exports.Add(new ExportRecord { Language = TranslationBox.GetString(e, "language"), Path = TranslationBox.GetString(e, "path"), Time = time });
+							}
+						}
 						if (root.TryGetProperty("fonts", out JsonElement bookFonts) && bookFonts.ValueKind == JsonValueKind.Object)
 						{
 							book.Fonts = StyleFonts.Read(bookFonts);
@@ -602,7 +694,7 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 			try
 			{
 				string file = FileOf(bookKey);
-				if (book.Pages.Count == 0 && book.Fonts.IsEmpty)
+				if (book.Pages.Count == 0 && book.Fonts.IsEmpty && book.Exports.Count == 0)
 				{
 					if (File.Exists(file))
 					{
@@ -620,6 +712,23 @@ namespace cYo.Projects.ComicRack.Engine.Display.Forms
 					w.WriteNumber("version", 1);
 					w.WriteString("title", book.Title);
 					w.WriteString("path", book.Path);
+					if (book.Changed != DateTime.MinValue)
+					{
+						w.WriteString("changed", book.Changed.ToString("o", CultureInfo.InvariantCulture));
+					}
+					if (book.Exports.Count > 0)
+					{
+						w.WriteStartArray("exports");
+						foreach (ExportRecord e in book.Exports)
+						{
+							w.WriteStartObject();
+							w.WriteString("language", e.Language);
+							w.WriteString("path", e.Path);
+							w.WriteString("time", e.Time.ToString("o", CultureInfo.InvariantCulture));
+							w.WriteEndObject();
+						}
+						w.WriteEndArray();
+					}
 					if (!book.Fonts.IsEmpty)
 					{
 						book.Fonts.Write(w, "fonts");
