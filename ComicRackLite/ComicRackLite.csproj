@@ -1,0 +1,80 @@
+<Project Sdk="Microsoft.NET.Sdk">
+    <!--
+        ComicRack Lite: a small, fast reader for comic files opened from Explorer (orbitdesign 1.185). It shares
+        ComicRack's install folder and its archive library (SharpCompress and its helpers, libwebp), but loads none of
+        ComicRack's library, plugins or scripting, so a book is on screen at once. "Open in ComicRack" hands the book and
+        page over to the full program.
+
+        The build copies ComicRackLite.exe and its .config into ComicRack's own output folder, so the two ship together.
+        The .config holds the same binding redirects as ComicRack.exe.config: Lite runs on the DLLs ComicRack ships.
+    -->
+    <PropertyGroup>
+        <TargetFramework>net48</TargetFramework>
+        <PlatformTarget>AnyCPU</PlatformTarget>
+        <Prefer32Bit>false</Prefer32Bit>
+        <OutputType>WinExe</OutputType>
+        <UseWindowsForms>true</UseWindowsForms>
+        <RootNamespace>ComicRackLite</RootNamespace>
+        <AssemblyName>ComicRackLite</AssemblyName>
+        <!-- ComicRack's logo in crimson (LiteIcon.ico), so the two are told apart in Explorer and the taskbar -->
+        <ApplicationIcon>LiteIcon.ico</ApplicationIcon>
+        <ApplicationManifest>app.manifest</ApplicationManifest>
+        <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+        <AutoGenerateBindingRedirects>false</AutoGenerateBindingRedirects>
+        <GenerateBindingRedirectsOutputType>false</GenerateBindingRedirectsOutputType>
+        <Deterministic>false</Deterministic>
+        <!-- the paper texture is blended with a pointer loop -->
+        <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    </PropertyGroup>
+    <PropertyGroup Condition=" '$(Configuration)' == 'Release' ">
+        <DebugType>none</DebugType>
+        <Optimize>True</Optimize>
+    </PropertyGroup>
+    <ItemGroup>
+        <PackageReference Include="SharpCompress" Version="0.50.4" PrivateAssets="all" />
+    </ItemGroup>
+    <ItemGroup>
+        <!-- ComicRack's 7-Zip wrapper (RAR and 7z books); cYo.Common.dll is already beside ComicRack.exe, so it is not copied -->
+        <ProjectReference Include="..\cYo.Common\cYo.Common.csproj" Private="false" />
+    </ItemGroup>
+    <ItemGroup>
+        <!-- WIC (through WPF) decodes the formats GDI+ cannot (AVIF, HEIC, JPEG XL... when Windows has the codec); loaded only then -->
+        <Reference Include="PresentationCore" />
+        <Reference Include="WindowsBase" />
+    </ItemGroup>
+    <ItemGroup>
+        <EmbeddedResource Include="..\ComicRack\Resources\GoPrevious.png" LogicalName="Icons.GoPrevious.png" />
+        <EmbeddedResource Include="..\ComicRack\Resources\GoNext.png" LogicalName="Icons.GoNext.png" />
+        <EmbeddedResource Include="..\ComicRack\Resources\GoFirst.png" LogicalName="Icons.GoFirst.png" />
+        <EmbeddedResource Include="..\ComicRack\Resources\GoLast.png" LogicalName="Icons.GoLast.png" />
+        <!-- ComicRack's dark theme versions (the dark blue arrows are hard to see on a dark bar) -->
+        <EmbeddedResource Include="..\ComicRack\Resources\Dark\GoFirst.png" LogicalName="IconsDark.GoFirst.png" />
+        <EmbeddedResource Include="..\ComicRack\Resources\Dark\GoPrevious.png" LogicalName="IconsDark.GoPrevious.png" />
+        <EmbeddedResource Include="..\ComicRack\Resources\Dark\GoNext.png" LogicalName="IconsDark.GoNext.png" />
+        <EmbeddedResource Include="..\ComicRack\Resources\Dark\GoLast.png" LogicalName="IconsDark.GoLast.png" />
+        <EmbeddedResource Include="..\ComicRack\Resources\PrevFromList.png" LogicalName="Icons.PrevFromList.png" />
+        <EmbeddedResource Include="..\ComicRack\Resources\NextFromList.png" LogicalName="Icons.NextFromList.png" />
+        <EmbeddedResource Include="..\ComicRack\Resources\SinglePage.png" LogicalName="Icons.SinglePage.png" />
+        <EmbeddedResource Include="..\ComicRack\Resources\TwoPage.png" LogicalName="Icons.TwoPage.png" />
+        <EmbeddedResource Include="..\ComicRack\Resources\TwoPageForced.png" LogicalName="Icons.TwoPageForced.png" />
+        <EmbeddedResource Include="..\ComicRack\Resources\RightToLeft.png" LogicalName="Icons.RightToLeft.png" />
+        <EmbeddedResource Include="..\ComicRack\Resources\FitAll.png" LogicalName="Icons.FitAll.png" />
+        <EmbeddedResource Include="..\ComicRack\Resources\FitWidth.png" LogicalName="Icons.FitWidth.png" />
+        <EmbeddedResource Include="..\ComicRack\Resources\FitHeight.png" LogicalName="Icons.FitHeight.png" />
+        <EmbeddedResource Include="..\ComicRack\Resources\Original.png" LogicalName="Icons.Original.png" />
+        <EmbeddedResource Include="..\ComicRack\Resources\Oversized.png" LogicalName="Icons.Oversized.png" />
+        <EmbeddedResource Include="..\ComicRack\Resources\ZoomIn.png" LogicalName="Icons.ZoomIn.png" />
+        <EmbeddedResource Include="..\ComicRack\Resources\ZoomOut.png" LogicalName="Icons.ZoomOut.png" />
+        <EmbeddedResource Include="..\ComicRack\Resources\RotateLeft.png" LogicalName="Icons.RotateLeft.png" />
+        <EmbeddedResource Include="..\ComicRack\Resources\RotateRight.png" LogicalName="Icons.RotateRight.png" />
+        <EmbeddedResource Include="..\ComicRack\Resources\FullScreen.png" LogicalName="Icons.FullScreen.png" />
+        <EmbeddedResource Include="..\ComicRack\Resources\Open.png" LogicalName="Icons.Open.png" />
+        <EmbeddedResource Include="..\ComicRack\Resources\MenuToggle.png" LogicalName="Icons.MenuToggle.png" />
+        <EmbeddedResource Include="..\ComicRack\Resources\Tools.png" LogicalName="Icons.Tools.png" />
+        <EmbeddedResource Include="..\ComicRack\Resources\ComicRackAppSmall.ico" LogicalName="Icons.ComicRack.ico" />
+    </ItemGroup>
+    <!-- Ship beside ComicRack.exe: copy the program and its .config into ComicRack's output folder -->
+    <Target Name="CopyBesideComicRack" AfterTargets="Build" Condition="Exists('..\ComicRack\ComicRack.csproj')">
+        <Copy SourceFiles="$(TargetPath);$(TargetPath).config" DestinationFolder="..\ComicRack\bin\$(Configuration)\net48" SkipUnchangedFiles="false" />
+    </Target>
+</Project>
