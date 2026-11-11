@@ -66,6 +66,9 @@ namespace ComicRackLite
 		/// <summary>Lay ComicRack's paper texture over the pages (when ComicRack has one).</summary>
 		public bool PaperTexture = true;
 
+		/// <summary>The page turn effect (Lite 1.4); none by default.</summary>
+		public PageEffect PageEffect = PageEffect.None;
+
 		public string LastFolder = "";
 
 		private Dictionary<string, KeyValuePair<int, long>> books;
@@ -129,6 +132,9 @@ namespace ComicRackLite
 				case "Toolbar":
 					ToolbarVisible = value != "0";
 					break;
+				case "PageEffect":
+					Enum.TryParse(value, out PageEffect);
+					break;
 				case "PaperTexture":
 					PaperTexture = value != "0";
 					break;
@@ -158,6 +164,7 @@ namespace ComicRackLite
 				sb.AppendLine("Toolbar=" + (ToolbarVisible ? "1" : "0"));
 				sb.AppendLine("ClickTurnsPages=" + (ClickTurnsPages ? "1" : "0"));
 				sb.AppendLine("PaperTexture=" + (PaperTexture ? "1" : "0"));
+				sb.AppendLine("PageEffect=" + PageEffect);
 				sb.AppendLine("LastFolder=" + LastFolder);
 				File.WriteAllText(IniFile, sb.ToString());
 				SaveBooks();

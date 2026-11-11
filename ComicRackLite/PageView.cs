@@ -9,7 +9,7 @@ namespace ComicRackLite
 	/// Shows the current spread: centred when it fits, scrolled (wheel, keys, or dragging with the mouse) when it is larger
 	/// than the window. Draws the page number for a moment after a page turn, and short messages.
 	/// </summary>
-	internal sealed class PageView : Control
+	internal sealed partial class PageView : Control
 	{
 		private RenderResult image;
 
@@ -49,6 +49,7 @@ namespace ComicRackLite
 		{
 			SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.UserPaint | ControlStyles.ResizeRedraw | ControlStyles.Selectable, value: true);
 			BackColor = Color.Black;
+			InitTransitions();
 			overlayTimer.Tick += delegate
 			{
 				DateTime now = DateTime.Now;
@@ -106,6 +107,33 @@ namespace ComicRackLite
 		{
 			message = null;
 			Invalidate();
+		}
+
+		/// <summary>Where the current spread is on screen (centred when it fits, else scrolled).</summary>
+		public Rectangle ImageRectangle
+		{
+			get
+			{
+				Size shown = Shown;
+				int x = shown.Width <= ClientSize.Width ? (ClientSize.Width - shown.Width) / 2 : -offset.X;
+				int y = shown.Height <= ClientSize.Height ? (ClientSize.Height - shown.Height) / 2 : -offset.Y;
+				return new Rectangle(x, y, shown.Width, shown.Height);
+			}
+		}
+
+		private static void DrawSpread(Graphics g, RenderResult r, Rectangle rect)
+		{
+			if (rect.Size == r.Bitmap.Size)
+			{
+				g.DrawImageUnscaled(r.Bitmap, rect.X, rect.Y);
+			}
+			else
+			{
+				//shown at another size until the spread is drawn again for it (window resized, zoomed)
+				g.InterpolationMode = InterpolationMode.Bilinear;
+				g.PixelOffsetMode = PixelOffsetMode.Half;
+				g.DrawImage(r.Bitmap, rect);
+			}
 		}
 
 		private Size Shown => image?.Bitmap == null ? Size.Empty : DisplaySizeOf(image.Natural);
@@ -205,22 +233,9 @@ namespace ComicRackLite
 		{
 			Graphics g = e.Graphics;
 			g.Clear(BackColor);
-			if (image?.Bitmap != null)
+			if (!PaintTransition(g) && image?.Bitmap != null)
 			{
-				Size shown = Shown;
-				int x = shown.Width <= ClientSize.Width ? (ClientSize.Width - shown.Width) / 2 : -offset.X;
-				int y = shown.Height <= ClientSize.Height ? (ClientSize.Height - shown.Height) / 2 : -offset.Y;
-				if (shown == image.Bitmap.Size)
-				{
-					g.DrawImageUnscaled(image.Bitmap, x, y);
-				}
-				else
-				{
-					//shown at another size until the spread is drawn again for it (window resized, zoomed)
-					g.InterpolationMode = InterpolationMode.Bilinear;
-					g.PixelOffsetMode = PixelOffsetMode.Half;
-					g.DrawImage(image.Bitmap, new Rectangle(x, y, shown.Width, shown.Height));
-				}
+				DrawSpread(g, image, ImageRectangle);
 			}
 			if (!string.IsNullOrEmpty(CenterText))
 			{
@@ -290,6 +305,7 @@ namespace ComicRackLite
 			if (disposing)
 			{
 				overlayTimer.Dispose();
+				frameTimer.Dispose();
 			}
 			base.Dispose(disposing);
 		}

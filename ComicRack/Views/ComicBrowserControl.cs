@@ -1161,6 +1161,7 @@ namespace cYo.Projects.ComicRack.Viewer.Views
             TranslationButtons.Install(toolStrip, toolStrip.Items.Count, separatorBefore: true, separatorAfter: false);
             QuickScanButton.Install(toolStrip, toolStrip.Items.Count);
             AddTranslateBooksItem();
+            AddOpenInLiteItem();
             ToolStripSeparator toolStripSeparator = sepDuplicateList;
             bool visible = (tbbDuplicateList.Visible = Library != null && Library.EditMode.CanEditList());
             toolStripSeparator.Visible = visible;
@@ -3064,6 +3065,34 @@ namespace cYo.Projects.ComicRack.Viewer.Views
         }
 
         private ToolStripMenuItem miExportTranslated;
+
+        private ToolStripMenuItem miOpenInLite;
+
+        /// <summary>"Open in ComicRack Lite" under Open / Open in New Tab: the selected books, each in a Lite window (1.186).</summary>
+        private void AddOpenInLiteItem()
+        {
+            if (!LiteLauncher.Available)
+            {
+                return;
+            }
+            miOpenInLite = new ToolStripMenuItem(LiteLauncher.Text(1), LiteLauncher.Icon) { Name = "miOpenInLite" };
+            miOpenInLite.Click += delegate
+            {
+                LiteLauncher.Open(FindForm(), LiteSelection().Select((ComicBook b) => b.FilePath).ToList());
+            };
+            contextMenuItems.Items.Insert(contextMenuItems.Items.IndexOf(miReadTab) + 1, miOpenInLite);
+            contextMenuItems.Opening += delegate
+            {
+                int count = LiteSelection().Count();
+                miOpenInLite.Text = LiteLauncher.Text(count);
+                miOpenInLite.Visible = count > 0;
+            };
+        }
+
+        private IEnumerable<ComicBook> LiteSelection()
+        {
+            return GetBookList(ComicBookFilterType.Selected | ComicBookFilterType.IsLocal | ComicBookFilterType.IsNotFileless);
+        }
 
         private IEnumerable<ComicBook> TranslatableSelection()
         {

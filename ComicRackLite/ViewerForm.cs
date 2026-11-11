@@ -64,6 +64,9 @@ namespace ComicRackLite
 
 		private readonly string startFile;
 
+		/// <summary>The page (0 based) asked for with -p, used for the first book only; -1 when none.</summary>
+		private int requestedPage;
+
 		private ToolStripLabel pageLabel;
 
 		private ToolStripDropDownButton tbLayout;
@@ -94,6 +97,9 @@ namespace ComicRackLite
 
 		private int wheelRest;
 
+		/// <summary>Set by a page turn (1 forward, -1 back) until its spread is shown, which plays the page turn effect.</summary>
+		private int turnDirection;
+
 		private string pendingBook;
 
 		private DateTime pendingUntil;
@@ -106,9 +112,10 @@ namespace ComicRackLite
 
 		private string BookKey => source is FolderSource ? source.Path : bookPath;
 
-		public ViewerForm(string file)
+		public ViewerForm(string file, int startPage = -1)
 		{
 			startFile = file;
+			requestedPage = startPage;
 			Text = Program.NameAndVersion;
 			try
 			{
@@ -308,6 +315,10 @@ namespace ComicRackLite
 			Command full = C("&Full Screen", Icon16("FullScreen"), ToggleFullScreen, "F", () => fullScreen);
 			Command minimal = C("&Minimal User Interface", Icon16("MenuToggle"), ToggleToolbar, "K", () => !settings.ToolbarVisible);
 			Command paperTexture = C(paper != null ? "&Paper Texture" : "&Paper Texture (none set in ComicRack)", null, delegate { ChangeView(delegate { settings.PaperTexture = !settings.PaperTexture; }); }, null, () => settings.PaperTexture && paper != null, () => paper != null);
+			Command effectNone = C("&None", null, delegate { settings.PageEffect = PageEffect.None; UpdateUi(); }, null, () => settings.PageEffect == PageEffect.None);
+			Command effectSlide = C("&Slide", null, delegate { settings.PageEffect = PageEffect.Slide; UpdateUi(); }, null, () => settings.PageEffect == PageEffect.Slide);
+			Command effectFade = C("&Fade", null, delegate { settings.PageEffect = PageEffect.Fade; UpdateUi(); }, null, () => settings.PageEffect == PageEffect.Fade);
+			Command effectCurl = C("Page &Curl", null, delegate { settings.PageEffect = PageEffect.Curl; UpdateUi(); }, null, () => settings.PageEffect == PageEffect.Curl);
 			Command clickTurn = C("&Click Page Sides to Turn Pages", null, delegate { settings.ClickTurnsPages = !settings.ClickTurnsPages; UpdateUi(); }, null, () => settings.ClickTurnsPages);
 			Command themeCr = C("Like &ComicRack", null, delegate { SetTheme(ThemeChoice.FollowComicRack); }, null, () => settings.Theme == ThemeChoice.FollowComicRack);
 			Command themeLight = C("&Light", null, delegate { SetTheme(ThemeChoice.Light); }, null, () => settings.Theme == ThemeChoice.Light);
@@ -323,6 +334,8 @@ namespace ComicRackLite
 			read.DropDownItems.AddRange(new ToolStripItem[] { Item(first), Item(prev), Item(next), Item(last), new ToolStripSeparator(), Item(prevBook), Item(nextBook), new ToolStripSeparator(), Item(goTo) });
 			ToolStripMenuItem theme = new ToolStripMenuItem("T&heme");
 			theme.DropDownItems.AddRange(new ToolStripItem[] { Item(themeCr), Item(themeLight), Item(themeDark) });
+			ToolStripMenuItem effects = new ToolStripMenuItem("Page Turn &Effect");
+			effects.DropDownItems.AddRange(new ToolStripItem[] { Item(effectNone), Item(effectSlide), Item(effectFade), Item(effectCurl) });
 			ToolStripMenuItem display = new ToolStripMenuItem("&Display");
 			display.DropDownItems.AddRange(new ToolStripItem[]
 			{
@@ -330,7 +343,7 @@ namespace ComicRackLite
 				Item(original), Item(fitAll), Item(fitWidth), Item(fitHeight), Item(oversized), new ToolStripSeparator(),
 				Item(zoomIn), Item(zoomOut), Item(zoomReset), new ToolStripSeparator(),
 				Item(rotLeft), Item(rotRight), new ToolStripSeparator(),
-				Item(paperTexture), new ToolStripSeparator(),
+				Item(paperTexture), effects, new ToolStripSeparator(),
 				Item(full), Item(minimal), Item(clickTurn), new ToolStripSeparator(), theme
 			});
 			ToolStripMenuItem help = new ToolStripMenuItem("&Help");
@@ -402,6 +415,11 @@ namespace ComicRackLite
 			view.Dock = DockStyle.Fill;
 			view.DisplaySizeOf = (Size natural) => Params().DisplaySize(natural);
 			view.ContextMenuStrip = context;
+			view.TransitionEnded += delegate (RenderResult from)
+			{
+				renderer.Hold(false);
+				Release(from);
+			};
 			view.MouseWheel += OnWheel;
 			view.MouseUp += delegate (object s, MouseEventArgs e)
 			{
@@ -630,6 +648,7 @@ namespace ComicRackLite
 			int generation = ++openGeneration;
 			pendingBook = null;
 			Text = Path.GetFileName(path.TrimEnd('\\')) + " - " + Program.NameAndVersion;
+			view.EndTransition();
 			RenderResult old = view.Image;
 			view.SetImage(null);
 			Release(old);
@@ -699,6 +718,10 @@ namespace ComicRackLite
 			{
 				page = Count - 1;
 			}
+			else if (requestedPage >= 0)
+			{
+				page = Math.Min(requestedPage, Count - 1);
+			}
 			else if (PageSource.IsImageName(path))
 			{
 				page = source.StartPage;
@@ -708,6 +731,7 @@ namespace ComicRackLite
 				int remembered = settings.GetPage(BookKey);
 				page = remembered >= 0 && remembered < Count ? remembered : 0;
 			}
+			requestedPage = -1;
 			GoTo(page, at == OpenAt.End);
 		}
 
@@ -833,7 +857,7 @@ namespace ComicRackLite
 			return (spread.Length == 2 ? (spread[0] + 1) + "-" + (spread[1] + 1) : (spread[0] + 1).ToString()) + " / " + Count;
 		}
 
-		private void GoTo(int page, bool atEnd = false)
+		private void GoTo(int page, bool atEnd = false, int turn = 0)
 		{
 			if (source == null || Count == 0)
 			{
@@ -842,6 +866,7 @@ namespace ComicRackLite
 			page = Math.Max(0, Math.Min(Count - 1, page));
 			pendingBook = null;
 			spread = SpreadAt(page);
+			turnDirection = turn;
 			scrollPending = true;
 			scrollToEnd = atEnd;
 			ShowCurrent();
@@ -858,7 +883,7 @@ namespace ComicRackLite
 			int n = spread[spread.Length - 1] + 1;
 			if (n < Count)
 			{
-				GoTo(n);
+				GoTo(n, turn: 1);
 			}
 			else
 			{
@@ -874,7 +899,7 @@ namespace ComicRackLite
 			}
 			if (spread[0] > 0)
 			{
-				GoTo(PreviousStart(spread[0]), atEnd);
+				GoTo(PreviousStart(spread[0]), atEnd, -1);
 			}
 			else
 			{
@@ -923,7 +948,7 @@ namespace ComicRackLite
 		/// <summary>Frees a drawn spread unless it is on screen or kept.</summary>
 		private void Release(RenderResult r)
 		{
-			if (r != null && r != view.Image && !rendered.Contains(r))
+			if (r != null && r != view.Image && r != view.TransitionFrom && !rendered.Contains(r))
 			{
 				r.Bitmap?.Dispose();
 			}
@@ -931,6 +956,7 @@ namespace ComicRackLite
 
 		private void ClearRendered()
 		{
+			view.EndTransition();
 			List<RenderResult> all = rendered.ToList();
 			rendered.Clear();
 			RenderResult shown = view.Image;
@@ -1006,6 +1032,10 @@ namespace ComicRackLite
 		private void Display(RenderResult result)
 		{
 			RenderResult old = view.Image;
+			Rectangle oldRect = view.ImageRectangle;
+			//a page turned while a turn still plays shows at once
+			bool wasPlaying = view.Animating;
+			view.EndTransition();
 			view.CenterText = null;
 			view.SetImage(result);
 			if (scrollPending)
@@ -1013,6 +1043,15 @@ namespace ComicRackLite
 				scrollPending = false;
 				view.ResetScroll(scrollToEnd, settings.RightToLeft);
 			}
+			if (turnDirection != 0 && !wasPlaying && old != null && old != result)
+			{
+				view.StartTransition(settings.PageEffect, old, oldRect, turnDirection > 0, settings.RightToLeft, settings.Layout != PageLayout.Single);
+				if (view.Animating)
+				{
+					renderer.Hold(true);
+				}
+			}
+			turnDirection = 0;
 			if (old != result)
 			{
 				Release(old);

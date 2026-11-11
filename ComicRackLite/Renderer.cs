@@ -125,6 +125,8 @@ namespace ComicRackLite
 
 		private volatile bool disposed;
 
+		private bool held;
+
 		//a spread is kept decoded (to draw it again at another size); the drawn spreads are what turning pages uses
 		private const int KeepDecoded = 2;
 
@@ -168,7 +170,7 @@ namespace ComicRackLite
 				RenderJob job;
 				lock (jobs)
 				{
-					while (jobs.Count == 0 && !disposed)
+					while ((jobs.Count == 0 || (held && !jobs[0].Current)) && !disposed)
 					{
 						Monitor.Wait(jobs);
 					}
@@ -277,6 +279,16 @@ namespace ComicRackLite
 			if (job.View.Paper && paper != null)
 			{
 				paper.Apply(bitmap);
+			}
+		}
+
+		/// <summary>While a page turn plays, the pages ahead wait (they would slow the turn down); asked for pages do not.</summary>
+		public void Hold(bool hold)
+		{
+			lock (jobs)
+			{
+				held = hold;
+				Monitor.PulseAll(jobs);
 			}
 		}
 
