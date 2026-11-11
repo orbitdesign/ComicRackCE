@@ -1679,6 +1679,7 @@ namespace cYo.Projects.ComicRack.Viewer
 			{
 				Program.ShowExplorer(ComicDisplay.Book.Comic.FilePath);
 			}, () => ComicDisplay.Book != null && ComicDisplay.Book.Comic.EditMode.IsLocalComic(), cmRevealInExplorer, cmPageRevealInExplorer);
+			AddOpenInLiteItems();
 			commands.Add(() => _ = CheckForUpdateAsync(true), miCheckUpdate);
 		}
 
@@ -3766,6 +3767,28 @@ namespace cYo.Projects.ComicRack.Viewer
 		private void tsCurrentPage_Click(object sender, EventArgs e)
 		{
 			Program.Settings.TrackCurrentPage = !Program.Settings.TrackCurrentPage;
+		}
+
+		/// <summary>
+		/// "Open in ComicRack Lite" in the reader's page and tab menus (1.186): the book shown, at the page shown (Lite counts
+		/// the book's pictures, so the page is turned into its picture's number).
+		/// </summary>
+		private void AddOpenInLiteItems()
+		{
+			if (!LiteLauncher.Available)
+			{
+				return;
+			}
+			ToolStripMenuItem cmPageOpenInLite = new ToolStripMenuItem(LiteLauncher.Text(1), LiteLauncher.Icon) { Name = "cmPageOpenInLite" };
+			ToolStripMenuItem cmTabOpenInLite = new ToolStripMenuItem(LiteLauncher.Text(1), LiteLauncher.Icon) { Name = "cmTabOpenInLite" };
+			pageContextMenu.Items.Insert(pageContextMenu.Items.IndexOf(cmPageRevealInExplorer) + 1, cmPageOpenInLite);
+			tabContextMenu.Items.Insert(tabContextMenu.Items.IndexOf(cmRevealInExplorer) + 1, cmTabOpenInLite);
+			commands.Add(delegate
+			{
+				ComicBookNavigator nav = ComicDisplay.Book;
+				int image = nav.Comic.TranslatePageToImageIndex(nav.CurrentPage);
+				LiteLauncher.Open(this, new[] { nav.Comic.FilePath }, Math.Max(0, image) + 1);
+			}, () => ComicDisplay.Book != null && ComicDisplay.Book.Comic.EditMode.IsLocalComic(), cmPageOpenInLite, cmTabOpenInLite);
 		}
 
 		private void tabContextMenu_Opening(object sender, CancelEventArgs e)
