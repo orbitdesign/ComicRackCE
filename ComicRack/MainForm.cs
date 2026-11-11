@@ -1054,7 +1054,7 @@ namespace cYo.Projects.ComicRack.Viewer
 			{
 				if (File.Exists(commandLineFile))
 				{
-					OpenSupportedFile(commandLineFile, newSlot: false, 0, fromShell: true);
+					OpenSupportedFile(commandLineFile, newSlot: false, Program.ExtendedSettings.Page, fromShell: true); //-p: the page to open at (ComicRack Lite hands its page over)
 				}
 			}
 			if (books.OpenCount == 0 && Program.Settings.OpenLastFile)
@@ -2462,7 +2462,8 @@ namespace cYo.Projects.ComicRack.Viewer
 			}
 			if (!Path.GetExtension(file).Equals(".cbl", StringComparison.OrdinalIgnoreCase))
 			{
-				bool result = books.Open(file, newSlot, Math.Max(0, page - 1));
+				//-p 1 asks for the first page: without NoMoveToLastPage, page 0 would mean "where the book was left"
+				bool result = page == 1 ? books.Open(file, (newSlot ? OpenComicOptions.OpenInNewSlot : OpenComicOptions.None) | OpenComicOptions.NoMoveToLastPage) : books.Open(file, newSlot, Math.Max(0, page - 1));
 				if (fromShell && Program.ExtendedSettings.HideBrowserIfShellOpen)
 				{
 					BrowserVisible = false;

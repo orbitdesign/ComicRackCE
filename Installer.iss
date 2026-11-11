@@ -91,6 +91,8 @@ Source: "ComicRack\bin\Release\net48\*.dll"; DestDir: "{app}"; Flags: ignorevers
 Source: "ComicRack\bin\Release\net48\Changes.txt"; DestDir: "{app}"; Flags: ignoreversion; Components: app
 Source: "ComicRack\bin\Release\net48\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion; Components: app
 Source: "ComicRack\bin\Release\net48\{#MyAppExeName}.config"; DestDir: "{app}"; Flags: ignoreversion; Components: app
+Source: "ComicRack\bin\Release\net48\ComicRackLite.exe"; DestDir: "{app}"; Flags: ignoreversion; Components: app
+Source: "ComicRack\bin\Release\net48\ComicRackLite.exe.config"; DestDir: "{app}"; Flags: ignoreversion; Components: app
 Source: "ComicRack\bin\Release\net48\ComicRack.ini"; DestDir: "{app}"; Flags: ignoreversion; Components: app
 Source: "ComicRack\bin\Release\net48\DefaultLists.txt"; DestDir: "{app}"; Flags: ignoreversion; Components: app
 Source: "ComicRack\bin\Release\net48\License.txt"; DestDir: "{app}"; Flags: ignoreversion; Components: app

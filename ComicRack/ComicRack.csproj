@@ -159,6 +159,8 @@
         <ProjectReference Include="..\cYo.Common.Presentation\cYo.Common.Presentation.csproj" />
         <ProjectReference Include="..\cYo.Common.Windows\cYo.Common.Windows.csproj" />
         <ProjectReference Include="..\cYo.Common\cYo.Common.csproj" />
+        <!-- ComicRack Lite (orbitdesign 1.185) is built with ComicRack and copies itself into ComicRack's output folder -->
+        <ProjectReference Include="..\ComicRackLite\ComicRackLite.csproj" ReferenceOutputAssembly="false" Private="false" />
     </ItemGroup>
     <ItemGroup>
       <EmbeddedResource Update="Properties\Resources.resx">
