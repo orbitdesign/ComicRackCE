@@ -1,4 +1,4 @@
-﻿orbitdesign Build 1.186 (based on Community Edition 0.9.186):
+﻿orbitdesign Build 1.187 (based on Community Edition 0.9.186):
 
 * 1.1 (2026-09-21) FIX: Hardware acceleration stability. Fixed OpenGL extension detection, replaced the deprecated automatic mip map generation that crashed some drivers, checked texture uploads for errors, and added a startup guard that switches hardware acceleration off for one session if ComicRack failed to start last time.
 * 1.2 (2026-09-22) NEW: Direct2D renderer for the reader. Used by default when hardware acceleration is on, with OpenGL and then software rendering as fallbacks. Handles graphics device resets, uses high quality cubic sampling for "Enable Hardware Filters", and supports paper textures. Start with -hwgl to use the old OpenGL renderer.
@@ -200,6 +200,7 @@
 * 1.185 (2026-11-11) FIX: A book opened from the command line with -p (page) now opens at that page also when ComicRack was not running yet (the page was only used when ComicRack was open already), and -p 1 opens the first page instead of the page the book was left at.
 * 1.186 (2026-11-12) NEW: ComicRack Lite 1.4. Page turn effects: Display > Page Turn Effect offers Slide, Fade and Page Curl (none by default). Page Curl is ComicRack's realistic page curl: the page lifts at its edge, bends as it turns over the spine with shading and a shadow, and in two page layout its back is the next spread's first page. The effects play only when a page is turned, so opening books is as fast as before; they run at about 60 frames a second without the graphics card, the pages ahead are drawn after the turn, and a page turned during an effect shows at once.
 * 1.186 (2026-11-12) NEW: "Open in ComicRack Lite" in the library's right-click menu (under Open in New Tab: the selected books, each in a Lite window; asks first for more than 5) and in the reader's page and tab right-click menus (the book shown, at the page shown). ComicRack Lite 1.5 takes -p (page) like ComicRack, so the book opens at that page.
+* 1.187 (2026-11-14) CHANGE: ComicRack Lite 1.6. The page curl bends the page more: Display > Page Turn Effect has Curl Light (ComicRack's own curl), Curl More (about twice as much, the new default) and Curl Most (about three times). The page is cut into finer slices for the stronger curls, so the bend stays smooth.
 
 Community Edition Build 0.9.186:
 

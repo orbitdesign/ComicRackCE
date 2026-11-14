@@ -318,6 +318,9 @@ namespace ComicRackLite
 			Command effectNone = C("&None", null, delegate { settings.PageEffect = PageEffect.None; UpdateUi(); }, null, () => settings.PageEffect == PageEffect.None);
 			Command effectSlide = C("&Slide", null, delegate { settings.PageEffect = PageEffect.Slide; UpdateUi(); }, null, () => settings.PageEffect == PageEffect.Slide);
 			Command effectFade = C("&Fade", null, delegate { settings.PageEffect = PageEffect.Fade; UpdateUi(); }, null, () => settings.PageEffect == PageEffect.Fade);
+			Command curlLight = C("Curl &Light (as ComicRack)", null, delegate { settings.CurlAmount = CurlAmount.Light; UpdateUi(); }, null, () => settings.CurlAmount == CurlAmount.Light);
+			Command curlMore = C("Curl &More", null, delegate { settings.CurlAmount = CurlAmount.More; UpdateUi(); }, null, () => settings.CurlAmount == CurlAmount.More);
+			Command curlMost = C("Curl Mos&t", null, delegate { settings.CurlAmount = CurlAmount.Most; UpdateUi(); }, null, () => settings.CurlAmount == CurlAmount.Most);
 			Command effectCurl = C("Page &Curl", null, delegate { settings.PageEffect = PageEffect.Curl; UpdateUi(); }, null, () => settings.PageEffect == PageEffect.Curl);
 			Command clickTurn = C("&Click Page Sides to Turn Pages", null, delegate { settings.ClickTurnsPages = !settings.ClickTurnsPages; UpdateUi(); }, null, () => settings.ClickTurnsPages);
 			Command themeCr = C("Like &ComicRack", null, delegate { SetTheme(ThemeChoice.FollowComicRack); }, null, () => settings.Theme == ThemeChoice.FollowComicRack);
@@ -335,7 +338,7 @@ namespace ComicRackLite
 			ToolStripMenuItem theme = new ToolStripMenuItem("T&heme");
 			theme.DropDownItems.AddRange(new ToolStripItem[] { Item(themeCr), Item(themeLight), Item(themeDark) });
 			ToolStripMenuItem effects = new ToolStripMenuItem("Page Turn &Effect");
-			effects.DropDownItems.AddRange(new ToolStripItem[] { Item(effectNone), Item(effectSlide), Item(effectFade), Item(effectCurl) });
+			effects.DropDownItems.AddRange(new ToolStripItem[] { Item(effectNone), Item(effectSlide), Item(effectFade), Item(effectCurl), new ToolStripSeparator(), Item(curlLight), Item(curlMore), Item(curlMost) });
 			ToolStripMenuItem display = new ToolStripMenuItem("&Display");
 			display.DropDownItems.AddRange(new ToolStripItem[]
 			{
@@ -1045,6 +1048,7 @@ namespace ComicRackLite
 			}
 			if (turnDirection != 0 && !wasPlaying && old != null && old != result)
 			{
+				view.PageCurlBend = PageView.BendOf(settings.CurlAmount);
 				view.StartTransition(settings.PageEffect, old, oldRect, turnDirection > 0, settings.RightToLeft, settings.Layout != PageLayout.Single);
 				if (view.Animating)
 				{

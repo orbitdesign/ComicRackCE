@@ -16,6 +16,14 @@ namespace ComicRackLite
 		Curl
 	}
 
+	/// <summary>How much the page bends as it turns (Lite 1.6): Light is ComicRack's own curl.</summary>
+	internal enum CurlAmount
+	{
+		Light,
+		More,
+		Most
+	}
+
 	/// <summary>
 	/// Page turn effects (Lite 1.4): slide, fade and ComicRack's realistic page curl. They play between two spreads that are
 	/// drawn already, so they cost nothing until a page is turned. The curl is ComicRack's (ComicDisplayControl's
@@ -24,7 +32,27 @@ namespace ComicRackLite
 	/// </summary>
 	internal sealed partial class PageView
 	{
-		private const float PageCurlBend = 0.9f;
+		/// <summary>How far the free edge of the sheet leads its spine side, in radians at mid turn (ComicRack: 0.9).</summary>
+		public float PageCurlBend { get; set; } = 2.0f;
+
+		public static float BendOf(CurlAmount amount)
+		{
+			switch (amount)
+			{
+				case CurlAmount.Light:
+					return 0.9f;
+				case CurlAmount.Most:
+					return 3.2f;
+				default:
+					return 2.0f;
+			}
+		}
+
+		/// <summary>How close the viewer is (a stronger curl is seen from closer, so the lifted page swells towards you).</summary>
+		private float EyeDistance => PageCurlBend <= 1f ? 4f : PageCurlBend <= 2.5f ? 2.6f : 2.0f;
+
+		/// <summary>How dark the bend gets where the page turns away from the light.</summary>
+		private float BendShade => PageCurlBend <= 1f ? 0.6f : 0.72f;
 
 		private static readonly Color PageCurlPaperColor = Color.FromArgb(246, 243, 236);
 
@@ -221,7 +249,7 @@ namespace ComicRackLite
 
 			//2. Shape of the sheet. Arc length u runs from the spine to the free edge; the free edge leads, like a page
 			//   lifted by its edge, and the bend straightens out again as the sheet lands
-			int slices = Math.Max(20, Math.Min(48, (int)(width / 14f)));
+			int slices = Math.Max(24, Math.Min(PageCurlBend > 1f ? 72 : 48, (int)(width / (PageCurlBend > 1f ? 9f : 14f))));
 			float step = width / slices;
 			float[] along = new float[slices + 1];
 			float[] height = new float[slices + 1];
@@ -236,7 +264,7 @@ namespace ComicRackLite
 			}
 			float centerX = client.Left + client.Width / 2f;
 			float centerY = page.Top + page.Height / 2f;
-			float eye = 4f * Math.Max(width, page.Height);
+			float eye = EyeDistance * Math.Max(width, page.Height);
 			float[] screenX = new float[slices + 1];
 			float[] scale = new float[slices + 1];
 			for (int i = 0; i <= slices; i++)
@@ -309,7 +337,7 @@ namespace ComicRackLite
 					}
 					DrawStrip(g, useBack ? under : sheet, useBack ? underRect : page, src0, src1, scaleX, x0 - scaleX * src0, s, centerY - s * centerY, front || spread ? null : showThrough);
 					//light: facing the viewer is fully lit, edge on is darkest
-					float shade = (1f - Math.Abs((float)Math.Cos(angle[i]))) * 0.6f;
+					float shade = (1f - Math.Abs((float)Math.Cos(angle[i]))) * BendShade;
 					if (shade > 0.02f)
 					{
 						using (Brush dark = new SolidBrush(Color.FromArgb((int)(255 * shade), Color.Black)))
