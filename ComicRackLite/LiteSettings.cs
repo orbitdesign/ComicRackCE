@@ -69,6 +69,9 @@ namespace ComicRackLite
 		/// <summary>The page turn effect (Lite 1.4); none by default.</summary>
 		public PageEffect PageEffect = PageEffect.None;
 
+		/// <summary>How much the page curl bends the page (Lite 1.6).</summary>
+		public CurlAmount CurlAmount = CurlAmount.More;
+
 		public string LastFolder = "";
 
 		private Dictionary<string, KeyValuePair<int, long>> books;
@@ -132,6 +135,9 @@ namespace ComicRackLite
 				case "Toolbar":
 					ToolbarVisible = value != "0";
 					break;
+				case "CurlAmount":
+					Enum.TryParse(value, out CurlAmount);
+					break;
 				case "PageEffect":
 					Enum.TryParse(value, out PageEffect);
 					break;
@@ -165,6 +171,7 @@ namespace ComicRackLite
 				sb.AppendLine("ClickTurnsPages=" + (ClickTurnsPages ? "1" : "0"));
 				sb.AppendLine("PaperTexture=" + (PaperTexture ? "1" : "0"));
 				sb.AppendLine("PageEffect=" + PageEffect);
+				sb.AppendLine("CurlAmount=" + CurlAmount);
 				sb.AppendLine("LastFolder=" + LastFolder);
 				File.WriteAllText(IniFile, sb.ToString());
 				SaveBooks();

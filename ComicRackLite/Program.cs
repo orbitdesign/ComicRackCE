@@ -12,9 +12,9 @@ using System.Windows.Forms;
 [assembly: AssemblyProduct("ComicRack Community Edition")]
 [assembly: AssemblyCopyright("2026 orbitdesign")]
 //ComicRack Lite has its own version (Program.Version), raised with each change to it; keep these three in step with it
-[assembly: AssemblyVersion("1.5.0.0")]
-[assembly: AssemblyFileVersion("1.5.0.0")]
-[assembly: AssemblyInformationalVersion("1.5 (ComicRack 1.186)")]
+[assembly: AssemblyVersion("1.6.0.0")]
+[assembly: AssemblyFileVersion("1.6.0.0")]
+[assembly: AssemblyInformationalVersion("1.6 (ComicRack 1.187)")]
 
 namespace ComicRackLite
 {
@@ -27,10 +27,10 @@ namespace ComicRackLite
 		public const string Name = "ComicRack Lite";
 
 		/// <summary>Lite's own version (1.0 came with ComicRack 1.185); every change to Lite raises it and gets a line in Changes.txt.</summary>
-		public const string Version = "1.5";
+		public const string Version = "1.6";
 
 		/// <summary>The ComicRack build Lite came with.</summary>
-		public const string ComicRackBuild = "1.186";
+		public const string ComicRackBuild = "1.187";
 
 		public const string NameAndVersion = Name + " " + Version;
 
